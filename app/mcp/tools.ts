@@ -300,7 +300,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         const spec = firstOrderToSystem(input.expr, input.params);
         const sys = compileOrExplain(spec);
         const field = sampleField(sys, box, input.density, input.density);
-        const eq = firstOrderEquilibria(input.expr, box.y, { params: input.params });
+        const eq = firstOrderEquilibria(input.expr, box.y, { params: input.params, xRange: box.x });
         const scene: Scene = {
           kind: "analyze_first_order",
           system: spec,

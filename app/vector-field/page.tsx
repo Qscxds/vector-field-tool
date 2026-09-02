@@ -72,7 +72,7 @@ function analyze(form: Form): Analysis {
       const eq = findEquilibria(sys, box);
       return { scene: { kind: "analyze_system", system: spec, box, field, equilibria: eq.points, warning: eq.warning }, sys, box, error: null };
     }
-    const fo = firstOrderEquilibria(form.g, box.y);
+    const fo = firstOrderEquilibria(form.g, box.y, { xRange: box.x });
     return {
       scene: { kind: "analyze_first_order", system: spec, box, field, firstOrder: { expr: form.g, autonomous: fo.autonomous, solutions: fo.solutions } },
       sys,

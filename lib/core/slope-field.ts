@@ -19,7 +19,10 @@ export type EquilibriumSolution = {
 };
 
 export type FirstOrderEquilibria = {
-  /** Whether g is independent of x (checked numerically). */
+  /**
+   * Whether g is independent of x, checked numerically at several x values. False also when g is
+   * singular almost everywhere, because then autonomy cannot be established.
+   */
   autonomous: boolean;
   solutions: EquilibriumSolution[];
 };
@@ -28,11 +31,15 @@ export type FirstOrderEquilibriaOptions = {
   params?: Record<string, number>;
   /** Scan resolution in y. Default 400. */
   samples?: number;
-  /** x values used to probe x-dependence. Default [-1, 0, 1, 2.5]. */
-  xProbe?: number[];
+  /** x interval used to probe x-dependence; defaults to a fixed spread around the origin. */
+  xRange?: Range;
   /** Relative residual tolerance for a root. Default 1e-9. */
   tol?: number;
 };
+
+/** Irrational-looking fractions so that a polynomial in x chosen to vanish on "nice" points is still caught. */
+const PROBE_FRACTIONS = [0.0729, 0.2137, 0.3819, 0.5, 0.6181, 0.7863, 0.9271];
+const DEFAULT_PROBES = [-1.7, -0.61, 0.37, 1.23, 2.91];
 
 export function firstOrderEquilibria(expr: string, yRange: Range, opts: FirstOrderEquilibriaOptions = {}): FirstOrderEquilibria {
   if (!Number.isFinite(yRange.min) || !Number.isFinite(yRange.max) || !(yRange.min < yRange.max)) {
@@ -40,47 +47,79 @@ export function firstOrderEquilibria(expr: string, yRange: Range, opts: FirstOrd
   }
   const g = compileScalar(expr, opts.params);
   const samples = opts.samples ?? 400;
-  const xProbe = opts.xProbe ?? [-1, 0, 1, 2.5];
   const tol = opts.tol ?? 1e-9;
   const span = yRange.max - yRange.min;
+  const xProbe = opts.xRange
+    ? PROBE_FRACTIONS.map((t) => opts.xRange!.min + t * (opts.xRange!.max - opts.xRange!.min))
+    : DEFAULT_PROBES;
 
-  // Probe autonomy: g must agree across x at a handful of y values.
   const ys = Array.from({ length: samples + 1 }, (_, i) => yRange.min + (i * span) / samples);
-  let gScale = 1;
-  for (const y of ys) {
-    const v = Math.abs(g({ x: xProbe[0], y }));
-    if (Number.isFinite(v) && v > gScale) gScale = v;
-  }
-  const autonomous = ys.every((y, i) => {
-    if (i % 7 !== 0) return true; // every 7th sample is plenty
-    const ref = g({ x: xProbe[0], y });
-    return xProbe.every((x) => {
-      const v = g({ x, y });
-      if (!Number.isFinite(ref) || !Number.isFinite(v)) return true; // singular spots are inconclusive
-      return Math.abs(v - ref) <= 1e-9 * gScale;
-    });
-  });
-  if (!autonomous) return { autonomous: false, solutions: [] };
 
-  const gy = (y: number) => g({ x: xProbe[0], y });
+  // Reference column: the probe x with the most finite values (a singular column would make the
+  // autonomy test vacuous).
+  const table = xProbe.map((x) => ys.map((y) => g({ x, y })));
+  const finiteCounts = table.map((col) => col.filter(Number.isFinite).length);
+  const refIndex = finiteCounts.indexOf(Math.max(...finiteCounts));
+  const ref = table[refIndex];
+  const gScale = Math.max(1, ...ref.filter(Number.isFinite).map(Math.abs));
+
+  let comparable = 0;
+  let autonomous = true;
+  for (let i = 0; i < ys.length; i++) {
+    const r = ref[i];
+    if (!Number.isFinite(r)) continue;
+    for (let k = 0; k < table.length; k++) {
+      if (k === refIndex) continue;
+      const v = table[k][i];
+      if (!Number.isFinite(v)) continue;
+      comparable++;
+      if (Math.abs(v - r) > 1e-9 * gScale) {
+        autonomous = false;
+        break;
+      }
+    }
+    if (!autonomous) break;
+  }
+  if (!autonomous || comparable < 3) return { autonomous: false, solutions: [] };
+
+  const xRef = xProbe[refIndex];
+  const gy = (y: number) => g({ x: xRef, y });
   const fTol = tol * gScale;
+  // A candidate is a root only if g really vanishes there (a pole also flips sign).
+  const isRoot = (y: number) => Number.isFinite(y) && Math.abs(gy(y)) <= Math.max(fTol, 1e-9 * gScale);
+
+  const polish = (y0: number): number => {
+    let y = y0;
+    for (let k = 0; k < 100; k++) {
+      const h = 1e-6 * Math.max(1, Math.abs(y));
+      const d = (gy(y + h) - gy(y - h)) / (2 * h);
+      if (!Number.isFinite(d) || d === 0) break;
+      const yn = y - gy(y) / d;
+      if (!Number.isFinite(yn)) break;
+      const done = Math.abs(yn - y) <= 1e-15 * Math.max(1, Math.abs(y));
+      y = yn;
+      if (done) break;
+    }
+    return y;
+  };
+
   const roots: number[] = [];
   const pushRoot = (y: number) => {
+    if (!isRoot(y)) return;
     if (y < yRange.min - 1e-12 * span || y > yRange.max + 1e-12 * span) return;
     if (roots.some((r) => Math.abs(r - y) <= 1e-6 * span)) return;
     roots.push(y);
   };
 
-  const values = ys.map(gy);
   for (let i = 0; i < ys.length; i++) {
-    const v = values[i];
+    const v = ref[i];
     if (!Number.isFinite(v)) continue;
     if (Math.abs(v) <= fTol) {
-      pushRoot(ys[i]);
+      pushRoot(polish(ys[i]));
       continue;
     }
-    // Sign change between consecutive finite samples: bisect.
-    if (i + 1 < ys.length && Number.isFinite(values[i + 1]) && Math.sign(v) !== Math.sign(values[i + 1]) && values[i + 1] !== 0) {
+    // Sign change between consecutive finite samples: bisect, then check it is a root, not a pole.
+    if (i + 1 < ys.length && Number.isFinite(ref[i + 1]) && ref[i + 1] !== 0 && Math.sign(v) !== Math.sign(ref[i + 1])) {
       let lo = ys[i], hi = ys[i + 1], flo = v;
       for (let k = 0; k < 200; k++) {
         const mid = (lo + hi) / 2;
@@ -92,23 +131,11 @@ export function firstOrderEquilibria(expr: string, yRange: Range, opts: FirstOrd
       pushRoot((lo + hi) / 2);
       continue;
     }
-    // Tangential zero (no sign change): a local minimum of |g| well below the neighbours.
-    if (i > 0 && i + 1 < ys.length && Number.isFinite(values[i - 1]) && Number.isFinite(values[i + 1])) {
-      const a = Math.abs(values[i - 1]), b = Math.abs(v), c = Math.abs(values[i + 1]);
-      if (b < a && b < c && Math.sign(values[i - 1]) === Math.sign(values[i + 1])) {
-        // Newton polish from the sample; accept only if the residual actually reaches the tolerance.
-        let y = ys[i];
-        for (let k = 0; k < 100; k++) {
-          const h = 1e-6 * Math.max(1, Math.abs(y));
-          const d = (gy(y + h) - gy(y - h)) / (2 * h);
-          if (!Number.isFinite(d) || d === 0) break;
-          const yn = y - gy(y) / d;
-          if (!Number.isFinite(yn)) break;
-          if (Math.abs(yn - y) <= 1e-15 * Math.max(1, Math.abs(y))) { y = yn; break; }
-          y = yn;
-        }
-        if (Math.abs(gy(y)) <= Math.max(fTol, 1e-12 * gScale)) pushRoot(y);
-      }
+    // Tangential zero (no sign change): a local minimum of |g| between two same-sign neighbours.
+    if (i > 0 && i + 1 < ys.length && Number.isFinite(ref[i - 1]) && Number.isFinite(ref[i + 1])) {
+      const a = Math.abs(ref[i - 1]), b = Math.abs(v), c = Math.abs(ref[i + 1]);
+      const isMin = b <= a && b <= c && (b < a || b < c);
+      if (isMin && Math.sign(ref[i - 1]) === Math.sign(ref[i + 1])) pushRoot(polish(ys[i]));
     }
   }
 
