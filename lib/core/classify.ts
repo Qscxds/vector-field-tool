@@ -5,7 +5,8 @@
  * different phase portraits (a true centre vs an extremely slow spiral). So a purely imaginary pair
  * is reported as 'center_or_weak_spiral' with a caveat, never as a centre; a vanishing determinant
  * is reported as 'non_hyperbolic' with a caveat, because linearisation then says nothing about
- * stability. Caveats are complete sentences meant to be read aloud to a student.
+ * stability. Caveats are keys into bilingual sentences (lib/labels.ts) meant to be read aloud to a
+ * student.
  *
  * All decisions are made on the matrix normalised by its largest entry: the classification is
  * invariant under positive scaling, the tolerance becomes purely relative, and no intermediate
@@ -25,6 +26,12 @@ export type Classification =
   | "center_or_weak_spiral"
   | "non_hyperbolic";
 
+/**
+ * Which honesty caveat applies. The student-facing sentences live in lib/labels.ts (per locale);
+ * consumers must show the sentence for this key verbatim.
+ */
+export type CaveatKey = "center" | "nonHyperbolic" | "notFinite";
+
 export type ClassifyResult = {
   classification: Classification;
   /** Computed directly from J; may overflow to ±Infinity for astronomically large entries. */
@@ -32,18 +39,11 @@ export type ClassifyResult = {
   /** Computed directly from J; may overflow to ±Infinity for astronomically large entries. */
   determinant: number;
   eigenvalues: Complex[];
-  /** Present whenever the linear analysis is not conclusive. Read it to the student as-is. */
-  caveat?: string;
+  /** Present whenever the linear analysis is not conclusive. */
+  caveat?: CaveatKey;
 };
 
-export const CAVEATS = {
-  center:
-    "线性化给出一对纯虚特征值（实部在数值精度内为零）。仅凭线性化无法区分真正的中心与极缓慢的螺旋：两者的相图完全不同，判定需要守恒量（例如能量或 Hamilton 函数）或更高阶的非线性分析。",
-  nonHyperbolic:
-    "雅可比矩阵至少有一个特征值在数值精度内为零（行列式约等于零），这个平衡点是非双曲的。Hartman–Grobman 定理不适用，线性化不足以判定它的稳定性，需要中心流形或 Lyapunov 函数等非线性方法。",
-  notFinite:
-    "在这一点上雅可比矩阵无法求出有限值（向量场在附近奇异或未定义），因此无法给出任何分类。",
-} as const;
+const CAVEATS: Record<CaveatKey, CaveatKey> = { center: "center", nonHyperbolic: "nonHyperbolic", notFinite: "notFinite" };
 
 /**
  * @param tol Relative tolerance (default 1e-9), applied to the matrix normalised by its largest

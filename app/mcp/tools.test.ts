@@ -6,6 +6,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeAll, describe, expect, it } from "vitest";
+import { NO_FORM_NOTE } from "@/lib/core/detect-form";
+import { labels } from "@/lib/labels";
 import type { Scene } from "@/lib/scene";
 import { createMcpServer } from "./server";
 
@@ -44,13 +46,17 @@ describe("tools/list", () => {
     }
   });
 
-  it("every math tool tells the model when to use it and never to compute itself", async () => {
+  it("every math tool tells the model when to use it, never to compute itself, and how to pick the locale", async () => {
     const { tools } = await client.listTools();
     for (const t of tools.filter((t) => t.name !== "ping")) {
       expect(t.description).toMatch(/USE THIS/);
       expect(t.description).toMatch(/Do NOT compute/);
       expect(t.description).toMatch(/x\*y/);
       expect(t.description).toMatch(/caveat/);
+      expect(t.description).toMatch(/'zh' when the question is in Chinese/);
+      const props = t.inputSchema.properties as Record<string, { enum?: string[]; default?: string }>;
+      expect(props.locale?.enum).toEqual(["zh", "en"]);
+      expect(props.locale?.default).toBe("en");
     }
   });
 
@@ -75,23 +81,59 @@ describe("ping", () => {
   });
 });
 
+describe("locale", () => {
+  it("defaults to English and stamps the scene", async () => {
+    const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.locale).toBe("en");
+    expect(r.text).toContain("Equilibrium (1, 1): centre or weak spiral");
+    expect(r.text).toContain(labels("en").caveat.center.slice(0, 40));
+    expect(r.text).not.toMatch(/[一-鿿]/);
+  });
+
+  it("zh switches every sentence, and the caveat key is translated", async () => {
+    const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "zh" });
+    expect(r.scene.locale).toBe("zh");
+    const coexist = r.scene.equilibria!.find((e) => Math.hypot(e.at.x - 1, e.at.y - 1) < 1e-6)!;
+    expect(coexist.caveat).toBe("center");
+    expect(r.text).toContain("中心或弱螺旋");
+    expect(r.text).toContain(labels("zh").caveat.center.slice(0, 12));
+    expect(r.text).not.toMatch(/Equilibrium/);
+  });
+
+  it("English first-order summary uses the English tables and note", async () => {
+    const logistic = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 });
+    expect(logistic.text).toContain("Constant solution y = 1: stable");
+    expect(logistic.text).toContain("Numerically behaves like a separable equation");
+    const riccati = await call("analyze_first_order", { expr: "x^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3 });
+    expect(riccati.scene.firstOrder?.formsNote).toBe(NO_FORM_NOTE.en);
+    expect(riccati.text).toContain(NO_FORM_NOTE.en);
+  });
+
+  it("rejects an unknown locale through the schema", async () => {
+    const r = await call("sample_field", { f: "x", g: "y", locale: "fr" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/locale/);
+  });
+});
+
 describe("analyze_system", () => {
   it("Lotka-Volterra: (0,0) saddle and (1,1) centre-or-weak-spiral with the caveat in the text", async () => {
-    const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3 });
+    const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.kind).toBe("analyze_system");
     expect(r.scene.equilibria).toHaveLength(2);
     const coexist = r.scene.equilibria!.find((e) => Math.hypot(e.at.x - 1, e.at.y - 1) < 1e-6)!;
     expect(coexist.classification).toBe("center_or_weak_spiral");
-    expect(coexist.caveat).toBeTruthy();
+    expect(coexist.caveat).toBe("center");
     expect(r.text).toContain("中心或弱螺旋");
-    expect(r.text).toContain(coexist.caveat!.slice(0, 12));
+    expect(r.text).toContain(labels("zh").caveat.center.slice(0, 12));
     expect(r.scene.field?.samples).toHaveLength(400); // default density 20
     expect(r.scene.box).toEqual({ x: { min: -0.5, max: 3 }, y: { min: -0.5, max: 3 } });
   });
 
   it("uses default box and reports none_found honestly", async () => {
-    const r = await call("analyze_system", { f: "1", g: "1" });
+    const r = await call("analyze_system", { f: "1", g: "1", locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.warning).toBe("none_found");
     expect(r.text).toContain("没有找到平衡点");
@@ -128,7 +170,7 @@ describe("analyze_system", () => {
 
 describe("trace_trajectory", () => {
   it("integrates the harmonic oscillator both ways and closes the circle", async () => {
-    const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 2 * Math.PI });
+    const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 2 * Math.PI, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.kind).toBe("trace_trajectory");
     expect(r.scene.trajectories).toHaveLength(2);
@@ -145,7 +187,7 @@ describe("trace_trajectory", () => {
   });
 
   it("stops at the box edge and says so", async () => {
-    const r = await call("trace_trajectory", { f: "1", g: "0", x0: 0, y0: 0, direction: "forward", tSpan: 100 });
+    const r = await call("trace_trajectory", { f: "1", g: "0", x0: 0, y0: 0, direction: "forward", tSpan: 100, locale: "zh" });
     expect(r.scene.trajectories![0].status).toBe("left_box");
     expect(r.text).toContain("离开了观察范围");
   });
@@ -166,7 +208,7 @@ describe("trace_trajectory", () => {
   });
 
   it("reports blow-up without NaN", async () => {
-    const r = await call("trace_trajectory", { f: "x^2", g: "0", x0: 1, y0: 0, direction: "forward", tSpan: 5, xMin: -1e5, xMax: 1e5, yMin: -1, yMax: 1 });
+    const r = await call("trace_trajectory", { f: "x^2", g: "0", x0: 1, y0: 0, direction: "forward", tSpan: 5, xMin: -1e5, xMax: 1e5, yMin: -1, yMax: 1, locale: "zh" });
     const t = r.scene.trajectories![0];
     expect(t.status).toBe("blew_up");
     expect(t.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
@@ -176,7 +218,7 @@ describe("trace_trajectory", () => {
 
 describe("sample_field", () => {
   it("returns density² samples and counts singularities", async () => {
-    const r = await call("sample_field", { f: "1/x", g: "y", density: 5, xMin: -1, xMax: 1, yMin: -1, yMax: 1 });
+    const r = await call("sample_field", { f: "1/x", g: "y", density: 5, xMin: -1, xMax: 1, yMin: -1, yMax: 1, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.field?.samples).toHaveLength(25);
     expect(r.scene.field?.singularCount).toBe(5); // the x = 0 column
@@ -201,7 +243,7 @@ describe("sample_field", () => {
 
 describe("analyze_first_order", () => {
   it("logistic dy/dx = y(1-y): y=0 unstable, y=1 stable, with a slope field and detected forms", async () => {
-    const r = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 });
+    const r = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.kind).toBe("analyze_first_order");
     expect(r.scene.system).toEqual({ f: "1", g: "y*(1-y)" });
@@ -221,20 +263,20 @@ describe("analyze_first_order", () => {
   });
 
   it("finds constant solutions of a non-autonomous equation and reports 'varies'", async () => {
-    const r = await call("analyze_first_order", { expr: "x*(y-1)", xMin: -2, xMax: 2, yMin: -2, yMax: 3 });
+    const r = await call("analyze_first_order", { expr: "x*(y-1)", xMin: -2, xMax: 2, yMin: -2, yMax: 3, locale: "zh" });
     expect(r.scene.firstOrder?.autonomous).toBe(false);
     expect(r.scene.firstOrder?.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability])).toEqual([[1, "varies"]]);
     expect(r.text).toContain("常数解 y = 1");
   });
 
   it("says when there are no constant solutions", async () => {
-    const r = await call("analyze_first_order", { expr: "x - y" });
+    const r = await call("analyze_first_order", { expr: "x - y", locale: "zh" });
     expect(r.scene.firstOrder?.solutions).toEqual([]);
     expect(r.text).toContain("没有常数解");
   });
 
   it("accepts the differential form: y dx - x dy = 0 has undirected segments and a singular origin", async () => {
-    const r = await call("analyze_first_order", { M: "y", N: "-x", xMin: -2, xMax: 2, yMin: -2, yMax: 2 });
+    const r = await call("analyze_first_order", { M: "y", N: "-x", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.fieldStyle).toBe("segments");
     expect(r.scene.system).toEqual({ f: "-x", g: "-(y)" });
@@ -250,7 +292,7 @@ describe("analyze_first_order", () => {
   });
 
   it("draws the implicit solution of an exact equation: 2xy dx + (x² + y²) dy = 0", async () => {
-    const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2 });
+    const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.firstOrder!.forms!.map((f) => f.form)).toContain("exact");
     const implicit = r.scene.firstOrder!.implicit!;
@@ -269,7 +311,7 @@ describe("analyze_first_order", () => {
   });
 
   it("the Riccati equation dy/dx = x² + y² matches no form and gets the positive note", async () => {
-    const r = await call("analyze_first_order", { expr: "x^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3 });
+    const r = await call("analyze_first_order", { expr: "x^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3, locale: "zh" });
     expect(r.scene.firstOrder?.forms).toEqual([]);
     expect(r.scene.firstOrder?.formsNote).toMatch(/Riccati/);
     expect(r.text).toContain("这不是失败");

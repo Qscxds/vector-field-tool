@@ -28,11 +28,10 @@ describe("classify: textbook linear systems", () => {
 });
 
 describe("classify: honesty rules", () => {
-  it("never asserts a centre: purely imaginary eigenvalues come with a caveat", () => {
+  it("never asserts a centre: purely imaginary eigenvalues come with the centre caveat", () => {
     const r = classify([[0, -1], [1, 0]]);
     expect(r.classification).toBe("center_or_weak_spiral");
-    expect(r.caveat).toBeTruthy();
-    expect(r.caveat!.length).toBeGreaterThan(20);
+    expect(r.caveat).toBe("center");
   });
 
   it("treats a tiny real part as indistinguishable from zero", () => {
@@ -48,7 +47,7 @@ describe("classify: honesty rules", () => {
   it("flags det ≈ 0 as non-hyperbolic with a caveat, even with a non-zero eigenvalue", () => {
     const r = classify([[-1, 0], [0, 1e-12]]);
     expect(r.classification).toBe("non_hyperbolic");
-    expect(r.caveat).toContain("Hartman");
+    expect(r.caveat).toBe("nonHyperbolic");
   });
 
   it("scales the tolerance with the matrix: a huge matrix with a relatively tiny eigenvalue is non-hyperbolic", () => {
@@ -123,7 +122,7 @@ describe("classify: honesty rules", () => {
     const r = classify([[Infinity, 0], [0, 1]]);
     expect(r.classification).toBe("non_hyperbolic");
     expect(r.eigenvalues).toEqual([]);
-    expect(r.caveat).toBeTruthy();
+    expect(r.caveat).toBe("notFinite");
   });
 });
 

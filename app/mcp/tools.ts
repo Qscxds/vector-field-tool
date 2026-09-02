@@ -1,6 +1,7 @@
 /**
  * MCP tool layer: translates tool calls into lib/core calls and core results into tool results.
  * No mathematics here. Descriptions are the prompt Claude sees; they decide when a tool is called.
+ * All human-readable text comes from lib/labels in the locale the caller asked for.
  */
 import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -11,7 +12,7 @@ import { sampleField } from "@/lib/core/field";
 import { integrateAdaptive, integrateRK4, type IntegrateOptions } from "@/lib/core/integrate";
 import { compileSystem, ParseError } from "@/lib/core/parse";
 import { contourSegments } from "@/lib/render/contours";
-import { detectForms, NO_FORM_NOTE, type OdeForm } from "@/lib/core/detect-form";
+import { detectForms, NO_FORM_NOTE } from "@/lib/core/detect-form";
 import { exactPotential, potentialLevels } from "@/lib/core/exact";
 import {
   firstOrderEquilibria,
@@ -19,8 +20,8 @@ import {
   toSystem,
   type FirstOrderSpec,
 } from "@/lib/core/slope-field";
-import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
-import { CLASS_ZH, STABILITY_ZH, STATUS_ZH, WARNING_ZH, formatEigenvalue, formatNumber } from "@/lib/labels";
+import type { Box, SystemSpec } from "@/lib/core/types";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 
 // ---------- prompt fragments shared by every description ----------
@@ -40,6 +41,9 @@ const NEVER_COMPUTE =
 
 const BOX_RULES =
   'The viewing box (xMin, xMax, yMin, yMax) must have xMin < xMax and yMin < yMax; defaults are -3..3.';
+
+const LOCALE_RULE =
+  "Set `locale` from the language the student writes in: 'zh' when the question is in Chinese, 'en' for every other language (the default).";
 
 // ---------- schemas ----------
 
@@ -62,6 +66,10 @@ const density = z
   .max(60)
   .default(20)
   .describe("Grid points per axis for the sampled field (5..60). 20 is a good default for a widget.");
+const localeSchema = z
+  .enum(LOCALES as [Locale, ...Locale[]])
+  .default("en")
+  .describe("Language of the text summary: 'zh' if the student writes in Chinese, otherwise 'en'.");
 
 type BoxInput = { xMin: number; xMax: number; yMin: number; yMax: number };
 
@@ -104,17 +112,6 @@ function compileOrExplainFirstOrder(spec: FirstOrderSpec, systemSpec: SystemSpec
   }
 }
 
-const FORM_ZH: Record<OdeForm, string> = {
-  separable: "可分离变量方程",
-  autonomous: "自治方程",
-  linear_in_y: "关于 y 的线性方程",
-  homogeneous: "零次齐次方程",
-  bernoulli: "Bernoulli 方程",
-  exact: "恰当方程",
-  integrating_factor_x: "有只依赖 x 的积分因子的方程",
-  integrating_factor_y: "有只依赖 y 的积分因子的方程",
-};
-
 /** Uniformly thins a polyline to at most `max` points, always keeping the last one. */
 export function thin<T>(points: T[], max: number): T[] {
   if (points.length <= max) return points;
@@ -125,18 +122,26 @@ export function thin<T>(points: T[], max: number): T[] {
 }
 
 const fmt = formatNumber;
-const fmtPoint = (p: Vec2) => `(${fmt(p.x)}, ${fmt(p.y)})`;
-const fmtEigen = formatEigenvalue;
 
-function describeEquilibria(scene: Scene): string {
+function boxValues(box: Box): Record<string, string> {
+  return { xMin: fmt(box.x.min), xMax: fmt(box.x.max), yMin: fmt(box.y.min), yMax: fmt(box.y.max) };
+}
+
+function describeEquilibria(scene: Scene, locale: Locale): string {
+  const L = labels(locale);
   const lines: string[] = [];
   const eq = scene.equilibria ?? [];
-  if (scene.warning) lines.push(WARNING_ZH[scene.warning]);
+  if (scene.warning) lines.push(L.warning[scene.warning]);
   eq.forEach((p, i) => {
     lines.push(
-      `${i + 1}. 平衡点 ${fmtPoint(p.at)}：${CLASS_ZH[p.classification]}。` +
-        ` 特征值 ${p.eigenvalues.map(fmtEigen).join(", ") || "无法求出"}；迹 ${fmt(p.trace, 5)}，行列式 ${fmt(p.determinant, 5)}。` +
-        (p.caveat ? ` 注意：${p.caveat}` : ""),
+      fill(L.tool.equilibriumLine, {
+        index: i + 1,
+        point: formatPoint(p.at),
+        classification: L.classification[p.classification],
+        eigenvalues: p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable,
+        trace: fmt(p.trace, 5),
+        determinant: fmt(p.determinant, 5),
+      }) + (p.caveat ? fill(L.tool.note, { caveat: L.caveat[p.caveat] }) : ""),
     );
   });
   return lines.join("\n");
@@ -184,28 +189,30 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         "USE THIS whenever a student asks about equilibria, fixed points, stability, the phase portrait, the type " +
         "of a critical point, eigenvalues of the linearisation, or long-term behaviour of a 2D autonomous system. " +
         "For a single first-order equation dy/dx = g(x, y) use analyze_first_order instead. " +
-        EXPRESSION_RULES + " " + BOX_RULES + " " + NEVER_COMPUTE,
+        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
         g: expression.describe("Right-hand side of y' (dy/dt)."),
         params: paramsSchema,
         ...boxShape,
         density: density.describe("Grid points per axis for the returned vector field (5..60)."),
+        locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: ui,
     },
     (input) =>
       guarded(() => {
+        const L = labels(input.locale);
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
         const eq = findEquilibria(sys, box);
         const field = sampleField(sys, box, input.density, input.density);
-        const scene: Scene = { kind: "analyze_system", system: spec, box, field, equilibria: eq.points, warning: eq.warning };
-        const header = `系统 x' = ${spec.f}，y' = ${spec.g}，观察范围 x∈[${fmt(box.x.min)}, ${fmt(box.x.max)}]，y∈[${fmt(box.y.min)}, ${fmt(box.y.max)}]。`;
-        const singular = field.singularCount ? ` 向量场在 ${field.singularCount} 个采样点上无定义或无穷大。` : "";
-        return ok(`${header}${singular}\n${describeEquilibria(scene)}`, scene);
+        const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: eq.points, warning: eq.warning };
+        const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
+        const singular = field.singularCount ? " " + fill(L.tool.singularSamples, { count: field.singularCount }) : "";
+        return ok(`${header}${singular}\n${describeEquilibria(scene, input.locale)}`, scene);
       }),
   );
 
@@ -222,7 +229,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         "goes, whether it approaches an equilibrium or a limit cycle, or wants a solution curve drawn. " +
         "Default is both directions with an adaptive Dormand-Prince integrator; use method 'rk4' only when a " +
         "fixed-step classic RK4 is explicitly wanted. " +
-        EXPRESSION_RULES + " " + BOX_RULES + " Integration stops when the trajectory leaves the box. " + NEVER_COMPUTE,
+        EXPRESSION_RULES + " " + BOX_RULES + " Integration stops when the trajectory leaves the box. " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
         g: expression.describe("Right-hand side of y' (dy/dt)."),
@@ -233,12 +240,14 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         direction: z.enum(["both", "forward", "backward"]).default("both"),
         method: z.enum(["adaptive", "rk4"]).default("adaptive"),
         ...boxShape,
+        locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: ui,
     },
     (input) =>
       guarded(() => {
+        const L = labels(input.locale);
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
@@ -256,12 +265,18 @@ export function registerTools(server: McpServer, widgetUri: string): void {
             tEnd: tr.times[tr.times.length - 1],
           };
         });
-        const scene: Scene = { kind: "trace_trajectory", system: spec, box, start, trajectories };
+        const scene: Scene = { kind: "trace_trajectory", locale: input.locale, system: spec, box, start, trajectories };
         const lines = trajectories.map((t) => {
           const end = t.points[t.points.length - 1];
-          return `${t.direction === "forward" ? "正向（t 增大）" : "逆向（t 减小）"}：积到 t = ${fmt(t.tEnd, 3)}，终点 ${fmtPoint(end)}，${STATUS_ZH[t.status]}。共 ${t.steps} 步。`;
+          return fill(L.tool.trajectoryLine, {
+            direction: t.direction === "forward" ? L.tool.forward : L.tool.backward,
+            tEnd: fmt(t.tEnd, 3),
+            end: formatPoint(end),
+            status: L.status[t.status],
+            steps: t.steps,
+          });
         });
-        return ok(`从 ${fmtPoint(start)} 出发，系统 x' = ${spec.f}，y' = ${spec.g}。\n${lines.join("\n")}`, scene);
+        return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: spec.g })}\n${lines.join("\n")}`, scene);
       }),
   );
 
@@ -277,29 +292,28 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         "USE THIS when a student just wants to see the direction field / vector field / phase plane arrows of a " +
         "system without an equilibrium analysis, or to render a picture in the widget. For equilibria and stability " +
         "use analyze_system, which also returns a field. " +
-        EXPRESSION_RULES + " " + BOX_RULES + " " + NEVER_COMPUTE,
+        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
         g: expression.describe("Right-hand side of y' (dy/dt)."),
         params: paramsSchema,
         ...boxShape,
         density,
+        locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: ui,
     },
     (input) =>
       guarded(() => {
+        const L = labels(input.locale);
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
         const field = sampleField(sys, box, input.density, input.density);
-        const scene: Scene = { kind: "sample_field", system: spec, box, field };
-        return ok(
-          `在 ${field.nx}×${field.ny} 网格上采样了向量场 (${spec.f}, ${spec.g})。最大模长 ${fmt(field.maxMag)}，` +
-            `${field.singularCount} 个采样点无定义或无穷大。图像已交给 widget 绘制。`,
-          scene,
-        );
+        const scene: Scene = { kind: "sample_field", locale: input.locale, system: spec, box, field };
+        const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
+        return ok(`${line} ${L.tool.widgetDraws}`, scene);
       }),
   );
 
@@ -327,7 +341,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         "fully valid (many important equations, e.g. Riccati dy/dx = x^2 + y^2, have no closed form). " +
         "Variables: y is the unknown function, x the independent variable. Provide exactly one of `expr` or the " +
         "pair `M`, `N`. " +
-        EXPRESSION_RULES + " " + BOX_RULES + " " + NEVER_COMPUTE,
+        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         expr: expression.optional().describe("Right-hand side g(x, y) of dy/dx = g(x, y). Omit when giving M and N."),
         M: expression.optional().describe("M(x, y) in M dx + N dy = 0. Requires N."),
@@ -335,12 +349,15 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         params: paramsSchema,
         ...boxShape,
         density,
+        locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: ui,
     },
     (input) =>
       guarded(() => {
+        const locale = input.locale;
+        const L = labels(locale);
         const box = resolveBox(input);
         const hasExpr = typeof input.expr === "string";
         const hasMN = typeof input.M === "string" || typeof input.N === "string";
@@ -364,7 +381,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         const field = sampleField(sys, box, input.density, input.density);
         const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x });
         const singular = firstOrderSingularities(spec, box);
-        const forms = detectForms(spec, box, "zh");
+        const forms = detectForms(spec, box, locale);
 
         let implicit: NonNullable<Scene["firstOrder"]>["implicit"];
         if (forms.some((f) => f.form === "exact")) {
@@ -377,6 +394,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
 
         const scene: Scene = {
           kind: "analyze_first_order",
+          locale,
           system: systemSpec,
           box,
           field,
@@ -388,32 +406,37 @@ export function registerTools(server: McpServer, widgetUri: string): void {
             solutions: eq.solutions,
             singularities: singular.points,
             forms,
-            formsNote: forms.length === 0 ? NO_FORM_NOTE.zh : undefined,
+            formsNote: forms.length === 0 ? NO_FORM_NOTE[locale] : undefined,
             implicit,
           },
         };
 
         const lines: string[] = [];
-        lines.push(`方程 ${equationText}，观察范围 x∈[${fmt(box.x.min)}, ${fmt(box.x.max)}]，y∈[${fmt(box.y.min)}, ${fmt(box.y.max)}]。`);
-        if (spec.kind === "differential") lines.push("微分形式没有天然的正方向，方向场画成无向线段。");
-        if (field.singularCount) lines.push(`方向场在 ${field.singularCount} 个采样点上无定义或无穷大。`);
+        lines.push(fill(L.tool.firstOrderHeader, { equation: equationText, ...boxValues(box) }));
+        if (spec.kind === "differential") lines.push(L.tool.differentialUndirected);
+        if (field.singularCount) lines.push(fill(L.tool.singularSamples, { count: field.singularCount }));
         if (singular.points.length) {
-          lines.push(`方向场奇点（M = N = 0，此处方向无定义）：${singular.points.map(fmtPoint).join("、")}${singular.warning ? "（数量已截断）" : ""}。`);
+          lines.push(
+            fill(L.tool.directionSingular, {
+              points: singular.points.map((p) => formatPoint(p)).join(L.tool.listSeparator),
+              truncated: singular.warning ? L.tool.truncated : "",
+            }),
+          );
         }
         if (eq.solutions.length) {
-          for (const s of eq.solutions) lines.push(`常数解 y = ${fmt(s.y, 6)}：${STABILITY_ZH[s.stability]}。`);
+          for (const s of eq.solutions) lines.push(fill(L.tool.constantSolution, { y: fmt(s.y, 6), stability: L.stability[s.stability] }));
         } else {
-          lines.push(eq.autonomous ? "方程是自治的，但在观察范围内没有常数解。" : "在观察范围内没有常数解（右端依赖 x；斜率场仍然有效）。");
+          lines.push(eq.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);
         }
         if (forms.length) {
-          lines.push("方程类型（数值探测，只表示「与该形式一致」，不是证明）：");
-          for (const f of forms) lines.push(`- 在数值上表现得像${FORM_ZH[f.form]}。${f.evidence}`);
-          lines.push(`注意：${forms[0].caveat}`);
+          lines.push(L.tool.formsHeader);
+          for (const f of forms) lines.push(fill(L.tool.formLine, { form: L.form[f.form], evidence: f.evidence }));
+          lines.push(fill(L.tool.formsCaveat, { caveat: forms[0].caveat }));
         } else {
-          lines.push(NO_FORM_NOTE.zh);
+          lines.push(NO_FORM_NOTE[locale]);
         }
         if (implicit) {
-          lines.push(`方程恰当：已数值求出势函数 F(x, y)，图中紫色曲线是隐式解 F(x, y) = C（画了 ${implicit.levels.length} 条等值线）。两条积分路径的相对偏差 ${implicit.pathDeviation.toExponential(1)}，这本身就是恰当性的独立验证。`);
+          lines.push(fill(L.tool.exactImplicit, { levels: implicit.levels.length, deviation: implicit.pathDeviation.toExponential(1) }));
         }
         return ok(lines.join("\n"), scene);
       }),

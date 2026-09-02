@@ -8,7 +8,7 @@ import type { Equilibrium, EquilibriaResult } from "./core/equilibria";
 import type { FieldGrid } from "./core/field";
 import type { IntegrationStatus } from "./core/integrate";
 import type { EquilibriumSolution, FirstOrderSpec } from "./core/slope-field";
-import type { Box, SystemSpec, Vec2 } from "./core/types";
+import type { Box, Locale, SystemSpec, Vec2 } from "./core/types";
 
 export type SceneKind = "ping" | "sample_field" | "analyze_system" | "trace_trajectory" | "analyze_first_order";
 
@@ -51,6 +51,8 @@ export type FieldStyle = "arrows" | "segments";
 
 export type Scene = {
   kind: SceneKind;
+  /** Language the producing tool was asked for; consumers use it for their own labels. */
+  locale?: Locale;
   /** Normalised system that produced the scene (x' = f, y' = g). */
   system?: SystemSpec;
   box?: Box;

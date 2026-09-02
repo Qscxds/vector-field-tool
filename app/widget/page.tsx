@@ -5,11 +5,12 @@
  * It receives the tool result over the MCP Apps protocol, reads the Scene out of
  * structuredContent and hands it to the shared VectorFieldCanvas. Static rendering only for now
  * (no click-to-trace inside the widget); no math here and no knowledge of who the host is.
+ * Text comes from lib/labels in the locale the tool was called with.
  */
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useRef, useState } from "react";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
-import { CLASS_ZH, STABILITY_ZH, STATUS_ZH, WARNING_ZH, formatEigenvalue, formatNumber } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type Locale } from "@/lib/labels";
 import type { Scene, SceneKind } from "@/lib/scene";
 
 const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order"]);
@@ -53,7 +54,12 @@ export default function WidgetPage() {
   const [scene, setScene] = useState<Scene | null>(null);
   const [fallbackText, setFallbackText] = useState<string>("");
   const [isError, setIsError] = useState(false);
+  const [browserLocale, setBrowserLocale] = useState<Locale>("en");
   const { ref, width } = useContainerWidth<HTMLDivElement>(640);
+
+  useEffect(() => {
+    setBrowserLocale(localeFromLanguageTag(typeof navigator !== "undefined" ? navigator.language : undefined));
+  }, []);
 
   const { isConnected, error } = useApp({
     appInfo: { name: "vector-field-tool-widget", version: "0.2.0" },
@@ -73,6 +79,7 @@ export default function WidgetPage() {
     },
   });
 
+  const L = labels(scene?.locale ?? browserLocale);
   const canvasHeight = Math.round(width * 0.68);
 
   return (
@@ -88,14 +95,14 @@ export default function WidgetPage() {
         />
         <strong>vector-field-tool</strong>
         <span style={{ color: "#52606d" }}>
-          {isConnected ? (phase === "idle" ? "已连接，等待工具调用…" : phase === "input" ? "计算中…" : "connected to host") : "not connected to an MCP host"}
+          {isConnected ? (phase === "idle" ? L.ui.connectedWaiting : phase === "input" ? L.ui.computing : L.ui.connected) : L.ui.notConnected}
         </span>
       </div>
 
       {error ? <p style={{ color: "#b42318", margin: "0 0 6px" }}>Error: {error.message}</p> : null}
 
       {!isConnected ? (
-        <p style={{ color: "#52606d", margin: 0 }}>This page is meant to be rendered by Claude after calling one of the vector-field tools.</p>
+        <p style={{ color: "#52606d", margin: 0 }}>{L.ui.notRenderedByHost}</p>
       ) : phase !== "result" ? null : isError ? (
         <pre style={preStyle}>{fallbackText}</pre>
       ) : scene?.kind === "ping" ? (
@@ -113,23 +120,31 @@ export default function WidgetPage() {
 }
 
 function SceneSummary({ scene }: { scene: Scene }) {
+  const L = labels(scene.locale ?? "en");
   const items: string[] = [];
   if (scene.system) {
-    items.push(
-      scene.kind === "analyze_first_order" && scene.firstOrder
-        ? `dy/dx = ${scene.firstOrder.expr}`
-        : `x' = ${scene.system.f}，y' = ${scene.system.g}`,
-    );
+    items.push(scene.kind === "analyze_first_order" && scene.firstOrder ? scene.firstOrder.expr : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
   }
-  if (scene.field?.singularCount) items.push(`向量场在 ${scene.field.singularCount} 个采样点上无定义（灰色小圆环）。`);
-  if (scene.warning) items.push(WARNING_ZH[scene.warning]);
+  if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
+  if (scene.warning) items.push(L.warning[scene.warning]);
   for (const t of scene.trajectories ?? []) {
-    items.push(`${t.direction === "forward" ? "正向" : "逆向"}轨线：到 t = ${formatNumber(t.tEnd, 2)}，${STATUS_ZH[t.status]}。`);
+    items.push(`${t.direction === "forward" ? L.tool.forward : L.tool.backward}: ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status: L.status[t.status] })}`);
   }
-  if (scene.firstOrder) {
-    if (!scene.firstOrder.autonomous) items.push("右端依赖 x，方程不是自治的，没有常数平衡解。");
-    else if (scene.firstOrder.solutions.length === 0) items.push("观察范围内没有平衡解。");
-    for (const s of scene.firstOrder.solutions) items.push(`平衡解 y = ${formatNumber(s.y, 6)}：${STABILITY_ZH[s.stability]}`);
+  const fo = scene.firstOrder;
+  if (fo) {
+    if (fo.solutions.length === 0) items.push(fo.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);
+    for (const s of fo.solutions) items.push(fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] }));
+    if (fo.singularities?.length) {
+      items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: "" }));
+    }
+    if (fo.forms?.length) {
+      items.push(L.tool.formsHeader);
+      for (const f of fo.forms) items.push(fill(L.tool.formLine, { form: L.form[f.form], evidence: f.evidence }));
+      items.push(fill(L.tool.formsCaveat, { caveat: fo.forms[0].caveat }));
+    } else if (fo.formsNote) {
+      items.push(fo.formsNote);
+    }
+    if (fo.implicit) items.push(fill(L.tool.exactImplicit, { levels: fo.implicit.levels.length, deviation: fo.implicit.pathDeviation.toExponential(1) }));
   }
 
   return (
@@ -143,11 +158,8 @@ function SceneSummary({ scene }: { scene: Scene }) {
         <ol style={{ margin: "4px 0 0", paddingLeft: 18 }}>
           {scene.equilibria.map((p, i) => (
             <li key={i} style={{ margin: "2px 0" }}>
-              <strong>
-                ({formatNumber(p.at.x)}, {formatNumber(p.at.y)})
-              </strong>{" "}
-              {CLASS_ZH[p.classification]}；特征值 {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || "无法求出"}
-              {p.caveat ? <span style={{ color: "#92400e" }}>。{p.caveat}</span> : null}
+              <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}; λ = {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable}
+              {p.caveat ? <span style={{ color: "#92400e" }}> {L.caveat[p.caveat]}</span> : null}
             </li>
           ))}
         </ol>
