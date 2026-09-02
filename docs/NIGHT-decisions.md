@@ -31,3 +31,17 @@
 - **轨线点数上限 1000/方向**（均匀抽稀，保留末点），`trace_trajectory` 默认自适应积分、双向、观察盒 ±3 且离开盒子即停，防止 `tSpan=1000` 时返回十万个点。
 - **结果摘要用中文**（分类名、状态解释、caveat 原文），description 用英文（给模型的指令）。
 - **工具层测试不走 HTTP**：用 SDK 的 `InMemoryTransport` 连一个真实 `Client`，覆盖 tools/list、每个工具的正常与异常路径；HTTP 传输层由 `scripts/smoke.mjs`（`npm run smoke`）对 `next start` 验证。
+
+## B 阶段补记：误提交的审查探针文件
+
+- A 阶段结束后我在后台起了一组只读的审查子智能体，它们按约定把临时测试放在 `lib/core/__probe__/`。我在 B 阶段用 `git add -A` 提交时把其中一个探针文件（`probe.test.ts`）一起扫进了 `35b86e8`（`b-tools-done` 所指的 commit）。已在 `efb884c` 从索引移除并把 `lib/**/__probe__/` 加进 `.gitignore`；没有改写历史，因为那个 commit 上 `npm test` 仍然是绿的，可二分性不受影响。之后所有 commit 都用显式路径 `git add`。
+
+## C 阶段：渲染核心
+
+- **`arrowPolygon` 只返回箭头头部的三角形**（顶点、左翼、右翼），箭杆由渲染层画线；零长度或非正的 headSize 返回空数组。
+- **`scaleArrows` 的输出类型**是 `ScreenArrow { from, to, color, mag, singular }`（屏幕坐标，以采样点为中心），奇异样本 `from === to` 并带 `singular: true`，由渲染层画成灰色小圆环；零向量画成小点。方向换算考虑了 x、y 两个方向不同的像素比例。
+- **视口把盒子拉伸到整个画布**（x、y 可以不等比），不保留等比缩放：学生自己设范围，等比缩放会让范围和画面对不上。
+- **刻度**只取 1、2、5 乘以 10 的幂，用对数距离选最接近目标数量的一档。
+- **平衡点标记**：鞍点画叉；稳定画实心圆；不稳定画空心圆；星形/退化结点按迹的符号归入稳定或不稳定；`center_or_weak_spiral` 与 `non_hyperbolic` 画虚线圆加问号，表示「有保留」。
+- 一阶方程的平衡解画成横线：稳定实线绿色、不稳定虚线红色、半稳定点线橙色。
+- React 组件今晚只过 tsc 和 build，没有视觉验证（按文档）；D 阶段会用内置浏览器实际看图。
