@@ -41,8 +41,8 @@ export const WARNING_ZH = {
 
 export function formatNumber(v: number, digits = 4): string {
   if (!Number.isFinite(v)) return String(v);
-  const s = v.toFixed(digits);
-  return s.replace(/\.?0+$/, "") || "0";
+  const s = v.toFixed(digits).replace(/\.?0+$/, "");
+  return s === "" || s === "-0" || s === "-" ? "0" : s;
 }
 
 export function formatEigenvalue(e: Complex, digits = 5): string {
