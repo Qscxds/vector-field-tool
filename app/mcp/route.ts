@@ -7,6 +7,10 @@
  * stream on GET would pin a serverless function open for nothing.
  */
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import {
+  LATEST_PROTOCOL_VERSION,
+  SUPPORTED_PROTOCOL_VERSIONS,
+} from "@modelcontextprotocol/sdk/types.js";
 import { createMcpServer } from "./server";
 
 export const runtime = "nodejs";
@@ -31,7 +35,39 @@ function resolveBaseUrl(req: Request): string {
   return `${proto}://${host}`;
 }
 
-export async function POST(req: Request): Promise<Response> {
+const SUPPORTED_VERSIONS = new Set<string>(SUPPORTED_PROTOCOL_VERSIONS);
+
+/**
+ * Claude sends `mcp-protocol-version: 2026-07-28` on some requests. sdk 1.x only knows the
+ * 2024/2025 versions and would answer 400. The JSON-RPC body is the same shape and this server
+ * keeps no per-session state, so we downgrade the header instead of rejecting the request.
+ */
+async function normalizeProtocolVersion(req: Request): Promise<Request> {
+  const version = req.headers.get("mcp-protocol-version");
+  if (!version || SUPPORTED_VERSIONS.has(version)) return req;
+  const headers = new Headers(req.headers);
+  headers.set("mcp-protocol-version", LATEST_PROTOCOL_VERSION);
+  return new Request(req.url, { method: req.method, headers, body: await req.text() });
+}
+
+async function logRequest(req: Request, body: string): Promise<void> {
+  if (process.env.NODE_ENV === "production") return;
+  let method = "?";
+  try {
+    const parsed = JSON.parse(body) as { method?: string } | { method?: string }[];
+    method = Array.isArray(parsed) ? parsed.map((m) => m.method ?? "?").join(",") : parsed.method ?? "?";
+  } catch {
+    method = "(unparseable)";
+  }
+  console.log(
+    `[mcp] ${method} version=${req.headers.get("mcp-protocol-version") ?? "-"} ua=${req.headers.get("user-agent") ?? "-"}`,
+  );
+}
+
+export async function POST(incoming: Request): Promise<Response> {
+  const body = await incoming.clone().text();
+  await logRequest(incoming, body);
+  const req = await normalizeProtocolVersion(incoming);
   const server = createMcpServer(resolveBaseUrl(req));
   // No sessionIdGenerator => stateless mode.
   const transport = new WebStandardStreamableHTTPServerTransport();

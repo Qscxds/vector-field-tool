@@ -131,6 +131,7 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 
 - **widget 不出现，只有文字**：Claude 桌面版 Help → Troubleshooting → Enable Developer Mode，然后 Ctrl+Shift+I 看 iframe 里的报错。常见原因：`/_next/*` 被 403（allowedDevOrigins）、用了 ngrok 免费版、Vercel Deployment Protection 没关。
 - **resources/read 报 `widget fetch failed for <url>`**：服务器推算出的公网地址是 `<url>`，但它自己访问不到。检查隧道是否还在、代理是否正确传 `x-forwarded-host`；必要时设 `BASE_URL`。
+- **日志里出现 400**：Claude 有些请求带 `mcp-protocol-version: 2026-07-28`，sdk 1.x 不认识。路由会把不认识的版本头改写成它支持的最新版本再交给 SDK，请求体格式相同、服务器又无状态，所以是安全的。开发模式下每个 POST 会打一行 `[mcp] <method> version=... ua=...` 日志。
 - **连接器显示无法连接**：确认隧道 URL 带 `/mcp`、是 https、cloudflared 还活着。Claude 出口 IP 段见 <https://platform.claude.com/docs/en/api/ip-addresses>。
 - **改了 widget 但 Claude 显示旧的**：`app/mcp/server.ts` 里把 `WIDGET_VERSION` 加一，资源 URI 变了主机就会重新拉。
 - 社区里有一批「widget 静默回退成文字」的报告（[ext-apps#671](https://github.com/modelcontextprotocol/ext-apps/issues/671)），原因五花八门，其中一例是服务器没正确应答 `ping` 方法。本项目用官方 SDK，`ping` 由 SDK 处理。
