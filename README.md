@@ -2,7 +2,7 @@
 
 微分方程课的向量场教学工具。目标不只是画图，而是让 AI 通过工具调用回答学生关于微分方程的问题：AI 把自然语言翻译成参数、把数值结果翻译成解释，**所有数学计算由确定性代码完成**。
 
-当前状态：**P0 骨架轮**。只有一个什么都不算的 `ping` 工具和一个最简 widget，用来验证 Claude → MCP 服务器 → widget iframe 整条链路。
+当前状态：**P0 骨架轮已完成并通过 Claude 验收（2026-09-02）**。只有一个什么都不算的 `ping` 工具和一个最简 widget，用来验证 Claude → MCP 服务器 → widget iframe 整条链路。交接文档见 `docs/P0-handoff.md`。
 
 ## 架构（长期有效）
 
@@ -146,7 +146,7 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 - **resources/read 报 `widget fetch failed for <url>`**：服务器推算出的公网地址是 `<url>`，但它自己访问不到。检查隧道是否还在、代理是否正确传 `x-forwarded-host`；必要时设 `BASE_URL`。
 - **日志里出现 400**：Claude 有些请求带 `mcp-protocol-version: 2026-07-28`，sdk 1.x 不认识。路由会把不认识的版本头改写成它支持的最新版本再交给 SDK，请求体格式相同、服务器又无状态，所以是安全的。开发模式下每个 POST 会打一行 `[mcp] <method> version=... ua=...` 日志。
 - **连接器显示无法连接**：确认隧道 URL 带 `/mcp`、是 https、cloudflared 还活着。Claude 出口 IP 段见 <https://platform.claude.com/docs/en/api/ip-addresses>。
-- **改了 widget 但 Claude 显示旧的**：`app/mcp/server.ts` 里把 `WIDGET_VERSION` 加一，资源 URI 变了主机就会重新拉。
+- **改了 widget 但 Claude 显示旧的**：`app/mcp/server.ts` 里把 `WIDGET_VERSION` 加一，资源 URI 变了主机就会重新拉。**但 Claude 会缓存连接时的工具列表**（里面记着旧的资源地址），所以改完版本号必须在 Claude 设置里把连接器断开再重连，否则它按旧地址读、服务器答「Resource not found」、widget 静默变空白。
 - 社区里有一批「widget 静默回退成文字」的报告（[ext-apps#671](https://github.com/modelcontextprotocol/ext-apps/issues/671)），原因五花八门，其中一例是服务器没正确应答 `ping` 方法。本项目用官方 SDK，`ping` 由 SDK 处理。
 
 ## 决策记录
