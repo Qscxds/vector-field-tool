@@ -19,9 +19,13 @@ import { registerTools } from "./tools";
 
 export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
 
-/** Bump when the widget HTML changes so MCP hosts drop cached copies. */
-const WIDGET_VERSION = "p0-5";
-export const WIDGET_URI = `ui://vector-field-tool/ping.html?v=${WIDGET_VERSION}`;
+/**
+ * Bump when the widget HTML changes so MCP hosts drop cached copies. Claude also caches the tool
+ * list (with this URI) per connection: after a bump the connector must be disconnected and
+ * reconnected, otherwise it reads the old URI, gets "Resource not found" and shows a blank widget.
+ */
+const WIDGET_VERSION = "e-1";
+export const WIDGET_URI = `ui://vector-field-tool/widget.html?v=${WIDGET_VERSION}`;
 /** Next.js page that becomes the widget HTML (app/widget/page.tsx). */
 const WIDGET_PATH = "/widget";
 
@@ -67,9 +71,9 @@ export function createMcpServer(baseUrl: string): McpServer {
 
   registerAppResource(
     server,
-    "ping-widget",
+    "vector-field-widget",
     WIDGET_URI,
-    { title: "Ping widget", mimeType: RESOURCE_MIME_TYPE },
+    { title: "Vector field widget", mimeType: RESOURCE_MIME_TYPE },
     async () => ({
       contents: [
         {
@@ -120,7 +124,7 @@ export function createMcpServer(baseUrl: string): McpServer {
     }),
   );
 
-  registerTools(server);
+  registerTools(server, WIDGET_URI);
 
   return server;
 }

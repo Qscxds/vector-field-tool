@@ -42,8 +42,12 @@ check("initialize", init.status === 200 && init.msg?.result?.serverInfo?.name ==
 const list = await rpc("tools/list");
 const names = (list.msg?.result?.tools ?? []).map((t) => t.name).sort();
 check("tools/list has 5 tools", JSON.stringify(names) === JSON.stringify(["analyze_first_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]), names.join(","));
-const ping = (list.msg?.result?.tools ?? []).find((t) => t.name === "ping");
-check("ping carries _meta.ui.resourceUri", typeof ping?._meta?.ui?.resourceUri === "string" && ping._meta.ui.resourceUri.startsWith("ui://"), JSON.stringify(ping?._meta));
+const toolsList = list.msg?.result?.tools ?? [];
+check(
+  "every tool carries _meta.ui.resourceUri",
+  toolsList.length > 0 && toolsList.every((t) => typeof t._meta?.ui?.resourceUri === "string" && t._meta.ui.resourceUri.startsWith("ui://")),
+  JSON.stringify(toolsList.map((t) => [t.name, t._meta?.ui?.resourceUri])),
+);
 
 const calls = [
   ["ping", { message: "hi" }, (r) => r.structuredContent?.message === "hi"],

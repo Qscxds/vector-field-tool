@@ -54,9 +54,15 @@ describe("tools/list", () => {
     }
   });
 
-  it("keeps the ping widget resource registered", async () => {
+  it("keeps the widget resource registered and links every tool to it", async () => {
     const { resources } = await client.listResources();
-    expect(resources.some((r) => r.uri.startsWith("ui://vector-field-tool/") && r.mimeType === "text/html;profile=mcp-app")).toBe(true);
+    const widget = resources.find((r) => r.uri.startsWith("ui://vector-field-tool/") && r.mimeType === "text/html;profile=mcp-app");
+    expect(widget).toBeTruthy();
+    const { tools } = await client.listTools();
+    for (const t of tools) {
+      const meta = t._meta as { ui?: { resourceUri?: string } } | undefined;
+      expect(meta?.ui?.resourceUri, `${t.name} must reference the widget`).toBe(widget!.uri);
+    }
   });
 });
 

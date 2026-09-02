@@ -2,6 +2,7 @@
  * MCP tool layer: translates tool calls into lib/core calls and core results into tool results.
  * No mathematics here. Descriptions are the prompt Claude sees; they decide when a tool is called.
  */
+import { registerAppTool } from "@modelcontextprotocol/ext-apps/server";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
@@ -131,8 +132,15 @@ function guarded(run: () => CallToolResult): CallToolResult {
 
 // ---------- tools ----------
 
-export function registerTools(server: McpServer): void {
-  server.registerTool(
+/**
+ * Registers the four analysis tools. Every tool is linked to the widget resource (`widgetUri`)
+ * so MCP Apps hosts render its Scene; text-only hosts just read the summary.
+ */
+export function registerTools(server: McpServer, widgetUri: string): void {
+  const ui = { ui: { resourceUri: widgetUri } };
+
+  registerAppTool(
+    server,
     "analyze_system",
     {
       title: "Analyze a planar system",
@@ -153,6 +161,7 @@ export function registerTools(server: McpServer): void {
         density: density.describe("Grid points per axis for the returned vector field (5..60)."),
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: ui,
     },
     (input) =>
       guarded(() => {
@@ -168,7 +177,8 @@ export function registerTools(server: McpServer): void {
       }),
   );
 
-  server.registerTool(
+  registerAppTool(
+    server,
     "trace_trajectory",
     {
       title: "Trace a trajectory",
@@ -193,6 +203,7 @@ export function registerTools(server: McpServer): void {
         ...boxShape,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: ui,
     },
     (input) =>
       guarded(() => {
@@ -222,7 +233,8 @@ export function registerTools(server: McpServer): void {
       }),
   );
 
-  server.registerTool(
+  registerAppTool(
+    server,
     "sample_field",
     {
       title: "Sample the vector field",
@@ -242,6 +254,7 @@ export function registerTools(server: McpServer): void {
         density,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: ui,
     },
     (input) =>
       guarded(() => {
@@ -258,7 +271,8 @@ export function registerTools(server: McpServer): void {
       }),
   );
 
-  server.registerTool(
+  registerAppTool(
+    server,
     "analyze_first_order",
     {
       title: "Analyze a first-order equation dy/dx = g(x, y)",
@@ -278,6 +292,7 @@ export function registerTools(server: McpServer): void {
         density,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: ui,
     },
     (input) =>
       guarded(() => {
