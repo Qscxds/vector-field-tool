@@ -15,9 +15,9 @@ import {
   registerAppTool,
 } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
-import { echo } from "@/lib/core/hello";
+import { registerTools } from "./tools";
 
-export const SERVER_INFO = { name: "vector-field-tool", version: "0.1.0" };
+export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
 
 /** Bump when the widget HTML changes so MCP hosts drop cached copies. */
 const WIDGET_VERSION = "p0-5";
@@ -97,11 +97,13 @@ export function createMcpServer(baseUrl: string): McpServer {
     {
       title: "Ping",
       description:
-        "Connectivity check for the vector-field-tool server. Returns `message` unchanged and shows it in the widget. Does no math.",
+        "Connectivity check for the vector-field-tool server: returns `message` unchanged and shows it in the widget. " +
+        "Does no mathematics. Use it only to verify the connection, e.g. when asked to test or ping this tool.",
       inputSchema: {
-        message: z.string().describe("Any text. It is returned unchanged."),
+        message: z.string().max(200).describe("Any text. It is returned unchanged."),
       },
       outputSchema: {
+        kind: z.literal("ping"),
         message: z.string().describe("The same text that was sent."),
       },
       annotations: {
@@ -112,14 +114,13 @@ export function createMcpServer(baseUrl: string): McpServer {
       },
       _meta: { ui: { resourceUri: WIDGET_URI } },
     },
-    async ({ message }) => {
-      const result = echo(message);
-      return {
-        content: [{ type: "text", text: result }],
-        structuredContent: { message: result },
-      };
-    },
+    async ({ message }) => ({
+      content: [{ type: "text", text: message }],
+      structuredContent: { kind: "ping", message },
+    }),
   );
+
+  registerTools(server);
 
   return server;
 }

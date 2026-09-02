@@ -1,0 +1,220 @@
+/**
+ * Tool-layer tests through the real MCP protocol (SDK client + in-memory transport).
+ * No HTTP, no network: the widget resource is listed but never read here.
+ */
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import type { Scene } from "@/lib/scene";
+import { createMcpServer } from "./server";
+
+let client: Client;
+
+async function connect(): Promise<Client> {
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const server = createMcpServer("http://localhost:3000");
+  await server.connect(serverTransport);
+  const c = new Client({ name: "tools-test", version: "0" });
+  await c.connect(clientTransport);
+  return c;
+}
+
+async function call(name: string, args: Record<string, unknown>): Promise<CallToolResult & { scene: Scene; text: string }> {
+  const result = (await client.callTool({ name, arguments: args })) as CallToolResult;
+  const text = result.content
+    .filter((c): c is { type: "text"; text: string } => c.type === "text")
+    .map((c) => c.text)
+    .join("\n");
+  return { ...result, scene: (result.structuredContent ?? {}) as Scene, text };
+}
+
+beforeAll(async () => {
+  client = await connect();
+});
+
+describe("tools/list", () => {
+  it("exposes ping plus the four analysis tools with valid schemas", async () => {
+    const { tools } = await client.listTools();
+    const names = tools.map((t) => t.name).sort();
+    expect(names).toEqual(["analyze_first_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]);
+    for (const t of tools) {
+      expect(t.inputSchema.type).toBe("object");
+      expect(t.description && t.description.length).toBeGreaterThan(40);
+    }
+  });
+
+  it("every math tool tells the model when to use it and never to compute itself", async () => {
+    const { tools } = await client.listTools();
+    for (const t of tools.filter((t) => t.name !== "ping")) {
+      expect(t.description).toMatch(/USE THIS/);
+      expect(t.description).toMatch(/Do NOT compute/);
+      expect(t.description).toMatch(/x\*y/);
+      expect(t.description).toMatch(/caveat/);
+    }
+  });
+
+  it("keeps the ping widget resource registered", async () => {
+    const { resources } = await client.listResources();
+    expect(resources.some((r) => r.uri.startsWith("ui://vector-field-tool/") && r.mimeType === "text/html;profile=mcp-app")).toBe(true);
+  });
+});
+
+describe("ping", () => {
+  it("echoes and tags the result", async () => {
+    const r = await call("ping", { message: "hello" });
+    expect(r.isError).toBeFalsy();
+    expect(r.text).toBe("hello");
+    expect(r.structuredContent).toEqual({ kind: "ping", message: "hello" });
+  });
+});
+
+describe("analyze_system", () => {
+  it("Lotka-Volterra: (0,0) saddle and (1,1) centre-or-weak-spiral with the caveat in the text", async () => {
+    const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.kind).toBe("analyze_system");
+    expect(r.scene.equilibria).toHaveLength(2);
+    const coexist = r.scene.equilibria!.find((e) => Math.hypot(e.at.x - 1, e.at.y - 1) < 1e-6)!;
+    expect(coexist.classification).toBe("center_or_weak_spiral");
+    expect(coexist.caveat).toBeTruthy();
+    expect(r.text).toContain("中心或弱螺旋");
+    expect(r.text).toContain(coexist.caveat!.slice(0, 12));
+    expect(r.scene.field?.samples).toHaveLength(400); // default density 20
+    expect(r.scene.box).toEqual({ x: { min: -0.5, max: 3 }, y: { min: -0.5, max: 3 } });
+  });
+
+  it("uses default box and reports none_found honestly", async () => {
+    const r = await call("analyze_system", { f: "1", g: "1" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.warning).toBe("none_found");
+    expect(r.text).toContain("没有找到平衡点");
+    expect(r.scene.box).toEqual({ x: { min: -3, max: 3 }, y: { min: -3, max: 3 } });
+  });
+
+  it("rejects an inverted box with a readable error result, not a protocol error", async () => {
+    const r = await call("analyze_system", { f: "x", g: "y", xMin: 2, xMax: -2 });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/xMin/);
+  });
+
+  it("explains parse errors and points at f or g", async () => {
+    const r = await call("analyze_system", { f: "xy", g: "y" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/x\*y/);
+    expect(r.text).toMatch(/f \(the x' expression\)/);
+  });
+
+  it("uses params", async () => {
+    const r = await call("analyze_system", { f: "a*x", g: "b*y", params: { a: -1, b: -2 } });
+    expect(r.scene.equilibria![0].classification).toBe("stable_node");
+    expect(r.scene.system).toEqual({ f: "a*x", g: "b*y", params: { a: -1, b: -2 } });
+  });
+
+  it("fails schema validation for a malformed params key (SDK surfaces it as an isError result)", async () => {
+    // The server answers JSON-RPC -32602; the SDK client converts that into an isError result.
+    const r = await call("analyze_system", { f: "x", g: "y", params: { "1a": 1 } });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/Invalid arguments/);
+    expect(r.text).toMatch(/params/);
+  });
+});
+
+describe("trace_trajectory", () => {
+  it("integrates the harmonic oscillator both ways and closes the circle", async () => {
+    const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 2 * Math.PI });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.kind).toBe("trace_trajectory");
+    expect(r.scene.trajectories).toHaveLength(2);
+    const fwd = r.scene.trajectories!.find((t) => t.direction === "forward")!;
+    const back = r.scene.trajectories!.find((t) => t.direction === "backward")!;
+    expect(fwd.status).toBe("completed");
+    expect(back.status).toBe("completed");
+    const end = fwd.points[fwd.points.length - 1];
+    expect(Math.hypot(end.x - 1, end.y)).toBeLessThan(1e-4);
+    expect(fwd.tEnd).toBeCloseTo(2 * Math.PI, 9);
+    expect(back.tEnd).toBeCloseTo(-2 * Math.PI, 9);
+    expect(r.text).toMatch(/正向/);
+    expect(r.text).toMatch(/逆向/);
+  });
+
+  it("stops at the box edge and says so", async () => {
+    const r = await call("trace_trajectory", { f: "1", g: "0", x0: 0, y0: 0, direction: "forward", tSpan: 100 });
+    expect(r.scene.trajectories![0].status).toBe("left_box");
+    expect(r.text).toContain("离开了观察范围");
+  });
+
+  it("caps the number of returned points", async () => {
+    const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1000, method: "rk4", direction: "forward", xMin: -5, xMax: 5, yMin: -5, yMax: 5 });
+    expect(r.scene.trajectories![0].points.length).toBeLessThanOrEqual(1000);
+    expect(r.scene.trajectories![0].steps).toBeGreaterThan(1000);
+  });
+
+  it("rejects tSpan out of range with a message naming tSpan", async () => {
+    const big = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 5000 });
+    expect(big.isError).toBe(true);
+    expect(big.text).toMatch(/tSpan/);
+    const zero = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 0 });
+    expect(zero.isError).toBe(true);
+    expect(zero.text).toMatch(/tSpan/);
+  });
+
+  it("reports blow-up without NaN", async () => {
+    const r = await call("trace_trajectory", { f: "x^2", g: "0", x0: 1, y0: 0, direction: "forward", tSpan: 5, xMin: -1e5, xMax: 1e5, yMin: -1, yMax: 1 });
+    const t = r.scene.trajectories![0];
+    expect(t.status).toBe("blew_up");
+    expect(t.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
+    expect(r.text).toContain("发散");
+  });
+});
+
+describe("sample_field", () => {
+  it("returns density² samples and counts singularities", async () => {
+    const r = await call("sample_field", { f: "1/x", g: "y", density: 5, xMin: -1, xMax: 1, yMin: -1, yMax: 1 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.field?.samples).toHaveLength(25);
+    expect(r.scene.field?.singularCount).toBe(5); // the x = 0 column
+    expect(r.text).toContain("5 个采样点无定义");
+  });
+
+  it("rejects density outside 5..60 with a message naming density", async () => {
+    const hi = await call("sample_field", { f: "x", g: "y", density: 61 });
+    expect(hi.isError).toBe(true);
+    expect(hi.text).toMatch(/density/);
+    const lo = await call("sample_field", { f: "x", g: "y", density: 4 });
+    expect(lo.isError).toBe(true);
+    expect(lo.text).toMatch(/density/);
+  });
+
+  it("requires f and g", async () => {
+    const r = await call("sample_field", { f: "x" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/\bg\b/);
+  });
+});
+
+describe("analyze_first_order", () => {
+  it("logistic dy/dx = y(1-y): y=0 unstable, y=1 stable, with a slope field", async () => {
+    const r = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.kind).toBe("analyze_first_order");
+    expect(r.scene.system).toEqual({ f: "1", g: "y*(1-y)" });
+    expect(r.scene.firstOrder?.autonomous).toBe(true);
+    const ys = r.scene.firstOrder!.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability]);
+    expect(ys).toEqual([[0, "unstable"], [1, "stable"]]);
+    expect(r.text).toContain("平衡解 y = 1");
+    expect(r.scene.field?.samples).toHaveLength(400);
+  });
+
+  it("says a non-autonomous equation has no constant solutions", async () => {
+    const r = await call("analyze_first_order", { expr: "x - y" });
+    expect(r.scene.firstOrder?.autonomous).toBe(false);
+    expect(r.text).toContain("不是自治的");
+  });
+
+  it("explains parse errors", async () => {
+    const r = await call("analyze_first_order", { expr: "y +" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/Cannot parse/);
+  });
+});
