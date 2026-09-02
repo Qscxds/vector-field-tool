@@ -53,12 +53,13 @@ export function classify(J: Matrix2, tol = 1e-9): ClassifyResult {
   }
 
   const eigenvalues = eigenvalues2(J);
-  const scale = Math.max(1, ...entries.map(Math.abs));
+  // Purely relative tolerance: a slow system (entries ~1e-5) is just as hyperbolic as a fast one.
+  const scale = Math.max(...entries.map(Math.abs));
   const epsLinear = tol * scale;
   const epsQuadratic = tol * scale * scale;
   const base = { trace: tr, determinant: det, eigenvalues };
 
-  if (Math.abs(det) <= epsQuadratic) {
+  if (!(scale > 0) || Math.abs(det) <= epsQuadratic) {
     return { classification: "non_hyperbolic", ...base, caveat: CAVEATS.nonHyperbolic };
   }
 
@@ -73,9 +74,12 @@ export function classify(J: Matrix2, tol = 1e-9): ClassifyResult {
   }
 
   if (Math.abs(disc) <= epsQuadratic) {
-    // repeated real eigenvalue (non-zero, since det != 0)
+    // Repeated real eigenvalue (non-zero, since det != 0). disc = (a-d)^2 + 4bc, so within the
+    // discriminant band the asymmetry that separates a star (J = λI) from a degenerate node lives at
+    // the sqrt(tol) level; using the same level here keeps the two tests consistent.
     const [[a, b], [c, d]] = J;
-    const isScalarMultiple = Math.abs(b) <= epsLinear && Math.abs(c) <= epsLinear && Math.abs(a - d) <= epsLinear;
+    const epsRoot = Math.sqrt(tol) * scale;
+    const isScalarMultiple = Math.abs(b) <= epsRoot && Math.abs(c) <= epsRoot && Math.abs(a - d) <= epsRoot;
     return { classification: isScalarMultiple ? "star_node" : "degenerate_node", ...base };
   }
 

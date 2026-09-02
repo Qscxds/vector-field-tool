@@ -51,14 +51,40 @@ describe("classify: honesty rules", () => {
     expect(r.caveat).toContain("Hartman");
   });
 
-  it("scales the tolerance with the matrix: a large matrix with det = 0 is still non-hyperbolic", () => {
-    // det = 1e6 * 1e6 - 1e6 * 1e6 = 0 exactly, but rounding of similar matrices lands near 1e-4.
+  it("scales the tolerance with the matrix: a huge matrix with a relatively tiny eigenvalue is non-hyperbolic", () => {
+    // det = 1e6 * (1e6 + 1e-4) - 1e6 * 1e6 = 100; the quadratic tolerance for entries of size 1e6 is
+    // 1e-9 * 1e12 = 1e3, so |det| = 100 counts as zero. Eigenvalues are ~2e6 and ~5e-5: the small
+    // one is 2.5e-11 of the large one, far below the 1e-9 relative resolution we claim.
     expect(classify([[1e6, 1e6], [1e6, 1e6 + 1e-4]]).classification).toBe("non_hyperbolic");
   });
 
-  it("does not over-apply the tolerance to a genuinely small but hyperbolic matrix", () => {
+  it("is purely relative: slow but hyperbolic systems keep their type", () => {
     expect(classify([[-1e-3, 0], [0, -2e-3]]).classification).toBe("stable_node");
     expect(classify([[1e-3, 0], [0, -1e-3]]).classification).toBe("saddle");
+    expect(classify([[-1e-5, 0], [0, -2e-5]]).classification).toBe("stable_node");
+    expect(classify([[1e-5, 0], [0, -1e-5]]).classification).toBe("saddle");
+    expect(classify([[-1e-7, -1e-6], [1e-6, -1e-7]]).classification).toBe("stable_spiral");
+  });
+
+  it("the zero matrix is non-hyperbolic", () => {
+    expect(classify([[0, 0], [0, 0]]).classification).toBe("non_hyperbolic");
+  });
+
+  it("pins the centre / spiral boundary at 1e-9 relative", () => {
+    // trace 2e-8 on a matrix of size 1: above the 1e-9 band -> a (very slow) spiral
+    expect(classify([[1e-8, -1], [1, 1e-8]]).classification).toBe("unstable_spiral");
+    expect(classify([[-1e-8, -1], [1, -1e-8]]).classification).toBe("stable_spiral");
+    // trace 2e-10: inside the band -> honest answer
+    expect(classify([[1e-10, -1], [1, 1e-10]]).classification).toBe("center_or_weak_spiral");
+  });
+
+  it("star vs degenerate is decided at the sqrt(tol) level, consistently with the discriminant band", () => {
+    // disc = (a-d)^2 = 4e-12 <= 1e-9: repeated within tolerance. |a-d| = 2e-6 <= sqrt(1e-9) ~ 3.2e-5 -> star.
+    expect(classify([[1 + 1e-6, 0], [0, 1 - 1e-6]]).classification).toBe("star_node");
+    // A genuine Jordan block stays degenerate.
+    expect(classify([[3, 1], [0, 3]]).classification).toBe("degenerate_node");
+    // Off-diagonal 1e-4 with disc = 0: b is above the sqrt(tol) level -> degenerate.
+    expect(classify([[2, 1e-4], [0, 2]]).classification).toBe("degenerate_node");
   });
 
   it("gives no caveat for hyperbolic cases", () => {
