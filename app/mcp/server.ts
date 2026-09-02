@@ -20,15 +20,14 @@ import { echo } from "@/lib/core/hello";
 export const SERVER_INFO = { name: "vector-field-tool", version: "0.1.0" };
 
 /** Bump when the widget HTML changes so MCP hosts drop cached copies. */
-const WIDGET_VERSION = "p0-1";
+const WIDGET_VERSION = "p0-3";
 export const WIDGET_URI = `ui://vector-field-tool/ping.html?v=${WIDGET_VERSION}`;
 /** Next.js page that becomes the widget HTML (app/widget/page.tsx). */
 const WIDGET_PATH = "/widget";
 
 /**
  * Fetches the rendered widget page from this deployment and rewrites it so it works inside a
- * host iframe: the document base is pinned to our public origin, so relative `/_next/...` asset
- * URLs resolve back to us instead of to the host's sandbox origin.
+ * host sandbox iframe (see rewriteForSandbox).
  */
 export async function fetchWidgetHtml(baseUrl: string): Promise<string> {
   const target = `${baseUrl}${WIDGET_PATH}`;
@@ -44,12 +43,24 @@ export async function fetchWidgetHtml(baseUrl: string): Promise<string> {
   if (!res.ok) {
     throw new Error(`widget fetch failed for ${target}: HTTP ${res.status} ${res.statusText}`);
   }
-  return injectBaseHref(await res.text(), baseUrl);
+  return rewriteForSandbox(await res.text(), baseUrl);
 }
 
-export function injectBaseHref(html: string, baseUrl: string): string {
-  if (/<base\s/i.test(html)) return html;
-  return html.replace(/<head([^>]*)>/i, `<head$1><base href="${baseUrl}/">`);
+/**
+ * The host renders our HTML on its own sandbox origin, so relative URLs would point at the host.
+ * Two fixes, either of which is enough on its own:
+ * 1. `<base href>` pinned to our public origin. Hosts only honour it when the resource declares
+ *    `csp.baseUriDomains` (the MCP Apps default CSP is `base-uri 'self'`), which createMcpServer does.
+ * 2. `/_next/...` script and stylesheet URLs rewritten to absolute, so assets load even on a host
+ *    that ignores `<base>`.
+ */
+export function rewriteForSandbox(html: string, baseUrl: string): string {
+  let out = html;
+  if (!/<base\s/i.test(out)) {
+    out = out.replace(/<head([^>]*)>/i, `<head$1><base href="${baseUrl}/">`);
+  }
+  out = out.replace(/(\s)(src|href)="\/_next\//g, `$1$2="${baseUrl}/_next/`);
+  return out;
 }
 
 /** One McpServer per request: no sessions, no shared state. */
@@ -72,6 +83,8 @@ export function createMcpServer(baseUrl: string): McpServer {
               csp: {
                 connectDomains: [baseUrl],
                 resourceDomains: [baseUrl],
+                // Required for the <base href> we inject: hosts default to `base-uri 'self'`.
+                baseUriDomains: [baseUrl],
               },
             },
           },
