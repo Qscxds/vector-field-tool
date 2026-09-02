@@ -173,3 +173,29 @@ describe("firstOrderEquilibria", () => {
     expect(() => firstOrderEquilibria("y", { min: 1, max: 1 })).toThrow(RangeError);
   });
 });
+
+describe("constant solutions through a singular point", () => {
+  const spec = { kind: "differential" as const, M: "2*x*y", N: "x^2 + y^2" };
+
+  it("y = 0 of 2xy dx + (x^2 + y^2) dy = 0 is found on a symmetric box and reported as 'varies'", () => {
+    // Along y = 0: M = 0 and N = x^2 != 0 for x != 0, so dy = 0 holds on both sides of the singular
+    // point (0, 0). Near the line the slope is -2xy/(x^2 + y^2) ~ -2y/x: attracting for x > 0,
+    // repelling for x < 0. Before the fix the probe at x = 0 (the midpoint of a symmetric box)
+    // rejected the whole line, so the answer flipped with the symmetry of the box.
+    const r = firstOrderEquilibria(spec, { min: -2, max: 2 }, { xRange: { min: -2, max: 2 } });
+    expect(r.solutions).toHaveLength(1);
+    expect(Math.abs(r.solutions[0].y)).toBeLessThan(1e-9);
+    expect(r.solutions[0].stability).toBe("varies");
+  });
+
+  it("is stable for x > 0 and unstable for x < 0", () => {
+    expect(firstOrderEquilibria(spec, { min: -1, max: 1.2 }, { xRange: { min: 0.3, max: 2.5 } }).solutions.map((s) => s.stability)).toEqual(["stable"]);
+    expect(firstOrderEquilibria(spec, { min: -1, max: 1.2 }, { xRange: { min: -2.5, max: -0.3 } }).solutions.map((s) => s.stability)).toEqual(["unstable"]);
+  });
+
+  it("a line where N vanishes identically is not a constant solution: y dx + y dy = 0", () => {
+    // M = N = y: every point of y = 0 is singular; there is no direction field on that line at all.
+    const r = firstOrderEquilibria({ kind: "differential", M: "y", N: "y" }, { min: -1, max: 1 }, { xRange: { min: -1, max: 1 } });
+    expect(r.solutions).toEqual([]);
+  });
+});

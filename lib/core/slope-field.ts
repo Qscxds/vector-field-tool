@@ -218,18 +218,26 @@ export function firstOrderEquilibria(
   const solutions: EquilibriumSolution[] = [];
   for (const c of candidates.sort((u, v) => u - v)) {
     let ok = true;
+    const goodX: number[] = [];
     for (const x of xProbe) {
       const m = M({ x, y: c });
       const n = N({ x, y: c });
-      if (!Number.isFinite(m) || !Number.isFinite(n) || Math.abs(m) > Math.max(fTol, 1e-9 * mScale) || Math.abs(n) <= 1e-12 * Math.max(1, Math.abs(m))) {
+      if (!Number.isFinite(m) || !Number.isFinite(n) || Math.abs(m) > Math.max(fTol, 1e-9 * mScale)) {
         ok = false;
         break;
       }
+      // M = N = 0 here: the line passes through a singular point of the direction field. That is
+      // not a counterexample (dy = 0 still holds on either side), so the probe is skipped instead of
+      // counted against the line; otherwise a probe landing exactly on the point would make the
+      // answer depend on whether the box happens to be symmetric. A line singular at (almost)
+      // every probe is not a solution of anything and is dropped.
+      if (Math.abs(n) <= 1e-12 * Math.max(1, Math.abs(m))) continue;
+      goodX.push(x);
     }
-    if (!ok) continue;
+    if (!ok || goodX.length < 3) continue;
 
     let stability: EquilibriumSolution["stability"] | undefined;
-    for (const x of xProbe) {
+    for (const x of goodX) {
       const below = slope(x, c - probe);
       const above = slope(x, c + probe);
       let s: EquilibriumSolution["stability"];
