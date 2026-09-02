@@ -129,4 +129,64 @@ describe("rejections", () => {
   it("does not let a parameter shadow a variable but allows underscores", () => {
     expect(compileScalar("k_1 * x", { k_1: 4 })({ x: 2, y: 0 })).toBe(8);
   });
+
+  it("rejects parameter names that mathjs or JavaScript would interpret first", () => {
+    for (const name of ["Infinity", "NaN", "toString", "constructor", "__proto__", "hasOwnProperty", "true", "i"]) {
+      expect(() => compileScalar(`${name} * x`, { [name]: 2 }), name).toThrow(ParseError);
+    }
+  });
+});
+
+describe("hardening (public endpoint)", () => {
+  it("evaluates negative bases with fractional exponents quickly (no fraction.js probing)", () => {
+    // mathjs' own pow spends ~35 ms per call on x^1e-13 with x < 0; the JS operator returns NaN at once.
+    const f = compileScalar("x^1e-13");
+    const t0 = performance.now();
+    for (let k = 0; k < 200; k++) f({ x: -1.5, y: 0 });
+    expect(performance.now() - t0).toBeLessThan(50);
+    expect(f({ x: -1.5, y: 0 })).toBeNaN();
+    expect(compileScalar("x^0.3333333333333")({ x: -8, y: 0 })).toBeNaN();
+    // ordinary powers are unchanged
+    expect(compileScalar("x^2")({ x: -3, y: 0 })).toBe(9);
+    expect(compileScalar("x^0.5")({ x: 4, y: 0 })).toBe(2);
+    expect(compileScalar("pow(x, 3)")({ x: 2, y: 0 })).toBe(8);
+    expect(compileScalar("2^x")({ x: 10, y: 0 })).toBe(1024);
+  });
+
+  it("turns pathological nesting into a ParseError, never a RangeError", () => {
+    expect(() => compileScalar("x+".repeat(2600) + "x")).toThrow(ParseError);
+    expect(() => compileScalar("-".repeat(6000) + "x")).toThrow(ParseError);
+    expect(() => compileScalar("(".repeat(3000) + "x" + ")".repeat(3000))).toThrow(ParseError);
+    expect(() => compileScalar("x".padEnd(501, " "))).toThrow(/too long/);
+  });
+
+  it("checks function arity", () => {
+    for (const expr of ["sin()", "atan2(x)", "abs(x, y)", "sqrt(x, y)", "pow(x)", "pow(x, y, t)", "min()", "max()", "round(x, y, t)"]) {
+      expect(() => compileScalar(expr), expr).toThrow(/argument/);
+    }
+    expect(compileScalar("min(x, y, t)")({ x: 3, y: 1 }, 2)).toBe(1);
+    expect(compileScalar("log(x, 2)")({ x: 8, y: 0 })).toBeCloseTo(3, 12);
+    expect(compileScalar("round(x, 1)")({ x: 2.34, y: 0 })).toBeCloseTo(2.3, 12);
+  });
+
+  it("compares to machine precision (no 1e-12 dead band)", () => {
+    // mathjs' default relTol is 1e-12; ours is 1e-15, so 1 - 1e-13 is honestly below 1.
+    expect(compileScalar("x < 1")({ x: 1 - 1e-13, y: 0 })).toBe(1);
+    expect(compileScalar("x >= 1")({ x: 1 - 1e-13, y: 0 })).toBe(0);
+    expect(compileScalar("x == 0")({ x: 1e-15, y: 0 })).toBe(0);
+    expect(compileScalar("x == 0")({ x: 0, y: 0 })).toBe(1);
+  });
+
+  it("rejects non-finite literals and chained comparisons", () => {
+    for (const expr of ["Infinity", "NaN", "1e999", "0 < x < 1"]) {
+      expect(() => compileScalar(expr), expr).toThrow(ParseError);
+    }
+    // "50%" is parsed by mathjs as 50/100, plain arithmetic, and stays allowed.
+    expect(compileScalar("50%")({ x: 0, y: 0 })).toBe(0.5);
+  });
+
+  it("hints when a parameter or variable is called like a function", () => {
+    expect(() => compileScalar("a(x+1)", { a: 2 })).toThrow(/a\*\(\.\.\.\)/);
+    expect(() => compileScalar("x(x+1)")).toThrow(/x\*\(\.\.\.\)/);
+  });
 });

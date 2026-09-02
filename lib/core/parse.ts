@@ -2,29 +2,48 @@
  * Expression parsing and compilation on top of mathjs.
  *
  * Security model: this endpoint will be public, so user text is never handed to `math.evaluate`.
- * We parse to an AST, walk it against a strict whitelist (node kinds, symbols, functions,
- * operators, numeric literals only) and only then compile. Anything outside the whitelist is a
- * ParseError that names the offending token.
+ * We parse to an AST, walk it against a strict whitelist (node kinds, symbols, functions with their
+ * arity, operators, finite numeric literals only) and only then compile. Anything outside the
+ * whitelist is a ParseError that names the offending token. Parser and compiler exceptions of any
+ * kind (including stack overflow on absurdly nested input) become ParseErrors too.
  *
  * Evaluation is hot (tens of thousands of calls per request), so a system is compiled once and
  * evaluated with a reused scope object. Non-finite results (1/x at 0, sqrt(-1) -> NaN) are legal
  * and returned as-is; callers decide what to do with them. Evaluation never throws.
+ *
+ * mathjs is configured for plain numbers with comparisons exact to machine precision, and `pow` is
+ * replaced by the JS operator: mathjs' own pow probes rational exponents through fraction.js for
+ * negative bases, which costs tens of milliseconds per call (a CPU denial-of-service from a
+ * seven-character expression).
  */
 import { all, create, type MathNode } from "mathjs";
 import type { SystemSpec, Vec2 } from "./types";
 
 // predictable: true makes sqrt(-1), log(-1), ... return NaN instead of a Complex number.
-const math = create(all, { predictable: true, number: "number", matrix: "Array" });
+// relTol 1e-15 / absTol 0: comparisons are exact up to machine precision (mathjs defaults to a
+// 1e-12 "nearly equal" band). relTol cannot go lower: floor/ceil/round derive a decimal count from
+// it and reject more than 15 digits.
+const math = create(all, { predictable: true, number: "number", matrix: "Array", relTol: 1e-15, absTol: 0 });
+math.import({ pow: (base: number, exponent: number): number => base ** exponent }, { override: true });
 
-export const ALLOWED_FUNCTIONS: ReadonlySet<string> = new Set([
-  "sin", "cos", "tan", "asin", "acos", "atan", "atan2",
-  "sinh", "cosh", "tanh",
-  "exp", "log", "log10", "sqrt", "abs", "sign", "pow",
-  "min", "max", "floor", "ceil", "round",
+/** name -> [minArgs, maxArgs] */
+export const ALLOWED_FUNCTIONS: ReadonlyMap<string, readonly [number, number]> = new Map([
+  ["sin", [1, 1]], ["cos", [1, 1]], ["tan", [1, 1]],
+  ["asin", [1, 1]], ["acos", [1, 1]], ["atan", [1, 1]], ["atan2", [2, 2]],
+  ["sinh", [1, 1]], ["cosh", [1, 1]], ["tanh", [1, 1]],
+  ["exp", [1, 1]], ["log", [1, 2]], ["log10", [1, 1]], ["sqrt", [1, 1]],
+  ["abs", [1, 1]], ["sign", [1, 1]], ["pow", [2, 2]],
+  ["min", [1, Infinity]], ["max", [1, Infinity]],
+  ["floor", [1, 1]], ["ceil", [1, 1]], ["round", [1, 2]],
 ]);
 
 export const ALLOWED_CONSTANTS: ReadonlySet<string> = new Set(["pi", "e"]);
 export const VARIABLES: ReadonlySet<string> = new Set(["x", "y", "t"]);
+
+/** Names that mathjs or JavaScript would interpret before our scope does. */
+const RESERVED_NAMES: ReadonlySet<string> = new Set([
+  "Infinity", "NaN", "undefined", "null", "true", "false", "i", "E", "PI", "version", "end",
+]);
 
 /** mathjs internal function names behind operators (OperatorNode.fn). */
 const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
@@ -36,6 +55,8 @@ const ALLOWED_OPERATORS: ReadonlySet<string> = new Set([
 const ALLOWED_NODE_TYPES: ReadonlySet<string> = new Set([
   "ConstantNode", "SymbolNode", "OperatorNode", "FunctionNode", "ParenthesisNode", "ConditionalNode",
 ]);
+
+export const MAX_EXPRESSION_LENGTH = 500;
 
 export class ParseError extends Error {
   readonly expr: string;
@@ -60,7 +81,10 @@ function validateParams(expr: string, params: Record<string, number> | undefined
     if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
       throw new ParseError(expr, `Invalid parameter name "${name}".`);
     }
-    if (VARIABLES.has(name) || ALLOWED_CONSTANTS.has(name) || ALLOWED_FUNCTIONS.has(name)) {
+    if (
+      VARIABLES.has(name) || ALLOWED_CONSTANTS.has(name) || ALLOWED_FUNCTIONS.has(name) ||
+      RESERVED_NAMES.has(name) || name in Object.prototype || name.startsWith("__")
+    ) {
       throw new ParseError(expr, `Parameter name "${name}" is reserved.`);
     }
     const value = (params as Record<string, number>)[name];
@@ -71,50 +95,69 @@ function validateParams(expr: string, params: Record<string, number> | undefined
   return names;
 }
 
+function toParseError(expr: string, cause: unknown, fallback: string): ParseError {
+  if (cause instanceof ParseError) return cause;
+  const reason = cause instanceof RangeError ? "expression is too deeply nested" : cause instanceof Error ? cause.message : String(cause);
+  return new ParseError(expr, `${fallback}: ${reason}`);
+}
+
 function parseChecked(expr: string, paramNames: string[]): MathNode {
   if (typeof expr !== "string" || expr.trim() === "") {
     throw new ParseError(expr, "Expression is empty.");
+  }
+  if (expr.length > MAX_EXPRESSION_LENGTH) {
+    throw new ParseError(expr, `Expression is too long (${expr.length} characters, maximum ${MAX_EXPRESSION_LENGTH}).`);
   }
   let node: MathNode;
   try {
     node = math.parse(expr);
   } catch (cause) {
-    const reason = cause instanceof Error ? cause.message : String(cause);
-    throw new ParseError(expr, `Could not parse expression: ${reason}`);
+    throw toParseError(expr, cause, "Could not parse expression");
   }
   const allowedSymbols = new Set([...VARIABLES, ...ALLOWED_CONSTANTS, ...paramNames]);
 
-  node.traverse((n: MathNode, path: string | null, parent: MathNode | null) => {
-    if (!ALLOWED_NODE_TYPES.has(n.type)) {
-      throw new ParseError(expr, describeForbiddenNode(n));
-    }
-    if (math.isConstantNode(n)) {
-      if (typeof n.value !== "number") {
-        throw new ParseError(expr, "Only numeric literals are allowed.");
+  try {
+    node.traverse((n: MathNode, path: string | null, parent: MathNode | null) => {
+      if (!ALLOWED_NODE_TYPES.has(n.type)) {
+        throw new ParseError(expr, describeForbiddenNode(n));
       }
-    } else if (math.isSymbolNode(n)) {
-      // The callee symbol of a function call is validated at the FunctionNode.
-      if (path === "fn" && parent !== null && math.isFunctionNode(parent)) return;
-      if (!allowedSymbols.has(n.name)) {
-        throw new ParseError(expr, unknownSymbolMessage(n.name, paramNames));
+      if (math.isConstantNode(n)) {
+        if (typeof n.value !== "number" || !Number.isFinite(n.value)) {
+          throw new ParseError(expr, "Only finite numeric literals are allowed.");
+        }
+      } else if (math.isSymbolNode(n)) {
+        // The callee symbol of a function call is validated at the FunctionNode.
+        if (path === "fn" && parent !== null && math.isFunctionNode(parent)) return;
+        if (!allowedSymbols.has(n.name)) {
+          throw new ParseError(expr, unknownSymbolMessage(n.name, paramNames));
+        }
+      } else if (math.isFunctionNode(n)) {
+        const fn = n.fn;
+        if (!math.isSymbolNode(fn)) {
+          throw new ParseError(expr, "Only plain function calls are allowed.");
+        }
+        const arity = ALLOWED_FUNCTIONS.get(fn.name);
+        if (!arity) {
+          const hint = allowedSymbols.has(fn.name)
+            ? ` "${fn.name}" is a variable or parameter; write "${fn.name}*(...)" for multiplication.`
+            : ` Allowed functions: ${[...ALLOWED_FUNCTIONS.keys()].join(", ")}.`;
+          throw new ParseError(expr, `Function "${fn.name}" is not allowed.${hint}`);
+        }
+        const [minArgs, maxArgs] = arity;
+        if (n.args.length < minArgs || n.args.length > maxArgs) {
+          const expected = minArgs === maxArgs ? `${minArgs}` : maxArgs === Infinity ? `at least ${minArgs}` : `${minArgs} to ${maxArgs}`;
+          throw new ParseError(expr, `Function "${fn.name}" expects ${expected} argument(s), got ${n.args.length}.`);
+        }
+      } else if (math.isOperatorNode(n)) {
+        // Note: mathjs parses "50%" as 50/100 (an ordinary divide node); that is acceptable arithmetic.
+        if (!ALLOWED_OPERATORS.has(n.fn)) {
+          throw new ParseError(expr, `Operator "${n.op}" is not allowed.`);
+        }
       }
-    } else if (math.isFunctionNode(n)) {
-      const fn = n.fn;
-      if (!math.isSymbolNode(fn)) {
-        throw new ParseError(expr, "Only plain function calls are allowed.");
-      }
-      if (!ALLOWED_FUNCTIONS.has(fn.name)) {
-        throw new ParseError(
-          expr,
-          `Function "${fn.name}" is not allowed. Allowed functions: ${[...ALLOWED_FUNCTIONS].join(", ")}.`,
-        );
-      }
-    } else if (math.isOperatorNode(n)) {
-      if (!ALLOWED_OPERATORS.has(n.fn)) {
-        throw new ParseError(expr, `Operator "${n.op}" is not allowed.`);
-      }
-    }
-  });
+    });
+  } catch (cause) {
+    throw toParseError(expr, cause, "Could not validate expression");
+  }
   return node;
 }
 
@@ -132,6 +175,8 @@ function describeForbiddenNode(n: MathNode): string {
     case "ObjectNode":
     case "RangeNode":
       return "Arrays, objects and ranges are not allowed; the expression must be a scalar.";
+    case "RelationalNode":
+      return "Chained comparisons like 0 < x < 1 are not allowed; combine two comparisons with a conditional instead.";
     default:
       return `Syntax "${n.type}" is not allowed.`;
   }
@@ -158,7 +203,13 @@ export function compileScalar(
   params?: Record<string, number>,
 ): (p: Vec2, t?: number) => number {
   const paramNames = validateParams(expr, params);
-  const code = parseChecked(expr, paramNames).compile();
+  const node = parseChecked(expr, paramNames);
+  let code: { evaluate: (scope: Scope) => unknown };
+  try {
+    code = node.compile();
+  } catch (cause) {
+    throw toParseError(expr, cause, "Could not compile expression");
+  }
   const scope: Scope = { ...(params ?? {}), x: 0, y: 0, t: 0 };
   return (p: Vec2, t = 0) => {
     scope.x = p.x;
