@@ -92,32 +92,45 @@ Claude 从 Anthropic 云端连接你的服务器（桌面版也是），所以�
    winget install Cloudflare.cloudflared
    ```
 
-2. 开两个终端：
-
-   ```bash
-   npm run dev
-   ```
+2. 先起隧道，拿到地址：
 
    ```bash
    cloudflared tunnel --url http://localhost:3000
    ```
 
-   cloudflared 会打印一个 `https://xxxx.trycloudflare.com` 地址。免账号的快速隧道地址在 **cloudflared 进程重启时会变**，`next dev` 重启不影响它，所以调试时让 cloudflared 一直开着。
+   cloudflared 会打印一个 `https://xxxx.trycloudflare.com` 地址。免账号的快速隧道地址在 **cloudflared 进程重启时会变**，所以调试时让它一直开着。
 
-3. Claude（网页版或桌面版）→ 设置 → Connectors → Add custom connector：
+3. 另开一个终端，把隧道地址告诉 Next 再启动（PowerShell 写法；不是 secret，只是让 Next 知道自己的公网地址）：
+
+   ```bash
+   $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev
+   ```
+
+   隧道地址变了就要改 BASE_URL 并重启 `next dev`。为什么必须这样见下文「为什么需要 BASE_URL」。
+
+4. Claude（网页版或桌面版）→ 设置 → Connectors → Add custom connector：
    - URL 填 `https://xxxx.trycloudflare.com/mcp`
    - 鉴权选 None（旧版对话框不填 OAuth 即可）
    - Team/Enterprise 版只有 Owner 能加自定义连接器；Free 版限一个
 
-4. 在对话里说「用 ping 工具发一句 hello」。首次会弹出允许提示，点 Allow 后应看到 widget 渲染出 `{"message":"hello"}`。
+5. 在对话里说「用 ping 工具发一句 hello」。首次会弹出允许提示，点 Allow 后应看到 widget 渲染出 `{"message":"hello"}`。
 
 **这一步过了才算 P0 完成，过之前不写任何数学代码。**
 
-### 开发模式下的跨域说明
+### 为什么需要 BASE_URL，以及 widget 在沙箱里跑起来要过的三道关
 
-Claude 把 widget 渲染在 `<hash>.claudemcpcontent.com` 上，widget 里的 `/_next/*` 资源请求对 Next 来说是跨域的。Next 16.3 起开发服务器默认对这类请求返回 403，所以 `next.config.ts` 里配了 `allowedDevOrigins: ["**.claudemcpcontent.com", "**.trycloudflare.com"]`。生产环境不受影响。
+Claude 把 widget HTML 渲染在它自己的沙箱域名 `<hash>.claudemcpcontent.com` 上，我们的页面等于被搬到了别人的源下运行。P0 验收时踩到的三个坑，每个都会让 widget 静默变成空白：
 
-服务器会从请求头（`x-forwarded-host` / `x-forwarded-proto` / `host`）推算自己的公网地址，用来抓取 widget 页面并声明 CSP 域名。localhost、cloudflared、Vercel 三种情况都不需要配置。如果某个代理链把头搞乱了，可以设环境变量 `BASE_URL=https://你的地址` 强制指定（不是 secret，可选）。
+1. **资源地址与 Turbopack 前缀必须同时是我们的公网源。** Next 的运行时用「脚本 URL 去掉构建时前缀」来识别 chunk，前缀对不上就永远等不到入口执行，不报任何错。只有 `assetPrefix` 能同时改地址和前缀，而它在构建时就固定了，所以公网地址必须提前知道：本地隧道靠 `BASE_URL`，Vercel 上由系统变量自动推出（见 `base-url.ts`）。在资源读取时改写 HTML 里的 URL、或者只靠 `<base href>` 让浏览器解析，都试过，都不行。
+2. **`<base href>` 需要 CSP 放行。** MCP Apps 规范规定主机默认 `base-uri 'self'`，服务器必须在资源的 `_meta.ui.csp.baseUriDomains` 里声明自己的源，否则 `<base>` 被忽略。
+3. **`history.replaceState` 会抛 SecurityError。** Next 水合后会把路由地址写进 history，这个地址解析出来和 iframe 自身的源不一致，浏览器抛异常，React 19 随即卸载整棵树并显示 Next 的错误页。`app/layout.tsx` 里有一段只在被嵌入 iframe 时生效的内联脚本，吞掉这类错误。
+
+另外两条相关配置：
+
+- Next 16.3 起开发服务器默认对跨源的 `/_next/*` 请求返回 403，`next.config.ts` 里配了 `allowedDevOrigins: ["**.claudemcpcontent.com", "**.trycloudflare.com"]`。生产环境不受影响。
+- Claude 沙箱的 CSP 不允许 eval。zod 库启动时会试探一次 `new Function` 并自行捕获，主机因此会记录一条 `script-src` 违规报告，无害，可忽略。
+
+没有 BASE_URL 且不在 Vercel 上时（纯本地 `npm run dev`），服务器改为从请求头推算自己的地址，够 curl 手测用，但 widget 在 Claude 里不会正常水合。
 
 ## 部署到 Vercel
 
@@ -129,7 +142,7 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 
 ## 排错
 
-- **widget 不出现，只有文字**：Claude 桌面版 Help → Troubleshooting → Enable Developer Mode，然后 Ctrl+Shift+I 看 iframe 里的报错。常见原因：`/_next/*` 被 403（allowedDevOrigins）、用了 ngrok 免费版、Vercel Deployment Protection 没关。
+- **widget 不出现，只有文字，或者一块空白**：先确认启动时设了 `BASE_URL`（隧道场景）且和 Claude 里填的连接器地址一致；然后 Claude 桌面版 Help → Troubleshooting → Enable Developer Mode，Ctrl+Shift+I 看内层 iframe 的控制台。其他常见原因：`/_next/*` 被 403（allowedDevOrigins）、用了 ngrok 免费版、Vercel Deployment Protection 没关。本地可以不依赖 Claude 复现：两个不同源的静态页面，外层用 `<iframe sandbox="allow-scripts allow-same-origin">` 嵌入按规范 CSP 提供的 widget HTML，看 iframe 是否向父窗口 postMessage 出 `ui/initialize`。
 - **resources/read 报 `widget fetch failed for <url>`**：服务器推算出的公网地址是 `<url>`，但它自己访问不到。检查隧道是否还在、代理是否正确传 `x-forwarded-host`；必要时设 `BASE_URL`。
 - **日志里出现 400**：Claude 有些请求带 `mcp-protocol-version: 2026-07-28`，sdk 1.x 不认识。路由会把不认识的版本头改写成它支持的最新版本再交给 SDK，请求体格式相同、服务器又无状态，所以是安全的。开发模式下每个 POST 会打一行 `[mcp] <method> version=... ua=...` 日志。
 - **连接器显示无法连接**：确认隧道 URL 带 `/mcp`、是 https、cloudflared 还活着。Claude 出口 IP 段见 <https://platform.claude.com/docs/en/api/ip-addresses>。
@@ -139,6 +152,7 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 ## 决策记录
 
 - 2026-09-02：不用 mcp-handler，直接用 sdk 1.x（原因见上）。隧道用 cloudflared。Vercel Deployment Protection 有意关闭。目录 `E:\project\vector-field-tool`，独立仓库。
+- 2026-09-02：widget 走 `assetPrefix`（BASE_URL / Vercel 系统变量）而不是请求时推算地址，原因见「三道关」。`/mcp` 对 GET/DELETE 返回 405；对不认识的 `mcp-protocol-version` 头降级而不是拒绝。
 
 ## 路线图（本轮不做）
 

@@ -22,8 +22,15 @@ parameters and results to explanations. README.md (Chinese) has run / tunnel / d
   (modelcontextprotocol/ext-apps#702 still open). Switching back later touches only `app/mcp/route.ts`.
 - `/mcp` accepts POST only. GET and DELETE return 405: no standalone SSE stream, no sessions.
 - The widget is the Next page `app/widget/page.tsx`, self-fetched at resource-read time with a
-  `<base href>` injected. The public origin is derived from `x-forwarded-*` headers; `BASE_URL`
-  (optional, not a secret) overrides it.
+  `<base href>` injected (allowed via `csp.baseUriDomains`). The public origin comes from
+  `base-url.ts`: `BASE_URL` (tunnel dev) or Vercel system env, and feeds `assetPrefix`. Request
+  headers are only a fallback on plain localhost. Do NOT rewrite asset URLs at request time: the
+  Turbopack runtime matches chunks by stripping its build-time base path from script URLs.
+- `app/layout.tsx` patches `history.pushState/replaceState` when embedded in an iframe: Next's
+  post-hydration replaceState throws SecurityError cross-origin and React 19 would unmount everything.
+- `/mcp` downgrades unknown `mcp-protocol-version` headers (Claude sends 2026-07-28) instead of 400.
+- Tunnel dev: `$env:BASE_URL = "https://<tunnel>"; npm run dev` (PowerShell). Restart when the
+  tunnel URL changes.
 - Local testing goes through cloudflared. ngrok's free tier serves an interstitial that breaks widget
   assets in Claude's iframe. Vercel Deployment Protection is intentionally OFF for this project.
 
