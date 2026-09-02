@@ -87,6 +87,13 @@ describe("classify: honesty rules", () => {
     expect(classify([[2, 1e-4], [0, 2]]).classification).toBe("degenerate_node");
   });
 
+  it("reports a real repeated eigenvalue when the discriminant is slightly negative inside the band", () => {
+    // disc = -4e-12: numerically zero for a matrix of size 1. Verdict star node, eigenvalues 1, 1.
+    const r = classify([[1, -1e-6], [1e-6, 1]]);
+    expect(r.classification).toBe("star_node");
+    expect(r.eigenvalues).toEqual([{ re: 1, im: 0 }, { re: 1, im: 0 }]);
+  });
+
   it("gives no caveat for hyperbolic cases", () => {
     expect(classify([[1, 0], [0, -1]]).caveat).toBeUndefined();
     expect(classify([[-1, -1], [1, -1]]).caveat).toBeUndefined();

@@ -80,7 +80,10 @@ export function classify(J: Matrix2, tol = 1e-9): ClassifyResult {
     const [[a, b], [c, d]] = J;
     const epsRoot = Math.sqrt(tol) * scale;
     const isScalarMultiple = Math.abs(b) <= epsRoot && Math.abs(c) <= epsRoot && Math.abs(a - d) <= epsRoot;
-    return { classification: isScalarMultiple ? "star_node" : "degenerate_node", ...base };
+    // Report the eigenvalue we actually decided on (tr/2 twice), so a slightly negative discriminant
+    // inside the band does not leave a complex pair next to a "node" verdict.
+    const repeated = { re: tr / 2, im: 0 };
+    return { classification: isScalarMultiple ? "star_node" : "degenerate_node", ...base, eigenvalues: [repeated, { ...repeated }] };
   }
 
   // real, distinct
