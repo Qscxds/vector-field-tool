@@ -18,3 +18,6 @@ next-env.d.ts
 coverage
 .DS_Store
 npm-debug.log*
+
+# review-agent scratch tests (never commit)
+lib/**/__probe__/
