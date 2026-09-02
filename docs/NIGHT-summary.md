@@ -102,3 +102,13 @@ p0-verified
 5. 想换回 P0 实机验证过的状态：`git reset --hard p0-verified`。
 
 回滚只会动工作区里的代码；`node_modules` 不用重装。
+
+## 补记（写完总结后的三个提交）
+
+上面「完整验证」里的 `git log` 是在这三个提交之前抓的，它们不改变验证结论（提交前又跑了一遍 vitest 和 tsc，179 个全过）：
+
+- `[A-fix] classify: repeated-root branch reports the real repeated eigenvalue it decided on`
+- `[A-fix] integrate tests: blow-up tests get a derived lower bound (t > 0.9, x > 9)`
+- `docs: README and CLAUDE.md for the post-night state; ignore root-level review probes`
+
+这三处改动其实一直在工作区里、也一直被每次门禁覆盖，只是早先那一轮 `git commit` 链因为 tsc 撞上审查子智能体的临时文件而中断，没有提交成功。`night-final` 标签已移到包含它们的最后一个提交。
