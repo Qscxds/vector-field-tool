@@ -70,6 +70,25 @@ describe("classify: honesty rules", () => {
     expect(classify([[0, 0], [0, 0]]).classification).toBe("non_hyperbolic");
   });
 
+  it("is invariant under positive scaling even where products would overflow (entries ~1e200)", () => {
+    // Classification depends only on the signs/ratios of tr, det and disc, so 1e200 * A has the same
+    // type as A. Entries above ~1.3e154 make a*d, b*c and tr² overflow if computed directly.
+    const big = 1e200;
+    expect(classify([[big, -big], [big, big]]).classification).toBe("unstable_spiral"); // 1e200 (1 ± i)
+    expect(classify([[big, 0], [0, big]]).classification).toBe("star_node");
+    expect(classify([[big, 0], [0, -big]]).classification).toBe("saddle");
+    expect(classify([[-big, 0], [0, -2 * big]]).classification).toBe("stable_node");
+    expect(classify([[0, -big], [big, 0]]).classification).toBe("center_or_weak_spiral");
+    // The band just above sqrt(MAX_VALUE), where only some products overflow.
+    expect(classify([[1.4e154, 0], [0, 1.4e154]]).classification).toBe("star_node");
+    expect(classify([[1.4e154, 1.4e154], [-1.4e154, 1.4e154]]).classification).toBe("unstable_spiral");
+    // Eigenvalues are reported at the right magnitude, never NaN.
+    const r = classify([[big, 0], [0, -big]]);
+    expect(r.eigenvalues.map((e) => e.re).sort((p, q) => p - q)).toEqual([-big, big]);
+    expect(r.eigenvalues.every((e) => Number.isFinite(e.re) && Number.isFinite(e.im))).toBe(true);
+    expect(r.caveat).toBeUndefined();
+  });
+
   it("pins the centre / spiral boundary at 1e-9 relative", () => {
     // trace 2e-8 on a matrix of size 1: above the 1e-9 band -> a (very slow) spiral
     expect(classify([[1e-8, -1], [1, 1e-8]]).classification).toBe("unstable_spiral");

@@ -6,6 +6,10 @@
  * is reported as 'center_or_weak_spiral' with a caveat, never as a centre; a vanishing determinant
  * is reported as 'non_hyperbolic' with a caveat, because linearisation then says nothing about
  * stability. Caveats are complete sentences meant to be read aloud to a student.
+ *
+ * All decisions are made on the matrix normalised by its largest entry: the classification is
+ * invariant under positive scaling, the tolerance becomes purely relative, and no intermediate
+ * product can overflow (entries up to Number.MAX_VALUE stay classifiable).
  */
 import { determinant, eigenvalues2, trace } from "./jacobian";
 import type { Complex, Matrix2 } from "./types";
@@ -23,7 +27,9 @@ export type Classification =
 
 export type ClassifyResult = {
   classification: Classification;
+  /** Computed directly from J; may overflow to ±Infinity for astronomically large entries. */
   trace: number;
+  /** Computed directly from J; may overflow to ±Infinity for astronomically large entries. */
   determinant: number;
   eigenvalues: Complex[];
   /** Present whenever the linear analysis is not conclusive. Read it to the student as-is. */
@@ -40,8 +46,9 @@ export const CAVEATS = {
 } as const;
 
 /**
- * @param tol Relative tolerance (default 1e-9). It is scaled by the matrix size: linear in the
- *            entries for eigenvalue real parts, quadratic for determinant and discriminant.
+ * @param tol Relative tolerance (default 1e-9), applied to the matrix normalised by its largest
+ *            entry: linear in the entries for eigenvalue real parts, quadratic for determinant and
+ *            discriminant.
  */
 export function classify(J: Matrix2, tol = 1e-9): ClassifyResult {
   const entries = [J[0][0], J[0][1], J[1][0], J[1][1]];
@@ -52,41 +59,48 @@ export function classify(J: Matrix2, tol = 1e-9): ClassifyResult {
     return { classification: "non_hyperbolic", trace: tr, determinant: det, eigenvalues: [], caveat: CAVEATS.notFinite };
   }
 
-  const eigenvalues = eigenvalues2(J);
-  // Purely relative tolerance: a slow system (entries ~1e-5) is just as hyperbolic as a fast one.
   const scale = Math.max(...entries.map(Math.abs));
-  const epsLinear = tol * scale;
-  const epsQuadratic = tol * scale * scale;
+  if (!(scale > 0)) {
+    return { classification: "non_hyperbolic", trace: tr, determinant: det, eigenvalues: [{ re: 0, im: 0 }, { re: 0, im: 0 }], caveat: CAVEATS.nonHyperbolic };
+  }
+
+  // Normalised matrix: every entry in [-1, 1], so products cannot overflow.
+  const N: Matrix2 = [
+    [J[0][0] / scale, J[0][1] / scale],
+    [J[1][0] / scale, J[1][1] / scale],
+  ];
+  const [[a, b], [c, d]] = N;
+  const trN = a + d;
+  const detN = a * d - b * c;
+  const discN = trN * trN - 4 * detN;
+  const eigenvalues = eigenvalues2(N).map((e) => ({ re: e.re * scale, im: e.im * scale })) as [Complex, Complex];
   const base = { trace: tr, determinant: det, eigenvalues };
 
-  if (!(scale > 0) || Math.abs(det) <= epsQuadratic) {
+  if (Math.abs(detN) <= tol) {
     return { classification: "non_hyperbolic", ...base, caveat: CAVEATS.nonHyperbolic };
   }
 
-  const disc = tr * tr - 4 * det;
-
-  if (disc < -epsQuadratic) {
+  if (discN < -tol) {
     // complex pair
-    if (Math.abs(tr) <= epsLinear) {
+    if (Math.abs(trN) <= tol) {
       return { classification: "center_or_weak_spiral", ...base, caveat: CAVEATS.center };
     }
-    return { classification: tr < 0 ? "stable_spiral" : "unstable_spiral", ...base };
+    return { classification: trN < 0 ? "stable_spiral" : "unstable_spiral", ...base };
   }
 
-  if (Math.abs(disc) <= epsQuadratic) {
+  if (Math.abs(discN) <= tol) {
     // Repeated real eigenvalue (non-zero, since det != 0). disc = (a-d)^2 + 4bc, so within the
     // discriminant band the asymmetry that separates a star (J = λI) from a degenerate node lives at
     // the sqrt(tol) level; using the same level here keeps the two tests consistent.
-    const [[a, b], [c, d]] = J;
-    const epsRoot = Math.sqrt(tol) * scale;
+    const epsRoot = Math.sqrt(tol);
     const isScalarMultiple = Math.abs(b) <= epsRoot && Math.abs(c) <= epsRoot && Math.abs(a - d) <= epsRoot;
     // Report the eigenvalue we actually decided on (tr/2 twice), so a slightly negative discriminant
     // inside the band does not leave a complex pair next to a "node" verdict.
-    const repeated = { re: tr / 2, im: 0 };
+    const repeated = { re: (trN / 2) * scale, im: 0 };
     return { classification: isScalarMultiple ? "star_node" : "degenerate_node", ...base, eigenvalues: [repeated, { ...repeated }] };
   }
 
   // real, distinct
-  if (det < 0) return { classification: "saddle", ...base };
-  return { classification: tr < 0 ? "stable_node" : "unstable_node", ...base };
+  if (detN < 0) return { classification: "saddle", ...base };
+  return { classification: trN < 0 ? "stable_node" : "unstable_node", ...base };
 }
