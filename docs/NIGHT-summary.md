@@ -1,7 +1,7 @@
 # 夜跑总结（2026-09-02 夜）
 
 **跑到了哪个阶段**：A、B、C、D、E 五个阶段全部完成，之后又根据后台审查修了计算内核的 12 处 bug（`[A-fix]` 系列提交）。
-**最后一个已知良好的 tag**：`night-final`（= HEAD `e93d525`，本文件提交之前的最后一次三绿在 `e93d525`）。分阶段回滚点：`p0-verified` → `a-core-done` → `b-tools-done` → `c-render-done` → `d-webshell-done` → `e-widget-done`。
+**最后一个已知良好的 tag**：`night-final`（指向本总结的文档提交；最后一次代码提交是 `e93d525`，三绿验证就在它上面跑的）。分阶段回滚点：`p0-verified` → `a-core-done` → `b-tools-done` → `c-render-done` → `d-webshell-done` → `e-widget-done`。
 **你需要手动验证**：(1) Claude 里**断开重连**连接器后调用 `analyze_system`，看 widget 是否渲染出相图（资源地址已从 `ping.html?v=p0-5` 改为 `widget.html?v=e-1`）；(2) 用 `ping` 判断链路；(3) 推 GitHub、部署 Vercel（未做）。
 
 ## 各阶段
