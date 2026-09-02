@@ -30,6 +30,7 @@ export const STABILITY_ZH: Record<EquilibriumSolution["stability"], string> = {
   stable: "稳定（两侧的解都趋向它）",
   unstable: "不稳定（两侧的解都离开它）",
   semi_stable: "半稳定（一侧趋向、一侧离开）",
+  varies: "稳定性随 x 变化（在观察范围内两侧解的走向不一致）",
 };
 
 export const WARNING_ZH = {

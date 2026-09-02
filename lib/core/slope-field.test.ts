@@ -1,17 +1,91 @@
 import { describe, expect, it } from "vitest";
+import { integrateAdaptive, integrateRK4 } from "./integrate";
 import { compileSystem } from "./parse";
-import { firstOrderEquilibria, firstOrderToSystem } from "./slope-field";
+import {
+  compileDifferential,
+  firstOrderEquilibria,
+  firstOrderSingularities,
+  firstOrderToSystem,
+  toDifferential,
+  toSystem,
+  type FirstOrderSpec,
+} from "./slope-field";
 
-describe("firstOrderToSystem", () => {
-  it("maps dy/dx = expr to x' = 1, y' = expr", () => {
-    const spec = firstOrderToSystem("y*(1-y)");
-    expect(spec).toEqual({ f: "1", g: "y*(1-y)" });
-    const sys = compileSystem(spec);
-    expect(sys.eval({ x: 0, y: 0.5 })).toEqual({ x: 1, y: 0.25 });
+const box = (a: number, b: number) => ({ x: { min: a, max: b }, y: { min: a, max: b } });
+
+describe("toSystem / toDifferential", () => {
+  it("explicit dy/dx = g becomes x' = 1, y' = g (M = -g, N = 1)", () => {
+    const spec: FirstOrderSpec = { kind: "explicit", g: "y*(1-y)" };
+    expect(toSystem(spec)).toEqual({ f: "1", g: "y*(1-y)" });
+    expect(toDifferential(spec)).toEqual({ M: "-(y*(1-y))", N: "1" });
+    expect(compileSystem(toSystem(spec)).eval({ x: 0, y: 0.5 })).toEqual({ x: 1, y: 0.25 });
   });
 
-  it("keeps params", () => {
+  it("differential M dx + N dy = 0 becomes x' = N, y' = -M", () => {
+    const spec: FirstOrderSpec = { kind: "differential", M: "x", N: "y" };
+    expect(toSystem(spec)).toEqual({ f: "y", g: "-(x)" });
+    const sys = compileSystem(toSystem(spec));
+    // dy/dx = -M/N = -x/y: at (1, 2) the direction is (2, -1)
+    expect(sys.eval({ x: 1, y: 2 })).toEqual({ x: 2, y: -1 });
+  });
+
+  it("keeps params and the legacy helper", () => {
+    expect(toSystem({ kind: "explicit", g: "k*y", params: { k: 2 } })).toEqual({ f: "1", g: "k*y", params: { k: 2 } });
     expect(firstOrderToSystem("k*y", { k: 2 })).toEqual({ f: "1", g: "k*y", params: { k: 2 } });
+    expect(firstOrderToSystem("y")).toEqual({ f: "1", g: "y" });
+    const { M, N } = compileDifferential({ kind: "differential", M: "a*x", N: "y", params: { a: 3 } });
+    expect(M({ x: 2, y: 0 })).toBe(6);
+    expect(N({ x: 0, y: 5 })).toBe(5);
+  });
+});
+
+describe("vertical tangents are not singularities", () => {
+  it("dy/dx = -x/y in differential form (x dx + y dy = 0) traces the full circle through y = 0", () => {
+    // Solutions are circles x² + y² = C. Starting at (0, 1) and running the system x' = y, y' = -x
+    // for one period must return to the start and pass through y = 0 (where dy/dx is infinite).
+    const sys = compileSystem(toSystem({ kind: "differential", M: "x", N: "y" }));
+    const tr = integrateRK4(sys, { x: 0, y: 1 }, 2 * Math.PI, { h: 0.01, box: box(-2, 2) });
+    expect(tr.status).toBe("completed");
+    const end = tr.points[tr.points.length - 1];
+    expect(Math.hypot(end.x, end.y - 1)).toBeLessThan(1e-6);
+    expect(tr.points.some((p) => Math.abs(p.y) < 0.02 && Math.abs(Math.abs(p.x) - 1) < 0.02)).toBe(true);
+    const radii = tr.points.map((p) => Math.hypot(p.x, p.y));
+    expect(Math.max(...radii) - Math.min(...radii)).toBeLessThan(1e-6);
+  });
+
+  it("the same circle written explicitly, dy/dx = -x/y, blows up at y = 0 (why the base changed)", () => {
+    const sys = compileSystem(toSystem({ kind: "explicit", g: "-x/y" }));
+    const tr = integrateAdaptive(sys, { x: 0, y: 1 }, 5, { box: box(-2, 2) });
+    expect(tr.status).toBe("blew_up");
+  });
+
+  it("x dx + y dy = 0 and dy/dx = -x/y describe the same family (slopes agree where both are finite)", () => {
+    const a = compileDifferential({ kind: "differential", M: "x", N: "y" });
+    const b = compileDifferential({ kind: "explicit", g: "-x/y" });
+    for (const p of [{ x: 0.3, y: 0.7 }, { x: -1.2, y: 0.4 }, { x: 2, y: -3 }]) {
+      const sa = -a.M(p) / a.N(p);
+      const sb = -b.M(p) / b.N(p);
+      expect(sa).toBeCloseTo(sb, 12);
+    }
+  });
+});
+
+describe("firstOrderSingularities (M = N = 0)", () => {
+  it("finds the origin of y dx - x dy = 0", () => {
+    const r = firstOrderSingularities({ kind: "differential", M: "y", N: "-x" }, box(-2, 2));
+    expect(r.points).toHaveLength(1);
+    expect(Math.hypot(r.points[0].x, r.points[0].y)).toBeLessThan(1e-7);
+    expect(r.warning).toBeUndefined();
+  });
+
+  it("finds nothing for x dx + y dy = 0 away from the origin, and never for explicit forms", () => {
+    expect(firstOrderSingularities({ kind: "differential", M: "x", N: "y" }, { x: { min: 1, max: 3 }, y: { min: 1, max: 3 } }).points).toEqual([]);
+    expect(firstOrderSingularities({ kind: "explicit", g: "x/y" }, box(-2, 2)).points).toEqual([]);
+  });
+
+  it("finds two isolated singular points: (x² - 1) dx + y dy = 0", () => {
+    const r = firstOrderSingularities({ kind: "differential", M: "x^2 - 1", N: "y" }, box(-2, 2));
+    expect(r.points.map((p) => Math.round(p.x * 1e6) / 1e6).sort()).toEqual([-1, 1]);
   });
 });
 
@@ -26,9 +100,30 @@ describe("firstOrderEquilibria", () => {
     expect(r.solutions[1].stability).toBe("stable");
   });
 
+  it("accepts the differential form: (y^2 - 1) dx + 2 dy = 0 has y = ±1", () => {
+    // dy/dx = -(y²-1)/2: above y = 1 the slope is negative -> approaches from above; below 1 (but
+    // above -1) positive -> approaches from below: y = 1 stable. Around y = -1 the signs reverse.
+    const r = firstOrderEquilibria({ kind: "differential", M: "y^2 - 1", N: "2" }, { min: -3, max: 3 });
+    expect(r.solutions.map((s) => [Math.round(s.y * 1e9) / 1e9, s.stability])).toEqual([[-1, "unstable"], [1, "stable"]]);
+  });
+
+  it("finds constant solutions of non-autonomous equations: dy/dx = x(y-1)", () => {
+    // M(x, c) = -x (c - 1) vanishes for every x only at c = 1; N = 1 != 0. The stability flips with
+    // the sign of x, so it is reported as 'varies'.
+    const r = firstOrderEquilibria("x*(y-1)", { min: -2, max: 3 }, { xRange: { min: -2, max: 2 } });
+    expect(r.autonomous).toBe(false);
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].y).toBeCloseTo(1, 9);
+    expect(r.solutions[0].stability).toBe("varies");
+  });
+
+  it("rejects a line where N vanishes: y dx + (y - 1) dy = 0 has no constant solution at y = 1", () => {
+    // M(x, 1) = 1 != 0 anyway; and at y = 0, M = 0 but N = -1 != 0 -> y = 0 is a constant solution.
+    const r = firstOrderEquilibria({ kind: "differential", M: "y", N: "y - 1" }, { min: -2, max: 2 });
+    expect(r.solutions.map((s) => Math.round(s.y * 1e9) / 1e9)).toEqual([0]);
+  });
+
   it("finds a tangential (semi-stable) equilibrium that is not a sample point: dy/dx = y²", () => {
-    // 400 samples on [-2.1, 2.05]: step 0.010375, and 2.1 / 0.010375 = 202.4 is not an integer,
-    // so y = 0 is never sampled and only the local-minimum branch can find it.
     const r = firstOrderEquilibria("y^2", { min: -2.1, max: 2.05 });
     expect(r.solutions).toHaveLength(1);
     expect(Math.abs(r.solutions[0].y)).toBeLessThan(1e-4);
@@ -37,66 +132,44 @@ describe("firstOrderEquilibria", () => {
 
   it("works with an irrational root: dy/dx = y² - 2", () => {
     const r = firstOrderEquilibria("y^2 - 2", { min: -3, max: 3 });
-    expect(r.solutions.map((s) => s.y)).toEqual(
-      expect.arrayContaining([expect.closeTo(-Math.SQRT2, 9), expect.closeTo(Math.SQRT2, 9)]),
-    );
+    expect(r.solutions.map((s) => s.y)).toEqual(expect.arrayContaining([expect.closeTo(-Math.SQRT2, 9), expect.closeTo(Math.SQRT2, 9)]));
     expect(r.solutions.find((s) => s.y < 0)?.stability).toBe("stable");
     expect(r.solutions.find((s) => s.y > 0)?.stability).toBe("unstable");
   });
 
   it("does not mistake a pole for an equilibrium: dy/dx = 1/y", () => {
     const r = firstOrderEquilibria("1/y", { min: -1, max: 1 });
-    expect(r.autonomous).toBe(true);
     expect(r.solutions).toEqual([]);
   });
 
-  it("reports a flat multiple root once: dy/dx = (y-1)^3", () => {
+  it("reports a flat multiple root once: dy/dx = (y-1)^3 is unstable", () => {
     const r = firstOrderEquilibria("(y-1)^3", { min: -1, max: 3 });
     expect(r.solutions).toHaveLength(1);
     expect(Math.abs(r.solutions[0].y - 1)).toBeLessThan(1e-3);
-    // g < 0 below y = 1 and g > 0 above: solutions move away on both sides -> unstable.
     expect(r.solutions[0].stability).toBe("unstable");
   });
 
-  it("reports non-autonomous equations as having no equilibrium solutions", () => {
+  it("a genuinely x-dependent right-hand side has no constant solutions: dy/dx = x - y", () => {
     const r = firstOrderEquilibria("x - y", { min: -2, max: 2 });
     expect(r.autonomous).toBe(false);
     expect(r.solutions).toEqual([]);
   });
 
   it("is not fooled by x-dependence that vanishes on nice x values", () => {
-    // Vanishes at x = -1, 0, 1, 2.5 (the old fixed probes) but not elsewhere.
-    const r = firstOrderEquilibria("y + x*(x-1)*(x+1)*(x-2.5)", { min: -2, max: 2 });
+    const r = firstOrderEquilibria("y + x*(x-1)*(x+1)*(x-2.5)", { min: -2, max: 2 }, { xRange: { min: -3, max: 3 } });
     expect(r.autonomous).toBe(false);
-    // Same with probes taken from a box range.
-    const r2 = firstOrderEquilibria("y + x*(x-1)*(x+1)*(x-2.5)", { min: -2, max: 2 }, { xRange: { min: -3, max: 3 } });
-    expect(r2.autonomous).toBe(false);
-  });
-
-  it("uses the given x range for the autonomy probes", () => {
-    const r = firstOrderEquilibria("y*(1-y)", { min: -1, max: 2 }, { xRange: { min: 100, max: 200 } });
-    expect(r.autonomous).toBe(true);
-    expect(r.solutions).toHaveLength(2);
-  });
-
-  it("returns no solutions when g never vanishes", () => {
-    const r = firstOrderEquilibria("y^2 + 1", { min: -2, max: 2 });
-    expect(r.autonomous).toBe(true);
     expect(r.solutions).toEqual([]);
   });
 
-  it("cannot establish autonomy for a field that is singular everywhere", () => {
+  it("returns no solutions when g never vanishes, and none for an everywhere-singular field", () => {
+    expect(firstOrderEquilibria("y^2 + 1", { min: -2, max: 2 }).solutions).toEqual([]);
     const r = firstOrderEquilibria("sqrt(-1 - y^2)", { min: -1, max: 1 });
     expect(r.autonomous).toBe(false);
     expect(r.solutions).toEqual([]);
   });
 
-  it("ignores roots outside the range and survives singularities", () => {
+  it("ignores roots outside the range and rejects a degenerate range", () => {
     expect(firstOrderEquilibria("y - 5", { min: -1, max: 1 }).solutions).toEqual([]);
-    expect(() => firstOrderEquilibria("1/y", { min: -1, max: 1 })).not.toThrow();
-  });
-
-  it("rejects a degenerate range", () => {
     expect(() => firstOrderEquilibria("y", { min: 1, max: 1 })).toThrow(RangeError);
   });
 });

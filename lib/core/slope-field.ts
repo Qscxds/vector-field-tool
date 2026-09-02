@@ -1,37 +1,92 @@
 /**
- * First-order equations dy/dx = g(x, y) as a special case of the planar system
- * x' = 1, y' = g(x, y): slope fields and vector fields then share every other module.
+ * First-order equations.
  *
- * Equilibrium *solutions* of a first-order equation are constant solutions y = y*, which exist
- * only when g does not depend on x (autonomous equation) and g(y*) = 0.
+ * The general representation is the differential form  M(x, y) dx + N(x, y) dy = 0. Its solution
+ * curves are the trajectories of the planar system  x' = N, y' = -M  (so dy/dx = -M/N), which
+ * lets slope fields reuse every other module. The explicit form dy/dx = g(x, y) is the special
+ * case M = -g, N = 1, giving x' = 1, y' = g.
+ *
+ * Why the differential form is the base and not a branch: textbook exact equations arrive as
+ * M dx + N dy = 0, and solution curves with vertical tangents (N = 0) are perfectly finite there,
+ * whereas g = -M/N blows up and would be mistaken for a singularity. The direction field is only
+ * genuinely undefined where M = N = 0; those points are reported separately.
  */
-import { compileScalar } from "./parse";
-import type { Range, SystemSpec } from "./types";
+import { findEquilibria } from "./equilibria";
+import { compileScalar, compileSystem } from "./parse";
+import type { Box, Range, SystemSpec, Vec2 } from "./types";
 
-export function firstOrderToSystem(expr: string, params?: Record<string, number>): SystemSpec {
-  return params ? { f: "1", g: expr, params } : { f: "1", g: expr };
+export type FirstOrderSpec =
+  | { kind: "explicit"; g: string; params?: Record<string, number> }
+  | { kind: "differential"; M: string; N: string; params?: Record<string, number> };
+
+/** x' = N, y' = -M. For the explicit form this is x' = 1, y' = g. */
+export function toSystem(spec: FirstOrderSpec): SystemSpec {
+  const base: SystemSpec =
+    spec.kind === "explicit" ? { f: "1", g: spec.g } : { f: spec.N, g: `-(${spec.M})` };
+  return spec.params ? { ...base, params: spec.params } : base;
 }
+
+/** M and N of the differential form, as expression strings. */
+export function toDifferential(spec: FirstOrderSpec): { M: string; N: string } {
+  return spec.kind === "explicit" ? { M: `-(${spec.g})`, N: "1" } : { M: spec.M, N: spec.N };
+}
+
+/** Backwards-compatible helper: dy/dx = expr as a system. */
+export function firstOrderToSystem(expr: string, params?: Record<string, number>): SystemSpec {
+  return toSystem(params ? { kind: "explicit", g: expr, params } : { kind: "explicit", g: expr });
+}
+
+/** Compiled M and N with the shared parameter set. */
+export function compileDifferential(spec: FirstOrderSpec): { M: (p: Vec2) => number; N: (p: Vec2) => number } {
+  const { M, N } = toDifferential(spec);
+  return { M: compileScalar(M, spec.params), N: compileScalar(N, spec.params) };
+}
+
+// ---------------------------------------------------------------------------------------------
+// Singular points of the direction field: M = N = 0.
+// ---------------------------------------------------------------------------------------------
+
+export type SingularPoints = {
+  points: Vec2[];
+  warning?: "possible_continuum" | "hit_limit";
+};
+
+/**
+ * Points where the direction is undefined. They are exactly the equilibria of x' = N, y' = -M,
+ * so the Newton search is reused; the classification it computes is meaningless for a direction
+ * field and is dropped. The explicit form (N = 1) never has any.
+ */
+export function firstOrderSingularities(spec: FirstOrderSpec, box: Box, opts: { seedGrid?: number; maxPoints?: number } = {}): SingularPoints {
+  if (spec.kind === "explicit") return { points: [] };
+  const eq = findEquilibria(compileSystem(toSystem(spec)), box, { seedGrid: opts.seedGrid, maxPoints: opts.maxPoints ?? 20 });
+  const out: SingularPoints = { points: eq.points.map((p) => p.at) };
+  if (eq.warning === "possible_continuum" || eq.warning === "hit_limit") out.warning = eq.warning;
+  return out;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Constant solutions y = c.
+// ---------------------------------------------------------------------------------------------
 
 export type EquilibriumSolution = {
   y: number;
-  /** Sign pattern of g around y*: stable if solutions approach it from both sides. */
-  stability: "stable" | "unstable" | "semi_stable";
+  /**
+   * Sign pattern of dy/dx just below and above y = c, at every x probe: stable if solutions
+   * approach the line from both sides everywhere, 'varies' if the pattern changes with x.
+   */
+  stability: "stable" | "unstable" | "semi_stable" | "varies";
 };
 
 export type FirstOrderEquilibria = {
-  /**
-   * Whether g is independent of x, checked numerically at several x values. False also when g is
-   * singular almost everywhere, because then autonomy cannot be established.
-   */
+  /** Whether g = -M/N is independent of x (informational; constant solutions no longer require it). */
   autonomous: boolean;
   solutions: EquilibriumSolution[];
 };
 
 export type FirstOrderEquilibriaOptions = {
-  params?: Record<string, number>;
   /** Scan resolution in y. Default 400. */
   samples?: number;
-  /** x interval used to probe x-dependence; defaults to a fixed spread around the origin. */
+  /** x interval used for the "for all x" checks; defaults to a fixed spread around the origin. */
   xRange?: Range;
   /** Relative residual tolerance for a root. Default 1e-9. */
   tol?: number;
@@ -41,11 +96,29 @@ export type FirstOrderEquilibriaOptions = {
 const PROBE_FRACTIONS = [0.0729, 0.2137, 0.3819, 0.5, 0.6181, 0.7863, 0.9271];
 const DEFAULT_PROBES = [-1.7, -0.61, 0.37, 1.23, 2.91];
 
-export function firstOrderEquilibria(expr: string, yRange: Range, opts: FirstOrderEquilibriaOptions = {}): FirstOrderEquilibria {
+/**
+ * Constant solutions of M dx + N dy = 0: y = c such that M(x, c) = 0 for every x while N(x, c) != 0.
+ * (For dy/dx = g this is g(x, c) = 0 for every x.) Candidates come from the zeros of c -> M(x_ref, c)
+ * on a scan of the y range (sign changes bisected, tangential zeros Newton-polished), then each is
+ * verified at every other x probe.
+ *
+ * Accepts the legacy (expr, yRange, { params }) call as well: a bare string is dy/dx = expr.
+ */
+export function firstOrderEquilibria(
+  specOrExpr: FirstOrderSpec | string,
+  yRange: Range,
+  opts: FirstOrderEquilibriaOptions & { params?: Record<string, number> } = {},
+): FirstOrderEquilibria {
+  const spec: FirstOrderSpec =
+    typeof specOrExpr === "string"
+      ? opts.params
+        ? { kind: "explicit", g: specOrExpr, params: opts.params }
+        : { kind: "explicit", g: specOrExpr }
+      : specOrExpr;
   if (!Number.isFinite(yRange.min) || !Number.isFinite(yRange.max) || !(yRange.min < yRange.max)) {
     throw new RangeError("y range must satisfy min < max with finite bounds.");
   }
-  const g = compileScalar(expr, opts.params);
+  const { M, N } = compileDifferential(spec);
   const samples = opts.samples ?? 400;
   const tol = opts.tol ?? 1e-9;
   const span = yRange.max - yRange.min;
@@ -54,47 +127,50 @@ export function firstOrderEquilibria(expr: string, yRange: Range, opts: FirstOrd
     : DEFAULT_PROBES;
 
   const ys = Array.from({ length: samples + 1 }, (_, i) => yRange.min + (i * span) / samples);
+  const slope = (x: number, y: number) => {
+    const n = N({ x, y });
+    const m = M({ x, y });
+    return n === 0 ? (m === 0 ? NaN : (m > 0 ? -Infinity : Infinity)) : -m / n;
+  };
 
-  // Reference column: the probe x with the most finite values (a singular column would make the
-  // autonomy test vacuous).
-  const table = xProbe.map((x) => ys.map((y) => g({ x, y })));
+  // Reference column for the scan: the probe x with the most finite M values.
+  const table = xProbe.map((x) => ys.map((y) => M({ x, y })));
   const finiteCounts = table.map((col) => col.filter(Number.isFinite).length);
   const refIndex = finiteCounts.indexOf(Math.max(...finiteCounts));
   const ref = table[refIndex];
-  const gScale = Math.max(1, ...ref.filter(Number.isFinite).map(Math.abs));
+  const xRef = xProbe[refIndex];
+  const mScale = Math.max(1, ...table.flat().filter(Number.isFinite).map(Math.abs));
+  const fTol = tol * mScale;
 
+  // Autonomy of the slope (informational).
   let comparable = 0;
   let autonomous = true;
-  for (let i = 0; i < ys.length; i++) {
-    const r = ref[i];
-    if (!Number.isFinite(r)) continue;
-    for (let k = 0; k < table.length; k++) {
-      if (k === refIndex) continue;
-      const v = table[k][i];
-      if (!Number.isFinite(v)) continue;
+  outer: for (let i = 0; i < ys.length; i += 5) {
+    const s0 = slope(xRef, ys[i]);
+    if (!Number.isFinite(s0)) continue;
+    for (const x of xProbe) {
+      if (x === xRef) continue;
+      const s = slope(x, ys[i]);
+      if (!Number.isFinite(s)) continue;
       comparable++;
-      if (Math.abs(v - r) > 1e-9 * gScale) {
+      if (Math.abs(s - s0) > 1e-9 * Math.max(1, Math.abs(s0))) {
         autonomous = false;
-        break;
+        break outer;
       }
     }
-    if (!autonomous) break;
   }
-  if (!autonomous || comparable < 3) return { autonomous: false, solutions: [] };
+  if (comparable < 3) autonomous = false;
 
-  const xRef = xProbe[refIndex];
-  const gy = (y: number) => g({ x: xRef, y });
-  const fTol = tol * gScale;
-  // A candidate is a root only if g really vanishes there (a pole also flips sign).
-  const isRoot = (y: number) => Number.isFinite(y) && Math.abs(gy(y)) <= Math.max(fTol, 1e-9 * gScale);
+  const mAt = (y: number) => M({ x: xRef, y });
+  const isRootAtRef = (y: number) => Number.isFinite(y) && Math.abs(mAt(y)) <= Math.max(fTol, 1e-9 * mScale);
 
   const polish = (y0: number): number => {
     let y = y0;
     for (let k = 0; k < 100; k++) {
       const h = 1e-6 * Math.max(1, Math.abs(y));
-      const d = (gy(y + h) - gy(y - h)) / (2 * h);
+      const d = (mAt(y + h) - mAt(y - h)) / (2 * h);
       if (!Number.isFinite(d) || d === 0) break;
-      const yn = y - gy(y) / d;
+      const yn = y - mAt(y) / d;
       if (!Number.isFinite(yn)) break;
       const done = Math.abs(yn - y) <= 1e-15 * Math.max(1, Math.abs(y));
       y = yn;
@@ -103,52 +179,70 @@ export function firstOrderEquilibria(expr: string, yRange: Range, opts: FirstOrd
     return y;
   };
 
-  const roots: number[] = [];
-  const pushRoot = (y: number) => {
-    if (!isRoot(y)) return;
+  const candidates: number[] = [];
+  const pushCandidate = (y: number) => {
+    if (!isRootAtRef(y)) return;
     if (y < yRange.min - 1e-12 * span || y > yRange.max + 1e-12 * span) return;
-    if (roots.some((r) => Math.abs(r - y) <= 1e-6 * span)) return;
-    roots.push(y);
+    if (candidates.some((r) => Math.abs(r - y) <= 1e-6 * span)) return;
+    candidates.push(y);
   };
 
   for (let i = 0; i < ys.length; i++) {
     const v = ref[i];
     if (!Number.isFinite(v)) continue;
     if (Math.abs(v) <= fTol) {
-      pushRoot(polish(ys[i]));
+      pushCandidate(polish(ys[i]));
       continue;
     }
-    // Sign change between consecutive finite samples: bisect, then check it is a root, not a pole.
     if (i + 1 < ys.length && Number.isFinite(ref[i + 1]) && ref[i + 1] !== 0 && Math.sign(v) !== Math.sign(ref[i + 1])) {
       let lo = ys[i], hi = ys[i + 1], flo = v;
       for (let k = 0; k < 200; k++) {
         const mid = (lo + hi) / 2;
-        const fm = gy(mid);
+        const fm = mAt(mid);
         if (!Number.isFinite(fm)) break;
         if (Math.sign(fm) === Math.sign(flo)) { lo = mid; flo = fm; } else { hi = mid; }
         if (hi - lo <= 1e-14 * Math.max(1, Math.abs(lo))) break;
       }
-      pushRoot((lo + hi) / 2);
+      pushCandidate((lo + hi) / 2);
       continue;
     }
-    // Tangential zero (no sign change): a local minimum of |g| between two same-sign neighbours.
     if (i > 0 && i + 1 < ys.length && Number.isFinite(ref[i - 1]) && Number.isFinite(ref[i + 1])) {
       const a = Math.abs(ref[i - 1]), b = Math.abs(v), c = Math.abs(ref[i + 1]);
       const isMin = b <= a && b <= c && (b < a || b < c);
-      if (isMin && Math.sign(ref[i - 1]) === Math.sign(ref[i + 1])) pushRoot(polish(ys[i]));
+      if (isMin && Math.sign(ref[i - 1]) === Math.sign(ref[i + 1])) pushCandidate(polish(ys[i]));
     }
   }
 
-  roots.sort((u, v) => u - v);
+  // Verify "for all x": M(x, c) = 0 and N(x, c) != 0 at every probe.
   const probe = Math.max(1e-6 * span, 1e-9);
-  const solutions: EquilibriumSolution[] = roots.map((y) => {
-    const below = gy(y - probe);
-    const above = gy(y + probe);
-    let stability: EquilibriumSolution["stability"];
-    if (below > 0 && above < 0) stability = "stable";
-    else if (below < 0 && above > 0) stability = "unstable";
-    else stability = "semi_stable";
-    return { y, stability };
-  });
-  return { autonomous: true, solutions };
+  const solutions: EquilibriumSolution[] = [];
+  for (const c of candidates.sort((u, v) => u - v)) {
+    let ok = true;
+    for (const x of xProbe) {
+      const m = M({ x, y: c });
+      const n = N({ x, y: c });
+      if (!Number.isFinite(m) || !Number.isFinite(n) || Math.abs(m) > Math.max(fTol, 1e-9 * mScale) || Math.abs(n) <= 1e-12 * Math.max(1, Math.abs(m))) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) continue;
+
+    let stability: EquilibriumSolution["stability"] | undefined;
+    for (const x of xProbe) {
+      const below = slope(x, c - probe);
+      const above = slope(x, c + probe);
+      let s: EquilibriumSolution["stability"];
+      if (below > 0 && above < 0) s = "stable";
+      else if (below < 0 && above > 0) s = "unstable";
+      else s = "semi_stable";
+      if (stability === undefined) stability = s;
+      else if (stability !== s) {
+        stability = "varies";
+        break;
+      }
+    }
+    solutions.push({ y: c, stability: stability ?? "semi_stable" });
+  }
+  return { autonomous, solutions };
 }
