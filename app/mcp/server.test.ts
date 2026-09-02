@@ -16,18 +16,12 @@ describe("rewriteForSandbox", () => {
     expect(rewriteForSandbox(html, BASE)).toBe(html);
   });
 
-  it("makes /_next asset URLs absolute in src and href attributes", () => {
+  it("leaves /_next asset URLs untouched (assetPrefix owns absolute URLs)", () => {
     const html =
       '<head></head><script src="/_next/static/chunks/a.js" async></script>' +
       '<link rel="stylesheet" href="/_next/static/css/b.css"/>';
     const out = rewriteForSandbox(html, BASE);
-    expect(out).toContain(`src="${BASE}/_next/static/chunks/a.js"`);
-    expect(out).toContain(`href="${BASE}/_next/static/css/b.css"`);
-  });
-
-  it("does not touch /_next paths inside inline script strings or other attributes", () => {
-    const html = '<head></head><script>self.__next_f.push(["/_next/static/chunks/x.js"])</script><a data-x="/_next/y">z</a>';
-    expect(rewriteForSandbox(html, BASE)).toContain('["/_next/static/chunks/x.js"]');
-    expect(rewriteForSandbox(html, BASE)).toContain('data-x="/_next/y"');
+    expect(out).toContain('src="/_next/static/chunks/a.js"');
+    expect(out).toContain('href="/_next/static/css/b.css"');
   });
 });

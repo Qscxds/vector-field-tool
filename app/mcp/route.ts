@@ -11,6 +11,7 @@ import {
   LATEST_PROTOCOL_VERSION,
   SUPPORTED_PROTOCOL_VERSIONS,
 } from "@modelcontextprotocol/sdk/types.js";
+import { configuredBaseUrl } from "@/base-url";
 import { createMcpServer } from "./server";
 
 export const runtime = "nodejs";
@@ -18,12 +19,11 @@ export const dynamic = "force-dynamic";
 
 /**
  * Public origin of this deployment, used to self-fetch the widget page and to declare the
- * widget's CSP domains. Derived from proxy headers so the same code works on localhost,
- * behind a cloudflared tunnel, and on Vercel. BASE_URL (optional, not a secret) overrides it.
+ * widget's CSP domains. Prefers the build-time value (BASE_URL / Vercel, see base-url.ts) so it
+ * matches `assetPrefix`; on plain localhost it is derived from the request headers.
  */
 function resolveBaseUrl(req: Request): string {
-  const override = process.env.BASE_URL?.trim();
-  if (override) return override.replace(/\/+$/, "");
+  if (configuredBaseUrl) return configuredBaseUrl;
 
   const first = (value: string | null) => value?.split(",")[0]?.trim() || undefined;
   const host =

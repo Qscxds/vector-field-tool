@@ -20,7 +20,7 @@ import { echo } from "@/lib/core/hello";
 export const SERVER_INFO = { name: "vector-field-tool", version: "0.1.0" };
 
 /** Bump when the widget HTML changes so MCP hosts drop cached copies. */
-const WIDGET_VERSION = "p0-3";
+const WIDGET_VERSION = "p0-5";
 export const WIDGET_URI = `ui://vector-field-tool/ping.html?v=${WIDGET_VERSION}`;
 /** Next.js page that becomes the widget HTML (app/widget/page.tsx). */
 const WIDGET_PATH = "/widget";
@@ -48,19 +48,17 @@ export async function fetchWidgetHtml(baseUrl: string): Promise<string> {
 
 /**
  * The host renders our HTML on its own sandbox origin, so relative URLs would point at the host.
- * Two fixes, either of which is enough on its own:
- * 1. `<base href>` pinned to our public origin. Hosts only honour it when the resource declares
- *    `csp.baseUriDomains` (the MCP Apps default CSP is `base-uri 'self'`), which createMcpServer does.
- * 2. `/_next/...` script and stylesheet URLs rewritten to absolute, so assets load even on a host
- *    that ignores `<base>`.
+ * We pin <base href> to our public origin; hosts honour it only when the resource declares
+ * csp.baseUriDomains (the MCP Apps default CSP is base-uri 'self'), which createMcpServer does.
+ *
+ * Asset URLs are deliberately NOT rewritten here. Next's Turbopack runtime identifies chunks by
+ * stripping its build-time base path from each script URL; rewriting URLs at request time (or
+ * letting <base> resolve them cross-origin) breaks that match and hydration silently never runs.
+ * Absolute asset URLs must come from assetPrefix (see base-url.ts).
  */
 export function rewriteForSandbox(html: string, baseUrl: string): string {
-  let out = html;
-  if (!/<base\s/i.test(out)) {
-    out = out.replace(/<head([^>]*)>/i, `<head$1><base href="${baseUrl}/">`);
-  }
-  out = out.replace(/(\s)(src|href)="\/_next\//g, `$1$2="${baseUrl}/_next/`);
-  return out;
+  if (/<base\s/i.test(html)) return html;
+  return html.replace(/<head([^>]*)>/i, `<head$1><base href="${baseUrl}/">`);
 }
 
 /** One McpServer per request: no sessions, no shared state. */
