@@ -2,7 +2,7 @@
 
 **跑到了哪个阶段**：A、B、C、D、E 五个阶段全部完成，之后又根据后台审查修了计算内核的 13 处 bug（`[A-fix]` 系列提交）。
 **最后一个已知良好的 tag**：`night-final`（指向本总结的文档提交；最后一次代码提交是 `e93d525`，三绿验证就在它上面跑的）。分阶段回滚点：`p0-verified` → `a-core-done` → `b-tools-done` → `c-render-done` → `d-webshell-done` → `e-widget-done`。
-**你需要手动验证**：(1) ~~Claude 里断开重连连接器后调用 `analyze_system`~~ 早上已验证通过（相图渲染正确）；随后修了一处抖动，资源版本现为 `widget.html?v=e-2`，**还需要再重连一次**确认不再抖动；(2) 用 `ping` 判断链路；(3) 推 GitHub、部署 Vercel（未做）。
+**你需要手动验证**：(1) ~~Claude 里断开重连连接器后调用 `analyze_system`~~ 早上已验证通过（相图渲染正确）；随后修了一处抖动，资源版本现为 `widget.html?v=e-2`，重连后再次验证通过（图稳定、不抖）；(2) 用 `ping` 判断链路；(3) 推 GitHub、部署 Vercel（未做）。
 
 ## 各阶段
 
