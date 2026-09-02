@@ -28,12 +28,31 @@ describe("integrateRK4 on the harmonic oscillator x'=y, y'=-x", () => {
     expect(ratio).toBeLessThan(20);
   });
 
-  it("keeps the energy x^2 + y^2 within 1e-4 relative drift up to t = 100", () => {
+  it("keeps the energy x^2 + y^2 within 1e-4 relative drift up to t = 100 (and in fact within 1e-8)", () => {
+    // For y' = i y one RK4 step multiplies the amplitude by |R(iθ)| with |R|^2 = 1 - θ^6/72 + θ^8/576,
+    // θ = h = 0.01: relative energy change per step ~ 1.4e-14, times 1e4 steps ~ 1.4e-10.
+    // A second-order scheme would drift by ~θ^4/... ~ 1e-8 per step -> 1e-4 over the run.
     const tr = integrateRK4(harmonic, { x: 1, y: 0 }, 100, { h: 0.01 });
     expect(tr.status).toBe("completed");
     const energies = tr.points.map((p) => p.x * p.x + p.y * p.y);
     const worst = Math.max(...energies.map((E) => Math.abs(E - 1)));
     expect(worst).toBeLessThan(1e-4);
+    expect(worst).toBeLessThan(1e-8);
+  });
+
+  it("one step on x' = x reproduces the degree-4 Taylor polynomial exactly", () => {
+    // RK4 applied to x' = x gives x1 = x0 (1 + h + h²/2 + h³/6 + h⁴/24). With h = 0.5:
+    // 1 + 0.5 + 0.125 + 0.020833... + 0.002604... = 1.6484375.
+    const tr = integrateRK4(compileSystem({ f: "x", g: "0" }), { x: 1, y: 0 }, 0.5, { h: 0.5 });
+    expect(tr.steps).toBe(1);
+    expect(tr.points[1].x).toBeCloseTo(1.6484375, 14);
+  });
+
+  it("a run that uses exactly maxSteps to reach tEnd is completed, not truncated", () => {
+    const tr = integrateRK4(harmonic, { x: 1, y: 0 }, 1, { h: 0.01, maxSteps: 100 });
+    expect(tr.status).toBe("completed");
+    expect(tr.steps).toBe(100);
+    expect(tr.times[tr.times.length - 1]).toBeCloseTo(1, 12);
   });
 
   it("integrates backward: forward 5 then backward 5 returns to the start", () => {
@@ -98,10 +117,21 @@ describe("stop conditions", () => {
     expect(tr.points).toHaveLength(1);
   });
 
-  it("rejects invalid tSpan and h", () => {
+  it("rejects invalid tSpan, h and other options", () => {
     expect(() => integrateRK4(harmonic, { x: 1, y: 0 }, 0)).toThrow(RangeError);
     expect(() => integrateRK4(harmonic, { x: 1, y: 0 }, -1)).toThrow(RangeError);
     expect(() => integrateRK4(harmonic, { x: 1, y: 0 }, 1, { h: 0 })).toThrow(RangeError);
+    expect(() => integrateRK4(harmonic, { x: 1, y: 0 }, 1, { t0: NaN })).toThrow(RangeError);
+    expect(() => integrateRK4(harmonic, { x: 1, y: 0 }, 1, { maxSteps: 0 })).toThrow(RangeError);
+    expect(() => integrateAdaptive(harmonic, { x: 1, y: 0 }, 1, { rtol: 0 })).toThrow(RangeError);
+    expect(() => integrateAdaptive(harmonic, { x: 1, y: 0 }, 1, { atol: -1 })).toThrow(RangeError);
+  });
+
+  it("a start outside the box is reported as left_box with a single point", () => {
+    const box = { x: { min: -1, max: 1 }, y: { min: -1, max: 1 } };
+    const tr = integrateRK4(harmonic, { x: 5, y: 0 }, 1, { box });
+    expect(tr.status).toBe("left_box");
+    expect(tr.points).toHaveLength(1);
   });
 });
 
@@ -130,11 +160,28 @@ describe("integrateAdaptive (Dormand-Prince 5(4))", () => {
     // Exact solution x(t) = -ln(1 - t): speed grows without bound as t -> 1.
     const tr = integrateAdaptive(compileSystem({ f: "exp(x)", g: "0" }), { x: 0, y: 0 }, 0.9, { h: 0.05 });
     expect(tr.status).toBe("completed");
-    expect(Math.abs(last(tr).x - -Math.log(0.1))).toBeLessThan(1e-5);
-    const dts = tr.times.slice(1).map((t, i) => t - tr.times[i]);
-    const first = dts[0];
-    const lastDt = dts[dts.length - 1];
-    expect(lastDt).toBeLessThan(first / 5);
+    // Global error bound: rtol 1e-6 on a solution of size ~2.3 with ~50 steps -> well under 1e-4.
+    expect(Math.abs(last(tr).x - -Math.log(0.1))).toBeLessThan(1e-4);
+    // Controller steps only: the final step is a landing remainder, not a controller decision.
+    const dts = tr.times.slice(1).map((t, i) => t - tr.times[i]).slice(0, -1);
+    expect(dts.length).toBeGreaterThan(6);
+    const largest = Math.max(...dts);
+    const lastThird = dts.slice(-Math.ceil(dts.length / 3));
+    // Near the blow-up the steps must be several times smaller than the largest step taken earlier.
+    expect(Math.min(...lastThird)).toBeLessThan(largest / 4);
+    // and the smallest controller step is found late, not early
+    expect(dts.indexOf(Math.min(...dts))).toBeGreaterThan(dts.length / 2);
+  });
+
+  it("does not hang when atol = 0 and a component is identically zero", () => {
+    const tr = integrateAdaptive(compileSystem({ f: "x", g: "0" }), { x: 1, y: 0 }, 1, { atol: 0 });
+    expect(tr.status).toBe("completed");
+    expect(last(tr).x).toBeCloseTo(Math.E, 5);
+  });
+
+  it("accepts a tiny initial step without declaring blow-up", () => {
+    const tr = integrateAdaptive(harmonic, { x: 1, y: 0 }, 1, { h: 1e-14 });
+    expect(tr.status).toBe("completed");
   });
 
   it("reports blow-up of x' = x^2 without NaN", () => {

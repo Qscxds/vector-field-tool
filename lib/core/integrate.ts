@@ -56,10 +56,8 @@ type Resolved = Required<Omit<IntegrateOptions, "box">> & { box?: Box };
 
 function resolve(opts: IntegrateOptions | undefined, tSpan: number): Resolved {
   if (!(Number.isFinite(tSpan) && tSpan > 0)) throw new RangeError("tSpan must be a positive finite number.");
-  const h = opts?.h ?? 0.01;
-  if (!(Number.isFinite(h) && h > 0)) throw new RangeError("h must be a positive finite number.");
-  return {
-    h,
+  const r: Resolved = {
+    h: opts?.h ?? 0.01,
     maxSteps: opts?.maxSteps ?? 20000,
     direction: opts?.direction ?? 1,
     box: opts?.box,
@@ -69,6 +67,15 @@ function resolve(opts: IntegrateOptions | undefined, tSpan: number): Resolved {
     rtol: opts?.rtol ?? 1e-6,
     atol: opts?.atol ?? 1e-9,
   };
+  if (!(Number.isFinite(r.h) && r.h > 0)) throw new RangeError("h must be a positive finite number.");
+  if (!(Number.isInteger(r.maxSteps) && r.maxSteps >= 1)) throw new RangeError("maxSteps must be a positive integer.");
+  if (r.direction !== 1 && r.direction !== -1) throw new RangeError("direction must be 1 or -1.");
+  if (!(Number.isFinite(r.equilibriumTol) && r.equilibriumTol >= 0)) throw new RangeError("equilibriumTol must be a finite non-negative number.");
+  if (!(Number.isFinite(r.maxSpeed) && r.maxSpeed > 0)) throw new RangeError("maxSpeed must be a positive finite number.");
+  if (!Number.isFinite(r.t0)) throw new RangeError("t0 must be a finite number.");
+  if (!(Number.isFinite(r.rtol) && r.rtol > 0)) throw new RangeError("rtol must be a positive finite number.");
+  if (!(Number.isFinite(r.atol) && r.atol >= 0)) throw new RangeError("atol must be a finite non-negative number.");
+  return r;
 }
 
 const isFiniteVec = (v: Vec2): boolean => Number.isFinite(v.x) && Number.isFinite(v.y);
@@ -86,6 +93,7 @@ class Run {
   constructor(
     private readonly sys: CompiledSystem,
     private readonly o: Resolved,
+    private readonly tEnd: number,
   ) {}
 
   /** Evaluates the field, treating non-finite or absurdly fast values as blow-up (returns null). */
@@ -99,6 +107,10 @@ class Run {
     if (!isFiniteVec(p)) throw new RangeError("start point must be finite.");
     this.points.push(p);
     this.times.push(t);
+    if (this.o.box && !inBox(p, this.o.box)) {
+      this.status = "left_box";
+      return false;
+    }
     const v = this.rhs(p, t);
     if (v === null) {
       this.status = "blew_up";
@@ -133,7 +145,8 @@ class Run {
       this.status = "reached_equilibrium";
       return false;
     }
-    if (this.steps >= this.o.maxSteps) {
+    // Exhausting the budget on the step that lands on tEnd is a completed run, not a truncated one.
+    if (this.steps >= this.o.maxSteps && t !== this.tEnd) {
       this.status = "max_steps";
       return false;
     }
@@ -168,9 +181,9 @@ export function integrateRK4(
   opts?: IntegrateOptions,
 ): Trajectory {
   const o = resolve(opts, tSpan);
-  const run = new Run(sys, o);
-  let t = o.t0;
   const tEnd = o.t0 + o.direction * tSpan;
+  const run = new Run(sys, o, tEnd);
+  let t = o.t0;
   let p = start;
   if (!run.start(p, t)) return run.finish();
 
@@ -214,25 +227,27 @@ export function integrateAdaptive(
   opts?: IntegrateOptions,
 ): Trajectory {
   const o = resolve(opts, tSpan);
-  const run = new Run(sys, o);
-  let t = o.t0;
   const tEnd = o.t0 + o.direction * tSpan;
+  const run = new Run(sys, o, tEnd);
+  let t = o.t0;
   let p = start;
   if (!run.start(p, t)) return run.finish();
 
-  let h = Math.min(o.h, tSpan);
   const hMin = tSpan * 1e-12;
   const hMax = tSpan / 4;
+  let h = Math.min(o.h, hMax);
   const maxAttempts = o.maxSteps * 20; // rejected steps also count toward this safety cap
   let attempts = 0;
+  let shrunk = false; // has the controller ever had to reduce the step?
 
   while (true) {
     const remaining = tEnd - t;
     if (Math.abs(remaining) <= hMin) {
       break;
     }
-    if (h < hMin) {
-      // Step size collapsed: the solution is leaving the finite world (or is far too stiff for us).
+    if (h < hMin && shrunk) {
+      // The controller drove the step to nothing: the solution is leaving the finite world (or is
+      // far too stiff for us). A tiny user-supplied initial step is not an error by itself.
       run.status = "blew_up";
       break;
     }
@@ -262,6 +277,7 @@ export function integrateAdaptive(
     if (blewUp) {
       // Retry with a smaller step; if that also fails the hMin guard reports blow-up.
       h /= 4;
+      shrunk = true;
       continue;
     }
 
@@ -275,12 +291,14 @@ export function integrateAdaptive(
     const next = { x: x5, y: y5 };
     if (!isFiniteVec(next)) {
       h /= 4;
+      shrunk = true;
       continue;
     }
 
-    // Error estimate scaled by tolerance (RMS over components).
-    const scX = o.atol + o.rtol * Math.max(Math.abs(p.x), Math.abs(next.x));
-    const scY = o.atol + o.rtol * Math.max(Math.abs(p.y), Math.abs(next.y));
+    // Error estimate scaled by tolerance (RMS over components). The floor keeps an identically
+    // zero component with atol = 0 from producing 0/0.
+    const scX = Math.max(o.atol + o.rtol * Math.max(Math.abs(p.x), Math.abs(next.x)), 1e-300);
+    const scY = Math.max(o.atol + o.rtol * Math.max(Math.abs(p.y), Math.abs(next.y)), 1e-300);
     const err = Math.sqrt((((x5 - x4) / scX) ** 2 + ((y5 - y4) / scY) ** 2) / 2);
 
     if (err <= 1) {
@@ -290,7 +308,8 @@ export function integrateAdaptive(
       const factor = err === 0 ? 5 : Math.min(5, Math.max(0.2, 0.9 * err ** -0.2));
       h = Math.min(hMax, h * factor);
     } else {
-      h *= Math.max(0.1, 0.9 * err ** -0.2);
+      h *= Number.isFinite(err) ? Math.max(0.1, 0.9 * err ** -0.2) : 0.25;
+      shrunk = true;
     }
   }
   return run.finish();
