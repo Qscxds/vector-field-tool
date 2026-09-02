@@ -50,6 +50,9 @@ const COLORS = {
   hover: "rgba(14, 116, 144, 0.75)",
 };
 
+/** Longer than the OS double-click interval is not needed: the second pointerup cancels the first click. */
+const CLICK_DELAY_MS = 220;
+
 const STABLE: ReadonlySet<Equilibrium["classification"]> = new Set(["stable_node", "stable_spiral"]);
 const UNSTABLE: ReadonlySet<Equilibrium["classification"]> = new Set(["unstable_node", "unstable_spiral"]);
 
@@ -157,6 +160,17 @@ export function VectorFieldCanvas({
     if (v && onHoverWorld) onHoverWorld(screenToWorld(v, s), s);
   };
 
+  // A click is only reported after a short pause, so the two clicks of a double-click are not
+  // turned into two trajectories before the reset fires.
+  const clickTimer = useRef<number | null>(null);
+  const cancelPendingClick = () => {
+    if (clickTimer.current !== null) {
+      window.clearTimeout(clickTimer.current);
+      clickTimer.current = null;
+    }
+  };
+  useEffect(() => cancelPendingClick, []);
+
   const handleUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const s = screenOf(event);
     const wasDrag = drag.current.moved;
@@ -167,7 +181,19 @@ export function VectorFieldCanvas({
     } catch {
       /* ignore */
     }
-    if (!wasDrag && v && onClickWorld) onClickWorld(screenToWorld(v, s));
+    if (!wasDrag && v && onClickWorld) {
+      const world = screenToWorld(v, s);
+      cancelPendingClick();
+      clickTimer.current = window.setTimeout(() => {
+        clickTimer.current = null;
+        onClickWorld(world);
+      }, CLICK_DELAY_MS);
+    }
+  };
+
+  const handleDoubleClick = () => {
+    cancelPendingClick();
+    onDoubleClick?.();
   };
 
   const handleLeave = () => {
@@ -187,7 +213,7 @@ export function VectorFieldCanvas({
         onPointerMove={handleMove}
         onPointerUp={handleUp}
         onPointerLeave={handleLeave}
-        onDoubleClick={() => onDoubleClick?.()}
+        onDoubleClick={handleDoubleClick}
       />
     </div>
   );

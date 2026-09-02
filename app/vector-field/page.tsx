@@ -3,28 +3,17 @@
 /**
  * Web shell: the same computation core and the same canvas component as the MCP widget, driven by
  * a form instead of by Claude. Independent route; /mcp and /widget are untouched.
- *
- * Interaction model: the entered box is the "home" view (fitViewport, equal scale); wheel zooms
- * about the cursor, drag pans, double-click returns home. The field is re-sampled on every view
- * change; equilibria / first-order features are recomputed for the visible box after a short
- * pause. Hovering previews the solution curve through the cursor (rAF-throttled, fixed step
- * budget); clicking keeps it.
+ * The interaction model (zoom / pan / hover / click-to-keep) lives in useInteractiveScene.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
-import { detectForms, NO_FORM_NOTE } from "@/lib/core/detect-form";
-import { findEquilibria } from "@/lib/core/equilibria";
-import { exactPotential, potentialLevels } from "@/lib/core/exact";
-import { sampleField } from "@/lib/core/field";
-import { integrateAdaptive } from "@/lib/core/integrate";
 import { compileSystem, ParseError, type CompiledSystem } from "@/lib/core/parse";
-import { firstOrderEquilibria, firstOrderSingularities, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
-import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
+import { toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
+import type { Box, SystemSpec } from "@/lib/core/types";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type LabelTable, type Locale } from "@/lib/labels";
 import type { ArrowMode } from "@/lib/render/arrows";
-import { contourSegments } from "@/lib/render/contours";
-import { fitViewport, panBy, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
-import type { FirstOrderView, Scene, TrajectoryView } from "@/lib/scene";
+import type { Scene } from "@/lib/scene";
 import { PRESETS, type Preset, type PresetMode } from "./presets";
 
 type Form = {
@@ -45,20 +34,8 @@ type Compiled =
   | { sys: CompiledSystem; spec: SystemSpec; firstOrder: FirstOrderSpec | null; box: Box; error: null }
   | { sys: null; spec: null; firstOrder: null; box: null; error: string };
 
-type Features = Pick<Scene, "equilibria" | "warning" | "firstOrder">;
-
 const CANVAS_W = 720;
 const CANVAS_H = 520;
-/** Fixed trajectories: how long to integrate in each direction. */
-const CLICK_TSPAN = 50;
-/** Hover preview: integration steps per direction (S spike: ~2000 RK4 steps ≈ 13 ms in the sandbox). */
-const HOVER_STEP_BUDGET = 400;
-/** Hover preview: the pointer has to move this many pixels before a new preview is computed. */
-const HOVER_PIXEL_THRESHOLD = 3;
-/** Pixels around a singular point (M = N = 0) where no preview is attempted. */
-const SINGULAR_PIXEL_RADIUS = 8;
-/** Recompute equilibria for the visible box this long after the last zoom/pan (ms). */
-const FEATURE_DEBOUNCE_MS = 250;
 
 function fromPreset(p: Preset, density: number, arrowMode: ArrowMode): Form {
   return {
@@ -109,63 +86,6 @@ function compile(form: Form, L: LabelTable): Compiled {
   }
 }
 
-/** Equilibria (systems) or constant solutions / singular points / forms / implicit curves (first order) for a box. */
-function computeFeatures(c: Compiled, box: Box, locale: Locale): Features {
-  if (!c.sys) return {};
-  try {
-    if (!c.firstOrder) {
-      const eq = findEquilibria(c.sys, box);
-      return { equilibria: eq.points, warning: eq.warning };
-    }
-    const spec = c.firstOrder;
-    const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x });
-    const singular = firstOrderSingularities(spec, box);
-    const forms = detectForms(spec, box, locale);
-    let implicit: FirstOrderView["implicit"];
-    if (forms.some((f) => f.form === "exact")) {
-      const pot = exactPotential(spec, box);
-      if (pot.consistent) {
-        const levels = potentialLevels(pot.F, box, 8).map((level) => ({ level, segments: contourSegments(pot.F, box, level, 60, 60) }));
-        implicit = { levels, pathDeviation: pot.pathDeviation };
-      }
-    }
-    return {
-      firstOrder: {
-        expr: spec.kind === "explicit" ? `dy/dx = ${spec.g}` : `(${spec.M}) dx + (${spec.N}) dy = 0`,
-        spec,
-        autonomous: eq.autonomous,
-        solutions: eq.solutions,
-        singularities: singular.points,
-        forms,
-        formsNote: forms.length === 0 ? NO_FORM_NOTE[locale] : undefined,
-        implicit,
-      },
-    };
-  } catch {
-    return {};
-  }
-}
-
-/** Trajectories may run past the visible box before stopping, so zooming out later still shows them. */
-function expandBox(box: Box, factor: number): Box {
-  const w = box.x.max - box.x.min;
-  const h = box.y.max - box.y.min;
-  return { x: { min: box.x.min - w * factor, max: box.x.max + w * factor }, y: { min: box.y.min - h * factor, max: box.y.max + h * factor } };
-}
-
-function traceBoth(sys: CompiledSystem, start: Vec2, box: Box, maxSteps?: number): TrajectoryView[] {
-  return ([1, -1] as const).map((direction): TrajectoryView => {
-    const tr = integrateAdaptive(sys, start, CLICK_TSPAN, { direction, box: expandBox(box, 1), h: 0.05, ...(maxSteps ? { maxSteps } : {}) });
-    return {
-      direction: direction === 1 ? "forward" : "backward",
-      points: tr.points,
-      status: tr.status,
-      steps: tr.steps,
-      tEnd: tr.times[tr.times.length - 1],
-    };
-  });
-}
-
 export default function VectorFieldPage() {
   const [locale, setLocale] = useState<Locale>("en");
   useEffect(() => {
@@ -175,138 +95,23 @@ export default function VectorFieldPage() {
 
   const [form, setForm] = useState<Form>(() => fromPreset(PRESETS[0], 20, "unit"));
   const [presetId, setPresetId] = useState<string | null>(PRESETS[0].id);
-  const [trajectories, setTrajectories] = useState<TrajectoryView[]>([]);
-  const [overlay, setOverlay] = useState<TrajectoryView[]>([]);
-  const [hint, setHint] = useState<{ at: Vec2; text: string } | null>(null);
-  const [view, setView] = useState<Viewport | null>(null);
-
   const compiled = useMemo(() => compile(form, L), [form, L]);
-  const homeBox = compiled.box;
-  const homeKey = homeBox ? JSON.stringify(homeBox) : "";
-  const systemKey = `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}`;
 
-  // A new entered box is a new home view; a new system invalidates every drawn curve.
-  useEffect(() => {
-    setView(null);
-  }, [homeKey]);
-  useEffect(() => {
-    setTrajectories([]);
-    setOverlay([]);
-    setHint(null);
-  }, [systemKey]);
-
-  const viewport = useMemo(() => view ?? (homeBox ? fitViewport(homeBox, CANVAS_W, CANVAS_H) : null), [view, homeBox]);
-
-  // Field: resampled for every view change (cheap: density² evaluations).
-  const field = useMemo(
-    () => (compiled.sys && viewport ? sampleField(compiled.sys, viewport.box, form.density, form.density) : null),
-    [compiled.sys, viewport, form.density],
-  );
-
-  // Features: recomputed for the visible box, debounced while zooming/panning.
-  const [featureBox, setFeatureBox] = useState<Box | null>(null);
-  const viewBoxKey = viewport ? JSON.stringify(viewport.box) : "";
-  useEffect(() => {
-    if (!viewport) return;
-    const delay = view ? FEATURE_DEBOUNCE_MS : 0;
-    const id = setTimeout(() => setFeatureBox(viewport.box), delay);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewBoxKey]);
-  const effectiveFeatureBox = featureBox ?? viewport?.box ?? null;
-  const features = useMemo(
-    () => (effectiveFeatureBox ? computeFeatures(compiled, effectiveFeatureBox, locale) : {}),
-    [compiled, effectiveFeatureBox, locale],
-  );
-
-  const scene = useMemo<Scene | null>(() => {
-    if (!compiled.sys || !viewport || !field) return null;
-    return {
-      kind: form.mode === "system" ? "analyze_system" : "analyze_first_order",
-      locale,
-      system: compiled.spec,
-      box: viewport.box,
-      field,
-      fieldStyle: form.mode === "differential" ? "segments" : "arrows",
-      equilibria: features.equilibria,
-      warning: features.warning,
-      firstOrder: features.firstOrder,
-      trajectories,
-    };
-  }, [compiled, viewport, field, features, trajectories, locale, form.mode]);
-
-  // Refs so the interaction callbacks stay stable (the canvas binds the wheel listener once).
-  const viewportRef = useRef(viewport);
-  viewportRef.current = viewport;
-  const homeBoxRef = useRef(homeBox);
-  homeBoxRef.current = homeBox;
-  const sysRef = useRef(compiled.sys);
-  sysRef.current = compiled.sys;
-  const singularRef = useRef<Vec2[]>([]);
-  singularRef.current = features.firstOrder?.singularities ?? [];
-  const localeRef = useRef(locale);
-  localeRef.current = locale;
-
-  const handleZoom = useCallback((screen: Vec2, factor: number) => {
-    const cur = viewportRef.current;
-    const home = homeBoxRef.current;
-    if (!cur || !home) return;
-    setView(zoomAt(cur, screen, factor, { original: home }));
-  }, []);
-
-  const handlePan = useCallback((dx: number, dy: number) => {
-    const cur = viewportRef.current;
-    if (!cur) return;
-    setView(panBy(cur, dx, dy));
-  }, []);
-
-  const handleReset = useCallback(() => setView(null), []);
-
-  const handleClick = useCallback((start: Vec2) => {
-    const sys = sysRef.current;
-    const vp = viewportRef.current;
-    if (!sys || !vp) return;
-    setTrajectories((prev) => [...prev, ...traceBoth(sys, start, vp.box)]);
-  }, []);
-
-  const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
-  const lastHoverScreen = useRef<Vec2 | null>(null);
-  const rafRef = useRef<number | null>(null);
-  const handleHover = useCallback((world: Vec2 | null, screen: Vec2 | null) => {
-    if (!world || !screen) {
-      hoverRef.current = null;
-      lastHoverScreen.current = null;
-      setOverlay([]);
-      setHint(null);
-      return;
-    }
-    hoverRef.current = { world, screen };
-    if (rafRef.current !== null) return;
-    rafRef.current = requestAnimationFrame(() => {
-      rafRef.current = null;
-      const h = hoverRef.current;
-      const sys = sysRef.current;
-      const vp = viewportRef.current;
-      if (!h || !sys || !vp) return;
-      const last = lastHoverScreen.current;
-      if (last && Math.hypot(h.screen.x - last.x, h.screen.y - last.y) < HOVER_PIXEL_THRESHOLD) return;
-      lastHoverScreen.current = h.screen;
-      const nearSingular = singularRef.current.some((p) => {
-        const s = worldToScreen(vp, p);
-        return Math.hypot(s.x - h.screen.x, s.y - h.screen.y) < SINGULAR_PIXEL_RADIUS;
-      });
-      if (nearSingular) {
-        setOverlay([]);
-        setHint({ at: h.world, text: labels(localeRef.current).ui.hoverUndefined });
-        return;
-      }
-      setHint(null);
-      setOverlay(traceBoth(sys, h.world, vp.box, HOVER_STEP_BUDGET));
-    });
-  }, []);
-  useEffect(() => () => {
-    if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-  }, []);
+  const interactive = useInteractiveScene({
+    sys: compiled.sys,
+    spec: compiled.spec,
+    firstOrder: compiled.firstOrder,
+    homeBox: compiled.box,
+    width: CANVAS_W,
+    height: CANVAS_H,
+    density: form.density,
+    locale,
+    kind: form.mode === "system" ? "analyze_system" : "analyze_first_order",
+    fieldStyle: form.mode === "differential" ? "segments" : "arrows",
+    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}`,
+    withFeatures: true,
+  });
+  const { scene, viewport, overlay, hint, trajectories, clearTrajectories, handlers } = interactive;
 
   const update = (patch: Partial<Form>) => {
     setPresetId(null);
@@ -414,7 +219,7 @@ export default function VectorFieldPage() {
               <option value="scaled">{L.ui.arrowScaled}</option>
             </select>
           </label>
-          <button type="button" onClick={() => setTrajectories([])} style={buttonStyle} disabled={trajectories.length === 0}>
+          <button type="button" onClick={clearTrajectories} style={buttonStyle} disabled={trajectories.length === 0}>
             {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
           </button>
           {preset ? <p style={{ margin: 0, color: "#52606d" }}>{preset.note[locale]}</p> : null}
@@ -437,11 +242,7 @@ export default function VectorFieldPage() {
                 arrowMode={form.arrowMode}
                 overlay={overlay}
                 overlayHint={hint}
-                onClickWorld={handleClick}
-                onHoverWorld={handleHover}
-                onWheelZoom={handleZoom}
-                onPan={handlePan}
-                onDoubleClick={handleReset}
+                {...handlers}
               />
               <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
                 {fill(L.ui.shownRange, {
