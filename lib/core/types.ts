@@ -15,3 +15,6 @@ export type SystemSpec = { f: string; g: string; params?: Record<string, number>
 export type Matrix2 = [[number, number], [number, number]];
 
 export type Complex = { re: number; im: number };
+
+/** Language of student-facing text produced by the kernel (evidence, caveats). */
+export type Locale = "zh" | "en";
