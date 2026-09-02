@@ -3,13 +3,19 @@
 /**
  * Widget shell: the page an MCP host (Claude) renders inside a sandboxed iframe after a tool call.
  * It receives the tool result over the MCP Apps protocol, reads the Scene out of
- * structuredContent and hands it to the shared VectorFieldCanvas. Static rendering only for now
- * (no click-to-trace inside the widget); no math here and no knowledge of who the host is.
- * Text comes from lib/labels in the locale the tool was called with.
+ * structuredContent and hands it to the shared VectorFieldCanvas.
+ *
+ * The Scene carries the equation (scene.system / scene.firstOrder.spec), so the widget compiles it
+ * locally with the same kernel the server used and offers zoom, pan, hover preview and
+ * click-to-keep through the shared useInteractiveScene hook. If compiling is impossible in this
+ * environment, it falls back to the server's static picture and says so. Text comes from
+ * lib/labels in the locale the tool was called with. No knowledge of who the host is.
  */
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
+import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type Locale } from "@/lib/labels";
 import type { Scene, SceneKind } from "@/lib/scene";
 
@@ -49,6 +55,18 @@ function useContainerWidth<T extends HTMLElement>(fallback: number) {
   return { ref, width };
 }
 
+/** Compiles the scene's equation locally; `blocked` means the environment refused (CSP, missing API). */
+function useLocalSystem(scene: Scene | null): { sys: CompiledSystem | null; blocked: boolean } {
+  return useMemo(() => {
+    if (!scene?.system || !scene.box) return { sys: null, blocked: false };
+    try {
+      return { sys: compileSystem(scene.system), blocked: false };
+    } catch {
+      return { sys: null, blocked: true };
+    }
+  }, [scene]);
+}
+
 export default function WidgetPage() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [scene, setScene] = useState<Scene | null>(null);
@@ -62,7 +80,7 @@ export default function WidgetPage() {
   }, []);
 
   const { isConnected, error } = useApp({
-    appInfo: { name: "vector-field-tool-widget", version: "0.2.0" },
+    appInfo: { name: "vector-field-tool-widget", version: "0.3.0" },
     capabilities: {},
     onAppCreated: (app) => {
       app.ontoolinput = () => setPhase("input");
@@ -79,8 +97,29 @@ export default function WidgetPage() {
     },
   });
 
-  const L = labels(scene?.locale ?? browserLocale);
+  const locale = scene?.locale ?? browserLocale;
+  const L = labels(locale);
   const canvasHeight = Math.round(width * 0.68);
+  const local = useLocalSystem(scene);
+  const kind: SceneKind = scene && scene.kind !== "ping" ? scene.kind : "sample_field";
+  const interactive = useInteractiveScene({
+    sys: local.sys,
+    spec: scene?.system ?? null,
+    firstOrder: scene?.firstOrder?.spec ?? null,
+    homeBox: scene?.box ?? null,
+    width,
+    height: canvasHeight,
+    density: scene?.field?.nx ?? 20,
+    locale,
+    kind,
+    fieldStyle: scene?.fieldStyle ?? "arrows",
+    systemKey: scene ? `${scene.kind}|${scene.system?.f ?? ""}|${scene.system?.g ?? ""}|${JSON.stringify(scene.start ?? null)}|${JSON.stringify(scene.system?.params ?? null)}` : "",
+    initialTrajectories: scene?.trajectories,
+    start: scene?.start,
+    withFeatures: kind === "analyze_system" || kind === "analyze_first_order",
+  });
+
+  const live = interactive.scene && interactive.viewport ? interactive : null;
 
   return (
     <main style={{ padding: "8px 10px 10px", fontSize: 13, lineHeight: 1.45, color: "#1f2933", background: "#fff" }}>
@@ -107,9 +146,32 @@ export default function WidgetPage() {
         <pre style={preStyle}>{fallbackText}</pre>
       ) : scene?.kind === "ping" ? (
         <pre style={preStyle}>{JSON.stringify({ message: scene.message }, null, 2)}</pre>
+      ) : live && live.scene && live.viewport ? (
+        <>
+          <VectorFieldCanvas
+            scene={live.scene}
+            viewport={live.viewport}
+            width={width}
+            height={canvasHeight}
+            overlay={live.overlay}
+            overlayHint={live.hint}
+            {...live.handlers}
+          />
+          <p style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }} data-shown-range>
+            {fill(L.ui.shownRange, {
+              xMin: formatNumber(live.viewport.box.x.min, 3),
+              xMax: formatNumber(live.viewport.box.x.max, 3),
+              yMin: formatNumber(live.viewport.box.y.min, 3),
+              yMax: formatNumber(live.viewport.box.y.max, 3),
+            })}{" "}
+            · {L.ui.interactionHint}
+          </p>
+          <SceneSummary scene={live.scene} />
+        </>
       ) : scene?.box ? (
         <>
           <VectorFieldCanvas scene={scene} width={width} height={canvasHeight} />
+          {local.blocked ? <p style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>{L.ui.localComputeUnavailable}</p> : null}
           <SceneSummary scene={scene} />
         </>
       ) : (
