@@ -21,3 +21,4 @@ npm-debug.log*
 
 # review-agent scratch tests (never commit)
 lib/**/__probe__/
+__probe*
