@@ -67,7 +67,7 @@ probe: {"harness":"after-3s","canvas":true,"canvasSize":[640,435],"nonWhite":897
 
 ## 明早检查清单
 
-1. **重连连接器**：Claude → Connectors → Vector Field Tool → 断开 → 重新添加 `https://midlands-premium-negotiations-million.trycloudflare.com/mcp`（本地 `next start` 已用这个 BASE_URL 重新构建并在 3000 端口运行；cloudflared 若重启过地址会变，那就改 BASE_URL 重建）。
+1. **重连连接器**：Claude → Connectors → Vector Field Tool → 断开 → 重新添加 `https://academic-airplane-silk-hanging.trycloudflare.com/mcp`（夜里旧隧道已断，我重新起了 cloudflared 得到这个新地址，本地 `next start` 已用它作 BASE_URL 重新构建并在 3000 端口运行，隧道 GET /mcp 返回 405、smoke 全过；cloudflared 若再重启地址还会变，那就改 BASE_URL 重建）。
 2. 对话：「用 analyze_system 分析 x' = x - x*y, y' = x*y - y」→ widget 里滚轮、拖动、双击、悬停、点击各试一次；再用英文问一次同样的问题，看摘要是否英文（`locale` 默认 en）、用中文问看是否传了 `zh`（服务器日志里 tools/call 一行看不到参数，看摘要语言即可）。
 3. 对话：「分析 2*x*y dx + (x^2 + y^2) dy = 0」→ 应出现紫色等值线、奇点 (0,0)、常数解 y = 0（稳定性随 x 变化）、四种形式各带 caveat。
 4. 看 FG-open-questions 里 G 阶段的 8 条待拍板项。
