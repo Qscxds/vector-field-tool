@@ -200,22 +200,90 @@ describe("sample_field", () => {
 });
 
 describe("analyze_first_order", () => {
-  it("logistic dy/dx = y(1-y): y=0 unstable, y=1 stable, with a slope field", async () => {
+  it("logistic dy/dx = y(1-y): y=0 unstable, y=1 stable, with a slope field and detected forms", async () => {
     const r = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 });
     expect(r.isError).toBeFalsy();
     expect(r.scene.kind).toBe("analyze_first_order");
     expect(r.scene.system).toEqual({ f: "1", g: "y*(1-y)" });
+    expect(r.scene.fieldStyle).toBe("arrows");
+    expect(r.scene.firstOrder?.spec).toEqual({ kind: "explicit", g: "y*(1-y)" });
     expect(r.scene.firstOrder?.autonomous).toBe(true);
     const ys = r.scene.firstOrder!.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability]);
     expect(ys).toEqual([[0, "unstable"], [1, "stable"]]);
-    expect(r.text).toContain("平衡解 y = 1");
+    expect(r.text).toContain("常数解 y = 1");
     expect(r.scene.field?.samples).toHaveLength(400);
+    const forms = r.scene.firstOrder!.forms!.map((f) => f.form);
+    expect(forms).toContain("separable");
+    expect(forms).toContain("autonomous");
+    expect(r.text).toContain("在数值上表现得像");
+    expect(r.text).toContain("不是证明");
+    expect(r.scene.firstOrder?.formsNote).toBeUndefined();
   });
 
-  it("says a non-autonomous equation has no constant solutions", async () => {
-    const r = await call("analyze_first_order", { expr: "x - y" });
+  it("finds constant solutions of a non-autonomous equation and reports 'varies'", async () => {
+    const r = await call("analyze_first_order", { expr: "x*(y-1)", xMin: -2, xMax: 2, yMin: -2, yMax: 3 });
     expect(r.scene.firstOrder?.autonomous).toBe(false);
-    expect(r.text).toContain("不是自治的");
+    expect(r.scene.firstOrder?.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability])).toEqual([[1, "varies"]]);
+    expect(r.text).toContain("常数解 y = 1");
+  });
+
+  it("says when there are no constant solutions", async () => {
+    const r = await call("analyze_first_order", { expr: "x - y" });
+    expect(r.scene.firstOrder?.solutions).toEqual([]);
+    expect(r.text).toContain("没有常数解");
+  });
+
+  it("accepts the differential form: y dx - x dy = 0 has undirected segments and a singular origin", async () => {
+    const r = await call("analyze_first_order", { M: "y", N: "-x", xMin: -2, xMax: 2, yMin: -2, yMax: 2 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.fieldStyle).toBe("segments");
+    expect(r.scene.system).toEqual({ f: "-x", g: "-(y)" });
+    expect(r.scene.firstOrder?.spec).toEqual({ kind: "differential", M: "y", N: "-x" });
+    const sing = r.scene.firstOrder!.singularities!;
+    expect(sing).toHaveLength(1);
+    expect(Math.hypot(sing[0].x, sing[0].y)).toBeLessThan(1e-6);
+    expect(r.text).toContain("方向场奇点");
+    expect(r.text).toContain("无向线段");
+    const forms = r.scene.firstOrder!.forms!.map((f) => f.form);
+    expect(forms).toContain("integrating_factor_x");
+    expect(forms).not.toContain("exact");
+  });
+
+  it("draws the implicit solution of an exact equation: 2xy dx + (x² + y²) dy = 0", async () => {
+    const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.firstOrder!.forms!.map((f) => f.form)).toContain("exact");
+    const implicit = r.scene.firstOrder!.implicit!;
+    expect(implicit.pathDeviation).toBeLessThan(1e-9);
+    expect(implicit.levels.length).toBeGreaterThan(3);
+    expect(implicit.levels.some((l) => l.segments.length > 0)).toBe(true);
+    // every contour point really lies on its level of F = x²y + y³/3 (up to the base constant)
+    const F = (p: { x: number; y: number }) => p.x * p.x * p.y + (p.y * p.y * p.y) / 3;
+    for (const { level, segments } of implicit.levels) {
+      for (const [a] of segments.slice(0, 20)) {
+        // levels are offsets from F(base) with base = (0, 0), so F(a) ≈ level
+        expect(Math.abs(F(a) - level)).toBeLessThan(0.05);
+      }
+    }
+    expect(r.text).toContain("隐式解");
+  });
+
+  it("the Riccati equation dy/dx = x² + y² matches no form and gets the positive note", async () => {
+    const r = await call("analyze_first_order", { expr: "x^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3 });
+    expect(r.scene.firstOrder?.forms).toEqual([]);
+    expect(r.scene.firstOrder?.formsNote).toMatch(/Riccati/);
+    expect(r.text).toContain("这不是失败");
+  });
+
+  it("rejects neither-or-both input forms with a readable error", async () => {
+    const neither = await call("analyze_first_order", {});
+    expect(neither.isError).toBe(true);
+    expect(neither.text).toMatch(/exactly one form/);
+    const both = await call("analyze_first_order", { expr: "y", M: "x", N: "y" });
+    expect(both.isError).toBe(true);
+    const half = await call("analyze_first_order", { M: "x" });
+    expect(half.isError).toBe(true);
+    expect(half.text).toMatch(/both `M` and `N`/);
   });
 
   it("explains parse errors", async () => {

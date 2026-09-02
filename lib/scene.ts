@@ -35,6 +35,11 @@ export type FirstOrderView = {
   forms?: FormDetection[];
   /** Positive statement shown when no standard form was detected. */
   formsNote?: string;
+  /**
+   * For exact equations: level curves F(x, y) = C of the potential (the textbook implicit
+   * solution), as world-space segments per level, plus the path-independence check result.
+   */
+  implicit?: { levels: { level: number; segments: [Vec2, Vec2][] }[]; pathDeviation: number };
 };
 
 /**

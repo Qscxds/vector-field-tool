@@ -10,7 +10,15 @@ import { findEquilibria } from "@/lib/core/equilibria";
 import { sampleField } from "@/lib/core/field";
 import { integrateAdaptive, integrateRK4, type IntegrateOptions } from "@/lib/core/integrate";
 import { compileSystem, ParseError } from "@/lib/core/parse";
-import { firstOrderEquilibria, firstOrderToSystem } from "@/lib/core/slope-field";
+import { contourSegments } from "@/lib/render/contours";
+import { detectForms, NO_FORM_NOTE, type OdeForm } from "@/lib/core/detect-form";
+import { exactPotential, potentialLevels } from "@/lib/core/exact";
+import {
+  firstOrderEquilibria,
+  firstOrderSingularities,
+  toSystem,
+  type FirstOrderSpec,
+} from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
 import { CLASS_ZH, STABILITY_ZH, STATUS_ZH, WARNING_ZH, formatEigenvalue, formatNumber } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
@@ -82,6 +90,30 @@ function compileOrExplain(spec: SystemSpec) {
     throw error;
   }
 }
+
+function compileOrExplainFirstOrder(spec: FirstOrderSpec, systemSpec: SystemSpec) {
+  try {
+    return compileSystem(systemSpec);
+  } catch (error) {
+    if (error instanceof ParseError) {
+      const which =
+        spec.kind === "explicit" ? "g (the right-hand side of dy/dx)" : error.expr.includes(spec.N) && !error.expr.includes(spec.M) ? "N" : "M";
+      throw new ToolInputError(`Cannot parse ${which}: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
+const FORM_ZH: Record<OdeForm, string> = {
+  separable: "可分离变量方程",
+  autonomous: "自治方程",
+  linear_in_y: "关于 y 的线性方程",
+  homogeneous: "零次齐次方程",
+  bernoulli: "Bernoulli 方程",
+  exact: "恰当方程",
+  integrating_factor_x: "有只依赖 x 的积分因子的方程",
+  integrating_factor_y: "有只依赖 y 的积分因子的方程",
+};
 
 /** Uniformly thins a polyline to at most `max` points, always keeping the last one. */
 export function thin<T>(points: T[], max: number): T[] {
@@ -275,18 +307,31 @@ export function registerTools(server: McpServer, widgetUri: string): void {
     server,
     "analyze_first_order",
     {
-      title: "Analyze a first-order equation dy/dx = g(x, y)",
+      title: "Analyze a first-order equation (dy/dx = g, or M dx + N dy = 0)",
       description:
-        "For a single first-order ODE dy/dx = g(x, y): samples the slope field inside the viewing box and, when the " +
-        "equation is autonomous (g does not depend on x), finds its equilibrium (constant) solutions y = y* with " +
-        "their stability (stable / unstable / semi-stable) read off the sign of g on either side. " +
-        "USE THIS whenever a student has ONE equation written as dy/dx = ... or y' = ... with a single unknown " +
-        "function (logistic growth, Newton cooling, separable equations, slope fields, isoclines, equilibrium " +
-        "solutions of an autonomous equation). For a system of two equations use analyze_system. " +
-        "The expression uses y for the unknown function and x for the independent variable. " +
+        "For a single first-order ODE, given either explicitly as dy/dx = g(x, y) (parameter `expr`) or in " +
+        "differential form M(x, y) dx + N(x, y) dy = 0 (parameters `M` and `N`, the natural form of exact " +
+        "equations). Returns: the slope/direction field inside the viewing box (undirected segments for the " +
+        "differential form, which has no natural direction); constant solutions y = c with their stability " +
+        "(stable / unstable / semi-stable / varies with x); points where the direction is undefined (M = N = 0); " +
+        "a list of standard forms the equation is NUMERICALLY CONSISTENT WITH (separable, autonomous, linear in y, " +
+        "homogeneous, Bernoulli, exact, integrating factor in x or y), each with its evidence and a caveat; and, " +
+        "for exact equations, the implicit solution F(x, y) = C drawn as level curves. " +
+        "USE THIS whenever a student has ONE equation with a single unknown function: logistic growth, Newton " +
+        "cooling, separable or linear equations, exact equations, slope fields, isoclines, equilibrium " +
+        "solutions, 'what method solves this'. For a system of two equations use analyze_system. " +
+        "IMPORTANT about the detected forms: they are numerical probes at a handful of sample points, not proofs. " +
+        "When you relay them, keep the uncertainty: say the equation 'behaves numerically like a separable " +
+        "equation', never 'is a separable equation', and pass the caveat on. An empty list is not a failure: it " +
+        "means no standard elementary method was detected, while the slope field and numerical solutions remain " +
+        "fully valid (many important equations, e.g. Riccati dy/dx = x^2 + y^2, have no closed form). " +
+        "Variables: y is the unknown function, x the independent variable. Provide exactly one of `expr` or the " +
+        "pair `M`, `N`. " +
         EXPRESSION_RULES + " " + BOX_RULES + " " + NEVER_COMPUTE,
       inputSchema: {
-        expr: expression.describe("Right-hand side g(x, y) of dy/dx = g(x, y)."),
+        expr: expression.optional().describe("Right-hand side g(x, y) of dy/dx = g(x, y). Omit when giving M and N."),
+        M: expression.optional().describe("M(x, y) in M dx + N dy = 0. Requires N."),
+        N: expression.optional().describe("N(x, y) in M dx + N dy = 0. Requires M."),
         params: paramsSchema,
         ...boxShape,
         density,
@@ -297,23 +342,80 @@ export function registerTools(server: McpServer, widgetUri: string): void {
     (input) =>
       guarded(() => {
         const box = resolveBox(input);
-        const spec = firstOrderToSystem(input.expr, input.params);
-        const sys = compileOrExplain(spec);
+        const hasExpr = typeof input.expr === "string";
+        const hasMN = typeof input.M === "string" || typeof input.N === "string";
+        if (hasExpr === hasMN) {
+          throw new ToolInputError("Provide exactly one form: either `expr` (dy/dx = g) or both `M` and `N` (M dx + N dy = 0).");
+        }
+        if (hasMN && !(typeof input.M === "string" && typeof input.N === "string")) {
+          throw new ToolInputError("The differential form needs both `M` and `N`.");
+        }
+        const spec: FirstOrderSpec = hasExpr
+          ? input.params
+            ? { kind: "explicit", g: input.expr as string, params: input.params }
+            : { kind: "explicit", g: input.expr as string }
+          : input.params
+            ? { kind: "differential", M: input.M as string, N: input.N as string, params: input.params }
+            : { kind: "differential", M: input.M as string, N: input.N as string };
+        const equationText = spec.kind === "explicit" ? `dy/dx = ${spec.g}` : `(${spec.M}) dx + (${spec.N}) dy = 0`;
+
+        const systemSpec = toSystem(spec);
+        const sys = compileOrExplainFirstOrder(spec, systemSpec);
         const field = sampleField(sys, box, input.density, input.density);
-        const eq = firstOrderEquilibria(input.expr, box.y, { params: input.params, xRange: box.x });
+        const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x });
+        const singular = firstOrderSingularities(spec, box);
+        const forms = detectForms(spec, box, "zh");
+
+        let implicit: NonNullable<Scene["firstOrder"]>["implicit"];
+        if (forms.some((f) => f.form === "exact")) {
+          const pot = exactPotential(spec, box);
+          if (pot.consistent) {
+            const levels = potentialLevels(pot.F, box, 8).map((level) => ({ level, segments: contourSegments(pot.F, box, level, 60, 60) }));
+            implicit = { levels, pathDeviation: pot.pathDeviation };
+          }
+        }
+
         const scene: Scene = {
           kind: "analyze_first_order",
-          system: spec,
+          system: systemSpec,
           box,
           field,
-          firstOrder: { expr: input.expr, autonomous: eq.autonomous, solutions: eq.solutions },
+          fieldStyle: spec.kind === "differential" ? "segments" : "arrows",
+          firstOrder: {
+            expr: equationText,
+            spec,
+            autonomous: eq.autonomous,
+            solutions: eq.solutions,
+            singularities: singular.points,
+            forms,
+            formsNote: forms.length === 0 ? NO_FORM_NOTE.zh : undefined,
+            implicit,
+          },
         };
-        const lines = eq.autonomous
-          ? eq.solutions.length
-            ? eq.solutions.map((s) => `平衡解 y = ${fmt(s.y, 6)}：${STABILITY_ZH[s.stability]}。`)
-            : ["方程是自治的，但在观察范围内 g(y) 没有零点，因此没有平衡解。"]
-          : ["右端依赖 x，方程不是自治的，不存在常数形式的平衡解；请看斜率场。"];
-        return ok(`方程 dy/dx = ${input.expr}，观察范围 x∈[${fmt(box.x.min)}, ${fmt(box.x.max)}]，y∈[${fmt(box.y.min)}, ${fmt(box.y.max)}]。\n${lines.join("\n")}`, scene);
+
+        const lines: string[] = [];
+        lines.push(`方程 ${equationText}，观察范围 x∈[${fmt(box.x.min)}, ${fmt(box.x.max)}]，y∈[${fmt(box.y.min)}, ${fmt(box.y.max)}]。`);
+        if (spec.kind === "differential") lines.push("微分形式没有天然的正方向，方向场画成无向线段。");
+        if (field.singularCount) lines.push(`方向场在 ${field.singularCount} 个采样点上无定义或无穷大。`);
+        if (singular.points.length) {
+          lines.push(`方向场奇点（M = N = 0，此处方向无定义）：${singular.points.map(fmtPoint).join("、")}${singular.warning ? "（数量已截断）" : ""}。`);
+        }
+        if (eq.solutions.length) {
+          for (const s of eq.solutions) lines.push(`常数解 y = ${fmt(s.y, 6)}：${STABILITY_ZH[s.stability]}。`);
+        } else {
+          lines.push(eq.autonomous ? "方程是自治的，但在观察范围内没有常数解。" : "在观察范围内没有常数解（右端依赖 x；斜率场仍然有效）。");
+        }
+        if (forms.length) {
+          lines.push("方程类型（数值探测，只表示「与该形式一致」，不是证明）：");
+          for (const f of forms) lines.push(`- 在数值上表现得像${FORM_ZH[f.form]}。${f.evidence}`);
+          lines.push(`注意：${forms[0].caveat}`);
+        } else {
+          lines.push(NO_FORM_NOTE.zh);
+        }
+        if (implicit) {
+          lines.push(`方程恰当：已数值求出势函数 F(x, y)，图中紫色曲线是隐式解 F(x, y) = C（画了 ${implicit.levels.length} 条等值线）。两条积分路径的相对偏差 ${implicit.pathDeviation.toExponential(1)}，这本身就是恰当性的独立验证。`);
+        }
+        return ok(lines.join("\n"), scene);
       }),
   );
 }

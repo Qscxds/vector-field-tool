@@ -90,10 +90,29 @@ function draw(ctx: CanvasRenderingContext2D, scene: Scene, size: { width: number
 
   drawGrid(ctx, v);
   if (scene.field) drawArrows(ctx, v, scene, arrowMode);
+  if (scene.firstOrder?.implicit) drawImplicit(ctx, v, scene.firstOrder.implicit.levels);
   if (scene.firstOrder) drawFirstOrderLines(ctx, v, scene);
   if (scene.trajectories) drawTrajectories(ctx, v, scene);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
   if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
+}
+
+/** Implicit solutions F(x, y) = C of an exact equation: thin violet level curves. */
+function drawImplicit(ctx: CanvasRenderingContext2D, v: Viewport, levels: { level: number; segments: [Vec2, Vec2][] }[]): void {
+  ctx.strokeStyle = "#7c3aed";
+  ctx.lineWidth = 1.2;
+  ctx.globalAlpha = 0.85;
+  for (const { segments } of levels) {
+    ctx.beginPath();
+    for (const [a, b] of segments) {
+      const sa = worldToScreen(v, a);
+      const sb = worldToScreen(v, b);
+      ctx.moveTo(sa.x, sa.y);
+      ctx.lineTo(sb.x, sb.y);
+    }
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
 }
 
 /** Direction-field singularities (M = N = 0): an orange ring with a dot, "no direction here". */
