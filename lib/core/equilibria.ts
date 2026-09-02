@@ -69,11 +69,16 @@ function newton(
   if (!isFiniteVec(F)) return null;
   let fNorm = norm(F);
   const escape = 2 * scale; // how far outside the box a seed may wander before we give up
+  // Converge on the step as well as on the residual: at a multiple root the residual reaches fTol
+  // while the point is still ~sqrt(fTol) away, and different seeds would stop at different places
+  // (each then mis-classified as hyperbolic). Newton still shrinks the step geometrically there.
+  const stepTol = 1e-13 * scale;
+  let lastStep = Infinity;
 
   for (let iter = 0; iter < maxIterations; iter++) {
-    if (fNorm <= fTol) return p;
+    if (fNorm <= fTol && lastStep <= stepTol) return p;
     const dir = newtonDirection(jacobianAt(sys, p), F, scale);
-    if (dir === null || !isFiniteVec(dir)) return null;
+    if (dir === null || !isFiniteVec(dir)) return fNorm <= fTol ? p : null;
 
     // Backtracking: accept the first step that does not increase the residual.
     let step = 1;
@@ -82,6 +87,7 @@ function newton(
       const q = { x: p.x + step * dir.x, y: p.y + step * dir.y };
       const Fq = sys.eval(q);
       if (isFiniteVec(Fq) && norm(Fq) < fNorm) {
+        lastStep = step * norm(dir);
         p = q;
         F = Fq;
         fNorm = norm(Fq);
@@ -90,7 +96,8 @@ function newton(
       }
       step /= 2;
     }
-    if (!accepted) return null;
+    // No decrease possible: either we are at the root up to rounding, or the seed is hopeless.
+    if (!accepted) return fNorm <= fTol ? p : null;
     if (
       p.x < box.x.min - escape || p.x > box.x.max + escape ||
       p.y < box.y.min - escape || p.y > box.y.max + escape
@@ -130,7 +137,9 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   const fTol = tol * Math.max(1, typical);
 
   const found: Vec2[] = [];
-  const margin = 1e-9 * scale;
+  // Equilibria sitting exactly on a box edge are legitimate; allow the located point to overshoot
+  // the edge by the same amount we use to merge duplicates.
+  const margin = 1e-6 * scale;
   const dedupe = 1e-6 * scale;
   for (const seed of seeds) {
     const p = newton(sys, seed, box, scale, fTol, maxIterations);

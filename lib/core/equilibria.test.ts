@@ -82,6 +82,34 @@ describe("findEquilibria", () => {
     }
   });
 
+  it("reports an isolated non-hyperbolic equilibrium once, honestly (x'=x², y'=-y)", () => {
+    // The only zero is (0,0) with J = [[0,0],[0,-1]]: one eigenvalue is 0. A residual-only Newton
+    // would stop at x ~ ±sqrt(tol) and report several 'saddles' / 'nodes' instead.
+    const r = findEquilibria(compileSystem({ f: "x^2", g: "-y" }), box(-2, 2));
+    expect(r.points).toHaveLength(1);
+    expect(near(r.points[0].at, 0, 0, 1e-6)).toBe(true);
+    expect(r.points[0].classification).toBe("non_hyperbolic");
+    expect(r.points[0].caveat).toBeTruthy();
+    expect(r.warning).toBeUndefined();
+  });
+
+  it("keeps an equilibrium that lies exactly on the box edge", () => {
+    const r = findEquilibria(compileSystem({ f: "x - 1", g: "y" }), box(-1, 1));
+    expect(r.points).toHaveLength(1);
+    expect(near(r.points[0].at, 1, 0)).toBe(true);
+    // J = identity: eigenvalue 1 twice with two eigenvectors -> star node (unstable).
+    expect(r.points[0].classification).toBe("star_node");
+    expect(r.points[0].trace).toBeCloseTo(2, 6);
+  });
+
+  it("locates a centre precisely enough that its trace really is zero to tolerance", () => {
+    // Lotka-Volterra at (1,1): tr(J) = (1-y) + (x-1) = x - y is exactly the location error.
+    const r = findEquilibria(compileSystem({ f: "x - x*y", g: "x*y - y" }), box(-0.5, 3), { tol: 1e-6 });
+    const coexist = r.points.find((p) => near(p.at, 1, 1, 1e-6))!;
+    expect(Math.abs(coexist.trace)).toBeLessThan(1e-9);
+    expect(coexist.classification).toBe("center_or_weak_spiral");
+  });
+
   it("survives singular fields (1/x) without throwing", () => {
     const r = findEquilibria(compileSystem({ f: "1/x", g: "y" }), box(-1, 1));
     expect(r.warning).toBe("none_found");
