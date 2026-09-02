@@ -20,17 +20,22 @@ describe("jacobianAt", () => {
   });
 
   it("keeps precision far from the origin thanks to the relative step", () => {
+    // f = x^2 at x = 1e6: with a fixed h = 1e-6 the values f(x ± h) ~ 1e12 are only resolved to an
+    // ulp of ~1e-4, so the difference quotient carries an error of ~1e-4 / 2e-6 = 50, i.e. 2.5e-5
+    // relative. The relative step h = 1 gives (x+1)^2 - (x-1)^2 = 4x exactly in floating point.
     const sys = compileSystem({ f: "x^2", g: "y^2" });
-    const J = jacobianAt(sys, { x: 1000, y: -500 });
-    expect(J[0][0] / 2000).toBeCloseTo(1, 7);
-    expect(J[1][1] / -1000).toBeCloseTo(1, 7);
+    const J = jacobianAt(sys, { x: 1e6, y: -5e5 });
+    expect(Math.abs(J[0][0] / 2e6 - 1)).toBeLessThan(1e-9);
+    expect(Math.abs(J[1][1] / -1e6 - 1)).toBeLessThan(1e-9);
     expect(Math.abs(J[0][1])).toBeLessThan(1e-3);
     expect(Math.abs(J[1][0])).toBeLessThan(1e-3);
   });
 
-  it("accepts an explicit step", () => {
-    const sys = compileSystem({ f: "sin(x)", g: "0" });
-    expect(jacobianAt(sys, { x: 0, y: 0 }, 1e-4)[0][0]).toBeCloseTo(1, 7);
+  it("uses an explicit step when given", () => {
+    // f = x^3 at 0: the central difference is exactly h^2, so the step is observable in the result.
+    const sys = compileSystem({ f: "x^3", g: "0" });
+    expect(jacobianAt(sys, { x: 0, y: 0 }, 1e-2)[0][0]).toBeCloseTo(1e-4, 12);
+    expect(jacobianAt(sys, { x: 0, y: 0 }, 1e-3)[0][0]).toBeCloseTo(1e-6, 14);
   });
 
   it("returns non-finite entries when the stencil hits undefined values instead of throwing", () => {
