@@ -93,6 +93,23 @@ function draw(ctx: CanvasRenderingContext2D, scene: Scene, size: { width: number
   if (scene.firstOrder) drawFirstOrderLines(ctx, v, scene);
   if (scene.trajectories) drawTrajectories(ctx, v, scene);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
+  if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
+}
+
+/** Direction-field singularities (M = N = 0): an orange ring with a dot, "no direction here". */
+function drawSingularities(ctx: CanvasRenderingContext2D, v: Viewport, points: Vec2[]): void {
+  for (const p of points) {
+    const s = worldToScreen(v, p);
+    ctx.strokeStyle = COLORS.backward;
+    ctx.fillStyle = COLORS.backward;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 6, 0, 2 * Math.PI);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 1.5, 0, 2 * Math.PI);
+    ctx.fill();
+  }
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
@@ -129,7 +146,8 @@ function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
 function drawArrows(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, mode: ArrowMode): void {
   if (!scene.field) return;
   const arrows = scaleArrows(scene.field, v, mode);
-  ctx.lineWidth = 1.2;
+  const segments = scene.fieldStyle === "segments";
+  ctx.lineWidth = segments ? 1.6 : 1.2;
   for (const a of arrows) {
     if (a.singular) {
       ctx.strokeStyle = a.color;
@@ -151,6 +169,7 @@ function drawArrows(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, mo
     ctx.moveTo(a.from.x, a.from.y);
     ctx.lineTo(a.to.x, a.to.y);
     ctx.stroke();
+    if (segments) continue; // undirected: no arrow head
     const head = arrowPolygon(a.from, a.to, Math.min(6, len * 0.45));
     if (head.length === 3) {
       ctx.beginPath();

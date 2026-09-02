@@ -3,10 +3,11 @@
  * Every visual tool returns a Scene as `structuredContent`; components only ever receive a Scene.
  * Pure types, no runtime code.
  */
+import type { FormDetection } from "./core/detect-form";
 import type { Equilibrium, EquilibriaResult } from "./core/equilibria";
 import type { FieldGrid } from "./core/field";
 import type { IntegrationStatus } from "./core/integrate";
-import type { EquilibriumSolution } from "./core/slope-field";
+import type { EquilibriumSolution, FirstOrderSpec } from "./core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "./core/types";
 
 export type SceneKind = "ping" | "sample_field" | "analyze_system" | "trace_trajectory" | "analyze_first_order";
@@ -22,10 +23,26 @@ export type TrajectoryView = {
 };
 
 export type FirstOrderView = {
+  /** Human-readable equation: "g" for dy/dx = g, or "M dx + N dy = 0". */
   expr: string;
+  /** The equation itself, so a client can recompute locally (zoom, pan, hover). */
+  spec?: FirstOrderSpec;
   autonomous: boolean;
   solutions: EquilibriumSolution[];
+  /** Points where M = N = 0: the direction is undefined there. */
+  singularities?: Vec2[];
+  /** Numerically detected standard forms (never proofs; each carries a caveat). */
+  forms?: FormDetection[];
+  /** Positive statement shown when no standard form was detected. */
+  formsNote?: string;
 };
+
+/**
+ * How the sampled field should be drawn. A first-order equation in differential form has no
+ * natural direction (M dx + N dy = 0 and -M dx - N dy = 0 are the same equation), so it is drawn
+ * as undirected segments; explicit dy/dx = g and autonomous systems get arrows.
+ */
+export type FieldStyle = "arrows" | "segments";
 
 export type Scene = {
   kind: SceneKind;
@@ -33,6 +50,7 @@ export type Scene = {
   system?: SystemSpec;
   box?: Box;
   field?: FieldGrid;
+  fieldStyle?: FieldStyle;
   trajectories?: TrajectoryView[];
   start?: Vec2;
   equilibria?: Equilibrium[];
