@@ -50,17 +50,31 @@ async function normalizeProtocolVersion(req: Request): Promise<Request> {
   return new Request(req.url, { method: req.method, headers, body: await req.text() });
 }
 
+/** One line per POST so hosts' behaviour is visible in dev and in deployment logs. */
 async function logRequest(req: Request, body: string): Promise<void> {
-  if (process.env.NODE_ENV === "production") return;
-  let method = "?";
+  let summary = "?";
   try {
-    const parsed = JSON.parse(body) as { method?: string } | { method?: string }[];
-    method = Array.isArray(parsed) ? parsed.map((m) => m.method ?? "?").join(",") : parsed.method ?? "?";
+    const parsed = JSON.parse(body) as
+      | { method?: string; params?: Record<string, unknown> }
+      | { method?: string; params?: Record<string, unknown> }[];
+    const describe = (m: { method?: string; params?: Record<string, unknown> }) => {
+      const p = m.params ?? {};
+      const detail =
+        m.method === "resources/read"
+          ? ` ${String(p.uri)}`
+          : m.method === "tools/call"
+            ? ` ${String(p.name)}`
+            : m.method === "initialize"
+              ? ` ${JSON.stringify((p.clientInfo as { name?: string } | undefined)?.name)} proto=${String(p.protocolVersion)}`
+              : "";
+      return `${m.method ?? "?"}${detail}`;
+    };
+    summary = Array.isArray(parsed) ? parsed.map(describe).join(",") : describe(parsed);
   } catch {
-    method = "(unparseable)";
+    summary = "(unparseable)";
   }
   console.log(
-    `[mcp] ${method} version=${req.headers.get("mcp-protocol-version") ?? "-"} ua=${req.headers.get("user-agent") ?? "-"}`,
+    `[mcp] ${summary} version=${req.headers.get("mcp-protocol-version") ?? "-"} ua=${req.headers.get("user-agent") ?? "-"}`,
   );
 }
 
