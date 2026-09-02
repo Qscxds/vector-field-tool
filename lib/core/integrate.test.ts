@@ -81,8 +81,11 @@ describe("stop conditions", () => {
     expect(tr.status).toBe("blew_up");
     expect(allFinite(tr)).toBe(true);
     const tLast = tr.times[tr.times.length - 1];
+    // x(t) = 1/(1-t) stays below the 1e6 speed cutoff (|x²| <= 1e6, i.e. x <= 1000) until
+    // t = 0.999, so a correct integrator must get well past 0.9 before it may stop.
     expect(tLast).toBeLessThan(1.01);
-    expect(tLast).toBeGreaterThan(0.5);
+    expect(tLast).toBeGreaterThan(0.9);
+    expect(last(tr).x).toBeGreaterThan(9); // x(0.9) = 10
   });
 
   it("stops when leaving the box and keeps the exiting point", () => {
@@ -188,7 +191,10 @@ describe("integrateAdaptive (Dormand-Prince 5(4))", () => {
     const tr = integrateAdaptive(compileSystem({ f: "x^2", g: "0" }), { x: 1, y: 0 }, 2, { h: 0.01 });
     expect(tr.status).toBe("blew_up");
     expect(allFinite(tr)).toBe(true);
-    expect(tr.times[tr.times.length - 1]).toBeLessThan(1.001);
+    const tLast = tr.times[tr.times.length - 1];
+    expect(tLast).toBeLessThan(1.001);
+    expect(tLast).toBeGreaterThan(0.9); // see the RK4 case: the solution is tame until t ~ 0.999
+    expect(last(tr).x).toBeGreaterThan(9);
   });
 
   it("integrates backward as well", () => {
