@@ -60,8 +60,14 @@ for (const [name, args, verify] of calls) {
 
 const bad = await rpc("tools/call", { name: "analyze_system", arguments: { f: "xy", g: "y" } });
 check("tools/call invalid expression -> isError result", bad.msg?.result?.isError === true && /x\*y/.test(bad.msg.result.content[0].text), JSON.stringify(bad.msg).slice(0, 300));
+// Schema violations: the SDK reports them either as JSON-RPC -32602 or as an isError result whose
+// text names the field (SDK 1.30 does the latter). Both are spec-compliant; HTTP 500 is not.
 const outOfRange = await rpc("tools/call", { name: "sample_field", arguments: { f: "x", g: "y", density: 999 } });
-check("tools/call out-of-range param -> JSON-RPC error, not 500", outOfRange.status === 200 && outOfRange.msg?.error?.code === -32602, JSON.stringify(outOfRange.msg).slice(0, 300));
+const oorMsg = outOfRange.msg ?? {};
+const oorOk =
+  outOfRange.status === 200 &&
+  (oorMsg.error?.code === -32602 || (oorMsg.result?.isError === true && /density/.test(oorMsg.result.content?.[0]?.text ?? "")));
+check("tools/call out-of-range param -> MCP validation error naming the field, not 500", oorOk, JSON.stringify(outOfRange.msg).slice(0, 300));
 
 const resources = await rpc("resources/list");
 const widget = (resources.msg?.result?.resources ?? []).find((r) => r.uri.startsWith("ui://vector-field-tool/"));
