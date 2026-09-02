@@ -22,14 +22,24 @@ function asScene(value: unknown): Scene | null {
 
 type Phase = "idle" | "input" | "result";
 
-/** Width of the widget's container, so the canvas fills whatever the host gives us. */
+/**
+ * Width of the widget's content area, so the canvas fills whatever the host gives us.
+ * Measured on a padding-free wrapper (so the canvas never overflows horizontally) and only
+ * re-applied for changes of 4px or more: the host resizes the iframe from our size-changed
+ * notifications, and reacting to every sub-pixel wobble would feed that loop.
+ */
 function useContainerWidth<T extends HTMLElement>(fallback: number) {
   const ref = useRef<T>(null);
   const [width, setWidth] = useState(fallback);
   useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    const update = () => setWidth(Math.max(320, Math.min(760, Math.floor(el.getBoundingClientRect().width))));
+    const update = () => {
+      const measured = Math.floor(el.getBoundingClientRect().width);
+      if (measured <= 0) return;
+      const next = Math.max(320, Math.min(760, measured));
+      setWidth((prev) => (Math.abs(prev - next) < 4 ? prev : next));
+    };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
@@ -66,7 +76,11 @@ export default function WidgetPage() {
   const canvasHeight = Math.round(width * 0.68);
 
   return (
-    <main ref={ref} style={{ padding: "8px 10px 10px", fontSize: 13, lineHeight: 1.45, color: "#1f2933", background: "#fff" }}>
+    <main style={{ padding: "8px 10px 10px", fontSize: 13, lineHeight: 1.45, color: "#1f2933", background: "#fff" }}>
+      {/* The host sizes the iframe from our size-changed notifications; scrollbars inside the widget
+          would change the available width and start a resize oscillation. */}
+      <style>{"html, body { overflow: hidden; }"}</style>
+      <div ref={ref} style={{ width: "100%" }} />
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
         <span
           aria-hidden
@@ -88,7 +102,7 @@ export default function WidgetPage() {
         <pre style={preStyle}>{JSON.stringify({ message: scene.message }, null, 2)}</pre>
       ) : scene?.box ? (
         <>
-          <VectorFieldCanvas scene={scene} width={width - 2} height={canvasHeight} />
+          <VectorFieldCanvas scene={scene} width={width} height={canvasHeight} />
           <SceneSummary scene={scene} />
         </>
       ) : (
