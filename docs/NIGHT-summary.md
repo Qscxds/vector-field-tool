@@ -1,6 +1,6 @@
 # 夜跑总结（2026-09-02 夜）
 
-**跑到了哪个阶段**：A、B、C、D、E 五个阶段全部完成，之后又根据后台审查修了计算内核的 12 处 bug（`[A-fix]` 系列提交）。
+**跑到了哪个阶段**：A、B、C、D、E 五个阶段全部完成，之后又根据后台审查修了计算内核的 13 处 bug（`[A-fix]` 系列提交）。
 **最后一个已知良好的 tag**：`night-final`（指向本总结的文档提交；最后一次代码提交是 `e93d525`，三绿验证就在它上面跑的）。分阶段回滚点：`p0-verified` → `a-core-done` → `b-tools-done` → `c-render-done` → `d-webshell-done` → `e-widget-done`。
 **你需要手动验证**：(1) Claude 里**断开重连**连接器后调用 `analyze_system`，看 widget 是否渲染出相图（资源地址已从 `ping.html?v=p0-5` 改为 `widget.html?v=e-1`）；(2) 用 `ping` 判断链路；(3) 推 GitHub、部署 Vercel（未做）。
 
@@ -13,7 +13,7 @@
 | C | `lib/render/`（视口、箭头、刻度、颜色）+ `components/VectorFieldCanvas.tsx` | 155 个单测；tsc + build | `c-render-done` |
 | D | `app/vector-field/` 网页外壳，7 个预设，点击加轨线 | 内置浏览器逐个点预设：画布非白像素 1.9 万到 2.6 万、平衡点列表与手推一致、错误横幅可读、控制台无 error | `d-webshell-done` |
 | E | `app/widget/page.tsx` 用 Scene 渲染；四个工具挂 `_meta.ui.resourceUri`；版本号 `e-1` | 冒烟 15/15；本地模拟主机（不同源沙箱 iframe + 规范 CSP）中 `analyze_system` 与 `analyze_first_order` 两种场景渲染成功、握手与 size-changed 正常 | `e-widget-done` |
-| 修复 | classify 容差、equilibria 二重根、slope-field 极点与自治性、integrate 边界情况、parse 安全加固 | 179 个单测；tsc；build | `night-final` |
+| 修复 | classify 容差与溢出、equilibria 二重根、slope-field 极点与自治性、integrate 边界情况、parse 安全加固 | 180 个单测；tsc；build | `night-final` |
 
 所有偏离原文档的决定：`docs/NIGHT-decisions.md`。需要你拍板的事：`docs/NIGHT-open-questions.md`。
 
@@ -24,7 +24,7 @@ A 阶段结束后起了一组只读的对抗式审查子智能体，四个视角
 - **已修复（会影响学生所见的）**：classify 的绝对容差下限（慢系统误判非双曲）、星形/退化判据不一致、重根分支特征值不一致；equilibria 二重根被拆成多个假双曲点、盒边平衡点被丢、中心的迹精度依赖 tol；slope-field 把极点当平衡解、自治性探测可被绕过、切触型判据过严；integrate 的 `max_steps` 与恰好落点冲突、`atol=0` NaN 死循环、极小初始步误报、起点在盒外、选项不校验；parse 的 `x^1e-13` CPU 拒绝服务、深层嵌套抛 RangeError、参数名劫持、函数参数个数不检查、比较运算 1e-12 模糊带、非有限字面量。
 - **测试收紧或补充**（没有放宽任何容差）：能量漂移 < 1e-8、一步 RK4 精确等于四阶泰勒、爆破测试下界、步长缩小只比控制器步、雅可比测试让固定步长必然失败、分类边界、孤立非双曲点、盒边点、解析器加固全套。
 - **有意不修**（见 open-questions）：FSAL 未利用、盒外场无定义时的状态归类、`maxSpeed` 判据对刚性解、连续解集启发式、超大矩阵溢出、mathjs 的 `50%` / `2e-3x` 语法。
-- 51 条发现的两两交叉验证在我收工时仍在后台跑，不影响仓库。
+- **交叉验证已完成**（每条发现由一个「质疑者」和一个「复现者」独立判定）：**41 条被驳回**，其中绝大多数是因为验证时代码已经修好、无法复现，等于对上面那批修复的独立确认；**2 条有争议**（残差容差的机制描述、积分器跨过极小无定义区域），都属于已记录的已知限制；**8 条确认仍存在**，其中 1 条今晚随即修了（classify 在元素约 1e154 以上时行列式溢出，把双曲矩阵报成非双曲并附错误的 caveat；现在所有判定都在按最大元素归一化的矩阵上做，`9e56ea9`），其余 7 条是有意不修或只影响文档/测试的项：连续解集启发式、盒外场无定义时的状态归类、`maxSpeed` 对刚性解、FSAL 未利用、mathjs 的 `%` 与 `#` 语法、一条针对旧版雅可比测试的意见（新版测试已让固定步长必然失败）、以及「自适应误差与 rtol 成比例」这条我有意没写的测试。
 
 ## 完整验证（收工前最后一次运行）
 
@@ -95,7 +95,7 @@ p0-verified
 
 ## 早上给你的验证清单（按最快发现问题排序）
 
-1. **`npm test`**（几秒）。179 个全过才往下走。红了：`git reset --hard e-widget-done` 回到修复之前（五个阶段都在），或 `git bisect` 定位。
+1. **`npm test`**（几秒）。180 个全过才往下走。红了：`git reset --hard e-widget-done` 回到修复之前（五个阶段都在），或 `git bisect` 定位。
 2. **`npm run dev`，打开 http://localhost:3000/vector-field**，逐个点 7 个预设：简谐振子应是同心圆的场、阻尼振子是内旋螺旋、Lotka–Volterra 有鞍点叉和 (1,1) 的问号圆、Van der Pol 从原点附近点击应出现极限环、单摆有交替的问号圆和叉、Logistic 有 y=0 红虚线和 y=1 绿实线。图不对：`git reset --hard d-webshell-done`。
 3. **widget**：另开终端 `cloudflared tunnel --url http://localhost:3000`（如果原来的 cloudflared 还活着就用原地址），然后 `$env:BASE_URL="https://<隧道地址>"; npm run dev`。Claude 设置里把 vector-field-tool **断开再重连**，新对话说「用 analyze_system 分析 x' = x - x*y, y' = x*y - y，范围 -0.5 到 3」。应看到相图 widget。只有文字或空白：先用 ping 判断传输层，再看 README 排错一节；widget 弄坏了链路就 `git reset --hard d-webshell-done`（ping 仍在，widget 回到 P0 版）。
 4. **`npm run smoke`**（要先起服务器）：15 项，含 widget HTML、CSP、版本号。
