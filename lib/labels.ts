@@ -41,7 +41,7 @@ export type LabelTable = {
     | "formsHeading" | "implicitHeading" | "lastTrajectory" | "toward" | "language" | "shownRange"
     | "interactionHint" | "hoverUndefined" | "connectedWaiting" | "computing" | "connected" | "notConnected"
     | "notRenderedByHost" | "localComputeUnavailable" | "rangeError" | "xRangeError" | "yRangeError" | "exprError"
-    | "featuresBox",
+    | "featuresBox" | "leftFarBox",
     string
   >;
 };
@@ -68,11 +68,12 @@ export const LABELS: Record<Locale, LabelTable> = {
     status: {
       completed: "积分到指定时间结束",
       left_box: "轨线离开了观察范围后停止",
-      reached_equilibrium: "轨线趋近一个平衡点后停止（速度小于 1e-8）",
+      reached_equilibrium: "轨线趋近一个平衡点后停止（速度降到起始速度的 1e-8 以下）",
       blew_up: "解的位置在有限时间内发散（离开了有限范围），在最后一个有限点停止",
-      singular: "在最后一个有限点停止：向量场在这里无定义、无穷大或不连续，无法继续积分",
+      singular: "在最后一个有限点停止：向量场在这里无定义或无穷大，无法继续积分",
+      domain_edge: "到达向量场定义域的边界后停止（场在这一点有限，再往前就无定义）",
       arc_length: "画到指定长度后停止",
-      max_steps: "达到步数上限后停止（解仍然有界；刚性方程会把步长压得很小）",
+      max_steps: "在到达指定时间前停止（步数或步长耗尽），解仍然有界",
     },
     warning: {
       none_found: "在观察范围内没有找到平衡点。",
@@ -172,6 +173,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       yRangeError: "y 范围无效：下端 {min} 必须小于上端 {max}。",
       exprError: "表达式「{expr}」有问题：{message}",
       featuresBox: "以下结果按当前可见范围 x∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}] 计算；缩放或平移后会重新计算，结论依赖于所考察的范围。",
+      leftFarBox: "轨线跑到输入范围的 20 倍以外后停止",
     },
   },
   en: {
@@ -195,11 +197,12 @@ export const LABELS: Record<Locale, LabelTable> = {
     status: {
       completed: "integrated to the requested time",
       left_box: "stopped after leaving the viewing box",
-      reached_equilibrium: "stopped after approaching an equilibrium (speed below 1e-8)",
+      reached_equilibrium: "stopped after approaching an equilibrium (speed fell below 1e-8 of its initial value)",
       blew_up: "the position diverges in finite time (it left the finite range); stopped at the last finite point",
-      singular: "stopped at the last finite point: the vector field is undefined, infinite or discontinuous there, so the integration cannot continue",
+      singular: "stopped at the last finite point: the vector field is undefined or infinite there, so the integration cannot continue",
+      domain_edge: "stopped at the edge of the region where the field is defined (finite here, undefined just beyond)",
       arc_length: "stopped after reaching the requested curve length",
-      max_steps: "stopped at the step limit (the solution stayed bounded; a stiff equation forces tiny steps)",
+      max_steps: "stopped before the requested time (step budget or step size exhausted); the solution stayed bounded",
     },
     warning: {
       none_found: "No equilibrium points were found in the viewing box.",
@@ -299,6 +302,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       yRangeError: "Invalid y range: the lower end {min} must be smaller than the upper end {max}.",
       exprError: "Problem in the expression “{expr}”: {message}",
       featuresBox: "The results below are computed for the visible range x ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]; they are recomputed after zooming or panning, because conclusions depend on the range examined.",
+      leftFarBox: "stopped after running 20 times beyond the entered range",
     },
   },
 };

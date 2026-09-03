@@ -4,20 +4,30 @@
  * Both integrators share the same stop rules and never write a non-finite point:
  * - the POSITION becomes non-finite or leaves a huge bound   -> stop at the last finite point,
  *   (`maxPosition`, default 1e6 x the problem scale)            status 'blew_up'
- * - the field is undefined / infinite at the current point,  -> keep that point, status 'singular'
- *   or the adaptive step collapses to nothing
- * - `box` given and the new point lies outside               -> keep that point (so a drawn curve
- *                                                               reaches the border), status 'left_box'
- * - speed below `equilibriumTol`                             -> status 'reached_equilibrium'
+ * - the field is undefined / infinite at the current point   -> status 'singular' (the point is kept)
+ * - a step cannot be completed because the field becomes     -> status 'domain_edge' (the last point
+ *   undefined just ahead (sqrt, log, fractional powers)         where the field is finite is kept)
+ * - `box` given and the new point lies outside               -> the segment is cut at the border and
+ *                                                               that border point is kept, status 'left_box'
+ * - speed below `equilibriumTol` x the reference speed       -> status 'reached_equilibrium'
+ *   (reference = max(initial speed, problem scale / tSpan))
  * - `arcLength` given and the polyline reaches the limit     -> last segment cut exactly at the
  *                                                               limit, status 'arc_length'
- * - step budget exhausted                                    -> status 'max_steps'
+ * - step budget exhausted, or the adaptive step collapsed    -> status 'max_steps'
+ *   while the field stays finite (stiffness beyond reach)
  * - otherwise the final time t0 + direction * tSpan is hit exactly, status 'completed'
  *
- * Speed is deliberately NOT a blow-up criterion (decided 2026-09-03, H2.1): a large derivative is
- * not evidence that the solution diverges. x' = -1e7 x has speed 1e7 at x = 1 and decays to zero;
- * calling that "blew up" was wrong. A stiff problem makes the adaptive controller take tiny steps
- * and, if it runs out, it says so: 'max_steps', not 'blew_up'.
+ * Decisions from 2026-09-03 (H2.1 and the review that followed):
+ * - Speed is NOT a blow-up criterion: x' = -1e7 x has speed 1e7 at x = 1 and decays to zero.
+ * - Low speed is NOT an equilibrium criterion by itself either: x' = 1e-9 x moves slowly everywhere.
+ *   'reached_equilibrium' means the speed has fallen to equilibriumTol (1e-8) of a reference speed
+ *   that belongs to the problem, so the verdict does not change when the equation is rescaled.
+ * - The adaptive controller respects linear stability: after each accepted step the next step is
+ *   capped by 3 / L, L estimated from the last two stages (Hairer's stiffness estimate). Without it
+ *   a sink away from the origin was never "reached": once the error estimate was satisfied the
+ *   step grew past the stability limit and the (amplifying) steps kept the deviation at ~1e-6.
+ * - Stop points are exact where they can be: the box exit is interpolated to the border and the
+ *   arc-length stop to the limit, so the reported exit time and point do not depend on step size.
  *
  * Backward integration (direction -1) is a first-class feature: phase portraits need both halves
  * of every trajectory.
@@ -31,6 +41,7 @@ export type IntegrationStatus =
   | "reached_equilibrium"
   | "blew_up"
   | "singular"
+  | "domain_edge"
   | "arc_length"
   | "max_steps";
 
@@ -64,7 +75,10 @@ export type IntegrateOptions = {
   direction?: 1 | -1;
   /** Stop when leaving this box. */
   box?: Box;
-  /** Speed below which the point counts as an equilibrium. Default 1e-8. */
+  /**
+   * The trajectory counts as having reached an equilibrium when its speed falls below this
+   * FRACTION (default 1e-8) of the reference speed max(|v(start)|, problemScale / tSpan).
+   */
   equilibriumTol?: number;
   /**
    * Largest |x| or |y| a point may reach before the solution counts as blown up.
@@ -91,7 +105,20 @@ type Resolved = Required<Omit<IntegrateOptions, "box" | "checkpoint" | "arcLengt
   checkpoint?: () => void;
   arcLength?: Required<ArcLengthStop>;
   maxPosition: number;
+  /** max(box size, |start|, 1): the length scale of the problem. */
+  scale: number;
+  tSpan: number;
 };
+
+/**
+ * Cap on h x L (L = local Lipschitz estimate). DOPRI5 is stable on the negative real axis down to
+ * z ≈ -3.3, but stability alone is not enough near a sink: at z = -3 the numerical decay per step
+ * is R(-3) = 0.565 where the true one is e^{-3} = 0.05, so the arrival at the equilibrium would be
+ * reported far too late. At |z| <= 1 the two agree to 1e-5 and the arrival time is right within one step.
+ */
+const STABILITY_LIMIT = 1;
+/** At a collapsed step, a field this many times faster than the reference speed is exploding: 'singular'. */
+const EXPLODING_FACTOR = 1e3;
 
 const isFiniteVec = (v: Vec2): boolean => Number.isFinite(v.x) && Number.isFinite(v.y);
 const euclid = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.y);
@@ -101,18 +128,22 @@ function resolve(opts: IntegrateOptions | undefined, tSpan: number, start: Vec2)
   if (!isFiniteVec(start)) throw new RangeError("start point must be finite.");
   const box = opts?.box;
   const boxExtent = box ? Math.max(Math.abs(box.x.min), Math.abs(box.x.max), Math.abs(box.y.min), Math.abs(box.y.max)) : 0;
+  const boxSize = box ? Math.max(box.x.max - box.x.min, box.y.max - box.y.min) : 0;
+  const scale = Math.max(1, Math.abs(start.x), Math.abs(start.y), boxSize);
   const r: Resolved = {
     h: opts?.h ?? 0.01,
     maxSteps: opts?.maxSteps ?? 20000,
     direction: opts?.direction ?? 1,
     box,
     equilibriumTol: opts?.equilibriumTol ?? 1e-8,
-    maxPosition: opts?.maxPosition ?? 1e6 * Math.max(1, Math.abs(start.x), Math.abs(start.y), boxExtent),
+    maxPosition: opts?.maxPosition ?? Math.min(Number.MAX_VALUE, 1e6 * Math.max(1, Math.abs(start.x), Math.abs(start.y), boxExtent)),
     arcLength: opts?.arcLength ? { limit: opts.arcLength.limit, metric: opts.arcLength.metric ?? euclid } : undefined,
     t0: opts?.t0 ?? 0,
     rtol: opts?.rtol ?? 1e-6,
     atol: opts?.atol ?? 1e-9,
     checkpoint: opts?.checkpoint,
+    scale,
+    tSpan,
   };
   if (!(Number.isFinite(r.h) && r.h > 0)) throw new RangeError("h must be a positive finite number.");
   if (!(Number.isInteger(r.maxSteps) && r.maxSteps >= 1)) throw new RangeError("maxSteps must be a positive integer.");
@@ -129,6 +160,22 @@ function resolve(opts: IntegrateOptions | undefined, tSpan: number, start: Vec2)
 const inBox = (p: Vec2, box: Box): boolean =>
   p.x >= box.x.min && p.x <= box.x.max && p.y >= box.y.min && p.y <= box.y.max;
 const add = (p: Vec2, s: number, v: Vec2): Vec2 => ({ x: p.x + s * v.x, y: p.y + s * v.y });
+const lerp = (a: Vec2, b: Vec2, f: number): Vec2 => ({ x: a.x + f * (b.x - a.x), y: a.y + f * (b.y - a.y) });
+
+/** Fraction along prev -> p at which the segment first crosses the box border (prev inside, p outside). */
+function exitFraction(prev: Vec2, p: Vec2, box: Box): number {
+  let f = 1;
+  const edge = (from: number, to: number, bound: number) => {
+    if (to === from) return;
+    const t = (bound - from) / (to - from);
+    if (t >= 0 && t < f) f = t;
+  };
+  if (p.x < box.x.min) edge(prev.x, p.x, box.x.min);
+  if (p.x > box.x.max) edge(prev.x, p.x, box.x.max);
+  if (p.y < box.y.min) edge(prev.y, p.y, box.y.min);
+  if (p.y > box.y.max) edge(prev.y, p.y, box.y.max);
+  return Math.max(0, Math.min(1, f));
+}
 
 /** Shared bookkeeping for both integrators. */
 class Run {
@@ -137,6 +184,8 @@ class Run {
   status: IntegrationStatus | undefined;
   steps = 0;
   arc = 0;
+  /** Speed below which the point counts as an equilibrium (set at start). */
+  private equilibriumSpeed = 0;
 
   constructor(
     private readonly sys: CompiledSystem,
@@ -152,6 +201,16 @@ class Run {
 
   private withinBound(p: Vec2): boolean {
     return Math.abs(p.x) <= this.o.maxPosition && Math.abs(p.y) <= this.o.maxPosition;
+  }
+
+  /** The field at the last accepted point, if finite (used to classify a stalled step). */
+  fieldAtLast(): Vec2 | null {
+    return this.rhs(this.points[this.points.length - 1], this.times[this.times.length - 1]);
+  }
+
+  /** Reference speed for the equilibrium test: how fast this problem moves at all. */
+  referenceSpeed(): number {
+    return this.equilibriumSpeed / Math.max(this.o.equilibriumTol, 1e-300);
   }
 
   start(p: Vec2, t: number): boolean {
@@ -170,7 +229,11 @@ class Run {
       this.status = "singular";
       return false;
     }
-    if (Math.hypot(v.x, v.y) < this.o.equilibriumTol) {
+    // Reference speed: the initial speed, or the problem scale per unit of requested time if the
+    // start happens to be slow. Rescaling the equation rescales both, so the verdict is invariant.
+    const reference = Math.max(Math.hypot(v.x, v.y), this.o.scale / this.o.tSpan);
+    this.equilibriumSpeed = this.o.equilibriumTol * reference;
+    if (Math.hypot(v.x, v.y) <= this.equilibriumSpeed) {
       this.status = "reached_equilibrium";
       return false;
     }
@@ -183,16 +246,15 @@ class Run {
       this.status = "blew_up";
       return false;
     }
+    const prev = this.points[this.points.length - 1];
+    const tPrev = this.times[this.times.length - 1];
     if (this.o.arcLength) {
-      const prev = this.points[this.points.length - 1];
-      const tPrev = this.times[this.times.length - 1];
       const seg = this.o.arcLength.metric(prev, p);
       if (Number.isFinite(seg) && this.arc + seg >= this.o.arcLength.limit) {
         // Cut the last segment exactly at the limit so the curve length does not depend on the
         // step size (a straight, error-free field lets the controller take huge steps).
         const f = seg > 0 ? (this.o.arcLength.limit - this.arc) / seg : 1;
-        const q = { x: prev.x + f * (p.x - prev.x), y: prev.y + f * (p.y - prev.y) };
-        this.points.push(q);
+        this.points.push(lerp(prev, p, f));
         this.times.push(tPrev + f * (t - tPrev));
         this.steps += 1;
         this.arc = this.o.arcLength.limit;
@@ -200,6 +262,16 @@ class Run {
         return false;
       }
       if (Number.isFinite(seg)) this.arc += seg;
+    }
+    if (this.o.box && !inBox(p, this.o.box)) {
+      // Cut at the border: the exit point and time then do not depend on the step that overshot.
+      const f = exitFraction(prev, p, this.o.box);
+      const q = lerp(prev, p, f);
+      this.points.push(q);
+      this.times.push(tPrev + f * (t - tPrev));
+      this.steps += 1;
+      this.status = "left_box";
+      return false;
     }
     this.points.push(p);
     this.times.push(t);
@@ -209,11 +281,7 @@ class Run {
       this.status = "singular";
       return false;
     }
-    if (this.o.box && !inBox(p, this.o.box)) {
-      this.status = "left_box";
-      return false;
-    }
-    if (Math.hypot(v.x, v.y) < this.o.equilibriumTol) {
+    if (Math.hypot(v.x, v.y) <= this.equilibriumSpeed) {
       this.status = "reached_equilibrium";
       return false;
     }
@@ -223,6 +291,18 @@ class Run {
       return false;
     }
     return true;
+  }
+
+  /**
+   * Classifies a step that could not be completed although the last accepted point is fine:
+   * the field is exploding there ('singular'), a stage ran into undefined territory
+   * ('domain_edge'), or the controller simply cannot resolve the problem ('max_steps').
+   */
+  stalled(sawUndefinedStage: boolean): IntegrationStatus {
+    const v = this.fieldAtLast();
+    if (v === null) return "singular";
+    if (Math.hypot(v.x, v.y) > EXPLODING_FACTOR * this.referenceSpeed()) return "singular";
+    return sawUndefinedStage ? "domain_edge" : "max_steps";
   }
 
   finish(): Trajectory {
@@ -259,22 +339,32 @@ export function integrateRK4(
   let p = start;
   if (!run.start(p, t)) return run.finish();
 
-  // Fixed steps of h, with the final step shortened so we land exactly on tEnd.
-  const n = Math.max(1, Math.ceil(tSpan / o.h - 1e-9));
-  for (let i = 0; i < n; i++) {
+  // Fixed steps of h; the final step is shortened so we land exactly on tEnd. A stage that runs
+  // into undefined territory (the edge of the field's domain, e.g. sqrt(x) at x = 0) is retried
+  // with a halved step, so the walk approaches the edge instead of stopping a whole step short of
+  // it; if the edge is an equilibrium the equilibrium rule fires, otherwise 'domain_edge'.
+  let dt = o.direction * Math.min(o.h, tSpan);
+  let halvings = 0;
+  while (true) {
     o.checkpoint?.();
     const remaining = tEnd - t;
-    const dt = i === n - 1 ? remaining : Math.sign(remaining) * Math.min(o.h, Math.abs(remaining));
-    const next = rk4Step(run, p, t, dt);
+    if (Math.abs(remaining) <= tSpan * 1e-12) break;
+    const last = Math.abs(remaining) <= 1.5 * Math.abs(dt);
+    const step = last ? remaining : dt;
+    const next = rk4Step(run, p, t, step);
     if (next === null) {
-      // A stage left the domain of the field (division by zero, overflow, domain error) although
-      // the current position is finite: the field is singular within one step of here.
-      run.status = "singular";
+      if (halvings < 40) {
+        dt /= 2;
+        halvings += 1;
+        continue;
+      }
+      run.status = run.stalled(true);
       break;
     }
-    t = i === n - 1 ? tEnd : t + dt;
+    t = last ? tEnd : t + step;
     p = next;
     if (!run.accept(p, t)) break;
+    if (last) break;
   }
   return run.finish();
 }
@@ -314,6 +404,7 @@ export function integrateAdaptive(
   const maxAttempts = o.maxSteps * 20; // rejected steps also count toward this safety cap
   let attempts = 0;
   let shrunk = false; // has the controller ever had to reduce the step?
+  let sawUndefinedStage = false; // did a stage ever evaluate to a non-finite value?
 
   while (true) {
     o.checkpoint?.();
@@ -322,11 +413,9 @@ export function integrateAdaptive(
       break;
     }
     if (h < hMin && shrunk) {
-      // The controller drove the step to nothing while the position is still finite: the field is
-      // undefined, infinite or discontinuous right ahead. (A solution that really diverges is
-      // caught by the position bound before this can happen; a tiny user-supplied initial step is
-      // not an error by itself.)
-      run.status = "singular";
+      // The controller drove the step to nothing while the position is still finite: singular
+      // field ahead, the edge of the field's domain, or a problem too stiff for this resolution.
+      run.status = run.stalled(sawUndefinedStage);
       break;
     }
     if (++attempts > maxAttempts) {
@@ -338,22 +427,25 @@ export function integrateAdaptive(
 
     // Stages
     const k: Vec2[] = [];
+    const q: Vec2[] = [];
     let undefinedStage = false;
     for (let s = 0; s < 7; s++) {
-      let q = p;
+      let qs = p;
       for (let j = 0; j < s; j++) {
         const a = A[s][j];
-        if (a !== 0) q = add(q, dt * a, k[j]);
+        if (a !== 0) qs = add(qs, dt * a, k[j]);
       }
-      const v = run.rhs(q, t + C[s] * dt);
+      const v = run.rhs(qs, t + C[s] * dt);
       if (v === null) {
         undefinedStage = true;
         break;
       }
       k.push(v);
+      q.push(qs);
     }
     if (undefinedStage) {
-      // Retry with a smaller step; if that also fails the hMin guard reports the singularity.
+      // Retry with a smaller step; if that also fails the hMin guard reports what happened.
+      sawUndefinedStage = true;
       h /= 4;
       shrunk = true;
       continue;
@@ -382,9 +474,19 @@ export function integrateAdaptive(
     if (err <= 1) {
       t = last ? tEnd : t + dt;
       p = next;
+      sawUndefinedStage = false;
       if (!run.accept(p, t)) break;
       const factor = err === 0 ? 5 : Math.min(5, Math.max(0.2, 0.9 * err ** -0.2));
       h = Math.min(hMax, h * factor);
+      // Linear stability: estimate the local Lipschitz constant from the last two stages (both
+      // at t + dt) and keep h * L inside DOPRI5's stability interval. Near a sink the error
+      // estimate alone lets the step grow past that limit; the amplifying steps then hold the
+      // solution ~1e-6 away from the equilibrium for ever instead of letting it arrive.
+      const dq = euclid(q[6], q[5]);
+      const dk = euclid(k[6], k[5]);
+      if (dq > 1e-300 && Number.isFinite(dk) && dk > 0) {
+        h = Math.min(h, STABILITY_LIMIT / (dk / dq));
+      }
     } else {
       h *= Number.isFinite(err) ? Math.max(0.1, 0.9 * err ** -0.2) : 0.25;
       shrunk = true;

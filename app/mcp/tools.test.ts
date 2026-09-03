@@ -289,17 +289,23 @@ describe("trace_trajectory", () => {
     const t = r.scene.trajectories![0];
     expect(t.status).toBe("left_box");
     expect(t.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
-    expect(t.points[t.points.length - 1].x).toBeGreaterThan(1e5);
-    expect(Math.abs(t.tEnd - 1)).toBeLessThan(1e-3);
+    expect(t.points[t.points.length - 1].x).toBeCloseTo(1e5, 6); // cut exactly on the border
+    expect(Math.abs(t.tEnd - (1 - 1e-5))).toBeLessThan(1e-6); // exact exit time of 1/(1-t) = 1e5
     expect(r.text).toContain("离开了观察范围");
   });
 
   it("a stiff decay is never called a blow-up by the tool", async () => {
     const r = await call("trace_trajectory", { f: "-1e7*x", g: "0", x0: 1, y0: 0, direction: "forward", tSpan: 1, locale: "en" });
     const t = r.scene.trajectories![0];
-    expect(t.status).not.toBe("blew_up");
-    expect(["reached_equilibrium", "max_steps"]).toContain(t.status);
-    expect(Math.abs(t.points[t.points.length - 1].x)).toBeLessThan(1e-6);
+    expect(t.status).toBe("reached_equilibrium");
+    expect(Math.abs(t.points[t.points.length - 1].x)).toBeLessThan(1e-8);
+  });
+
+  it("rk4 reaches any accepted tSpan instead of truncating at 20000 steps", async () => {
+    const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 500, method: "rk4", direction: "forward", xMin: -5, xMax: 5, yMin: -5, yMax: 5, locale: "en" });
+    const t = r.scene.trajectories![0];
+    expect(t.status).toBe("completed");
+    expect(t.tEnd).toBeCloseTo(500, 6);
   });
 });
 

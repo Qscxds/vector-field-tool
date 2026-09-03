@@ -20,6 +20,11 @@ export type TrajectoryView = {
   steps: number;
   /** Time reached (signed from the start time 0). */
   tEnd: number;
+  /**
+   * What 'left_box' refers to: the viewing box of a tool call ("view", default) or the far stop box
+   * of a clicked trajectory in the shells ("far", 20x the entered range). Labels differ.
+   */
+  stop?: "view" | "far";
 };
 
 export type FirstOrderView = {

@@ -8,6 +8,7 @@ import {
   fixedStopBox,
   HOVER_DIAGONALS,
   HOVER_STEP_CAP,
+  hoverStopBox,
   screenMetric,
   traceBoth,
   traceFixed,
@@ -77,6 +78,26 @@ describe("hover preview length is measured on screen (H2.2)", () => {
     }
     // The fast preview took far fewer time units for the same picture.
     expect(Math.abs(fast[0].tEnd)).toBeLessThan(Math.abs(slow[0].tEnd) / 50);
+    // A field ten times slower than the unit oscillator has the same orbits and must get the same
+    // preview: the old 50-time-unit cap cut it short (review C12).
+    const slower = tracePreview(compileSystem({ f: "0.1*y", g: "-0.1*x" }), { x: 1, y: 0 }, viewport);
+    for (const t of slower) {
+      expect(t.status).toBe("arc_length");
+      expect(screenLength(t, metric)).toBeCloseTo(limit, 6);
+    }
+  });
+
+  it("the stop box is far enough that a straight preview from the canvas edge is cut by length, not by the box (non-square canvas)", () => {
+    const wide = fitViewport(box, 640, 435);
+    const lim = HOVER_DIAGONALS * Math.hypot(640, 435);
+    const m = screenMetric(wide);
+    // vertical field, start at the top edge of the visible box: the box would cut it 4 short sides away
+    const start = { x: 0, y: wide.box.y.max };
+    const up = tracePreview(compileSystem({ f: "0", g: "1" }), start, wide);
+    expect(up[0].status).toBe("arc_length");
+    expect(screenLength(up[0], m)).toBeCloseTo(lim, 6);
+    const stop = hoverStopBox(wide.box);
+    expect(stop.y.max - wide.box.y.max).toBeGreaterThan(lim / (435 / (wide.box.y.max - wide.box.y.min)));
   });
 
   it("zooming in keeps the on-screen length: fewer world units, same pixels", () => {
@@ -115,11 +136,12 @@ describe("fixed trajectories extend by the solution, not the view (H2.3)", () =>
   it("stops at 20x the home box, wherever the view is", () => {
     const home = { x: { min: -1, max: 1 }, y: { min: -1, max: 1 } };
     const [fwd] = traceFixed(compileSystem({ f: "5", g: "0" }), { x: 0, y: 0 }, home);
-    // Stop box is ±20; x = 5t reaches 20 at t = 4 (< 50) -> left_box with the exit point kept.
+    // Stop box is ±20; x = 5t reaches 20 at t = 4 (< 50) -> left_box, cut exactly on the border.
     expect(fwd.status).toBe("left_box");
+    expect(fwd.stop).toBe("far");
     const end = fwd.points[fwd.points.length - 1];
-    expect(end.x).toBeGreaterThanOrEqual(20);
-    expect(fwd.points[fwd.points.length - 2].x).toBeLessThanOrEqual(20);
+    expect(end.x).toBeCloseTo(20, 9);
+    expect(fwd.tEnd).toBeCloseTo(4, 9);
   });
 
   it("traceBoth honours an explicit step cap", () => {

@@ -280,7 +280,7 @@ export default function VectorFieldPage() {
             <p style={{ margin: "8px 0 0", color: "#52606d" }}>
               {L.ui.lastTrajectory}{" "}
               {lastPair
-                .map((t) => `${t.direction === "forward" ? L.tool.forward : L.tool.backward} ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status: L.status[t.status] })}`)
+                .map((t) => `${t.direction === "forward" ? L.tool.forward : L.tool.backward} ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status: t.status === "left_box" && t.stop === "far" ? L.ui.leftFarBox : L.status[t.status] })}`)
                 .join("; ")}
             </p>
           ) : null}

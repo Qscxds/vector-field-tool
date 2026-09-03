@@ -29,6 +29,12 @@ export const EXACT_PATH_TOL = 1e-6;
 
 /** Fixed trajectories: how long to integrate in each direction. */
 export const CLICK_TSPAN = 50;
+/**
+ * Hover previews are limited by on-screen length, not time: a slow field (x' = 0.1 y, y' = -0.1 x
+ * has the same orbits as the unit oscillator) must not get a shorter preview because 50 time units
+ * ran out. The arc-length limit, the step cap and the position bound end the preview.
+ */
+export const PREVIEW_TSPAN = 1e4;
 /** Fixed trajectories stop when leaving the home box grown by this factor per side: 20x overall. */
 export const FIXED_STOP_FACTOR = 9.5;
 /** Hover preview: on-screen length per direction, in canvas diagonals. */
@@ -103,11 +109,13 @@ export function fixedStopBox(homeBox: Box): Box {
 
 /**
  * Where a hover preview stops. It must lie further from every visible point than the preview's
- * on-screen length (HOVER_DIAGONALS diagonals), otherwise a straight solution would be cut by
- * the box instead of by the length rule: growing by 3 per side gives 3.5 half-widths ≥ 2√2.
+ * on-screen length (HOVER_DIAGONALS diagonals) in EVERY direction, including from a point at the
+ * edge of a non-square canvas: growing by 4 per side puts the box 4 short sides away, and
+ * 2 diagonals ≤ 2 x sqrt(short² + long²) < 4 x short whenever long < sqrt(3) x short (true for
+ * the shells' 720x520 and ~640x435 canvases).
  */
 export function hoverStopBox(visibleBox: Box): Box {
-  return expandBox(visibleBox, 3);
+  return expandBox(visibleBox, 4);
 }
 
 /** Screen-pixel distance between two world points under a viewport (affine, so segments cut exactly). */
@@ -122,6 +130,10 @@ export function screenMetric(v: Viewport): (a: Vec2, b: Vec2) => number {
 export type TraceOptions = {
   /** The trajectory ends when it leaves this box. */
   stopBox: Box;
+  /** Time span per direction; default CLICK_TSPAN. */
+  tSpan?: number;
+  /** Tag for the stop box so labels can say which box was left. Default "view". */
+  stop?: "view" | "far";
   /** Safety cap on steps per direction; default the integrator's own (20000). */
   maxSteps?: number;
   /** Stop after this on-screen length (pixels) per direction, measured with `viewport`. */
@@ -131,7 +143,7 @@ export type TraceOptions = {
 /** The solution through `start`, forward and backward, under the given stop rules. */
 export function traceBoth(sys: CompiledSystem, start: Vec2, opts: TraceOptions): TrajectoryView[] {
   return ([1, -1] as const).map((direction): TrajectoryView => {
-    const tr = integrateAdaptive(sys, start, CLICK_TSPAN, {
+    const tr = integrateAdaptive(sys, start, opts.tSpan ?? CLICK_TSPAN, {
       direction,
       box: opts.stopBox,
       h: 0.05,
@@ -144,6 +156,7 @@ export function traceBoth(sys: CompiledSystem, start: Vec2, opts: TraceOptions):
       status: tr.status,
       steps: tr.steps,
       tEnd: tr.times[tr.times.length - 1],
+      stop: opts.stop ?? "view",
     };
   });
 }
@@ -152,6 +165,7 @@ export function traceBoth(sys: CompiledSystem, start: Vec2, opts: TraceOptions):
 export function tracePreview(sys: CompiledSystem, world: Vec2, viewport: Viewport): TrajectoryView[] {
   return traceBoth(sys, world, {
     stopBox: hoverStopBox(viewport.box),
+    tSpan: PREVIEW_TSPAN,
     maxSteps: HOVER_STEP_CAP,
     screenLength: { viewport, maxPixels: HOVER_DIAGONALS * Math.hypot(viewport.width, viewport.height) },
   });
@@ -159,5 +173,5 @@ export function tracePreview(sys: CompiledSystem, world: Vec2, viewport: Viewpor
 
 /** Fixed trajectory through `world`: extends by the solution's own rule, clipped only by drawing. */
 export function traceFixed(sys: CompiledSystem, world: Vec2, homeBox: Box): TrajectoryView[] {
-  return traceBoth(sys, world, { stopBox: fixedStopBox(homeBox) });
+  return traceBoth(sys, world, { stopBox: fixedStopBox(homeBox), stop: "far" });
 }

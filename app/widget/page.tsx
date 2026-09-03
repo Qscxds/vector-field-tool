@@ -201,7 +201,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
   if (scene.warning) items.push(L.warning[scene.warning]);
   for (const t of scene.trajectories ?? []) {
-    items.push(`${t.direction === "forward" ? L.tool.forward : L.tool.backward}: ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status: L.status[t.status] })}`);
+    items.push(`${t.direction === "forward" ? L.tool.forward : L.tool.backward}: ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status: t.status === "left_box" && t.stop === "far" ? L.ui.leftFarBox : L.status[t.status] })}`);
   }
   const fo = scene.firstOrder;
   if (fo) {

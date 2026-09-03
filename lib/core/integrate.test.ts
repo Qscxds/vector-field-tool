@@ -89,14 +89,25 @@ describe("stop conditions", () => {
     expect(last(tr).x).toBeLessThanOrEqual(1e6); // the offending point is never written
   });
 
-  it("stops when leaving the box and keeps the exiting point", () => {
+  it("stops when leaving the box, with the exit point cut exactly onto the border", () => {
+    // x = t exits at x = 1, t = 1; neither the point nor the time may depend on the step size.
     const box = { x: { min: -1, max: 1 }, y: { min: -1, max: 1 } };
     const tr = integrateRK4(compileSystem({ f: "1", g: "0" }), { x: 0, y: 0 }, 10, { h: 0.01, box });
     expect(tr.status).toBe("left_box");
-    expect(last(tr).x).toBeGreaterThan(1);
-    expect(last(tr).x).toBeLessThan(1.02);
+    expect(last(tr).x).toBeCloseTo(1, 9);
+    expect(tr.times[tr.times.length - 1]).toBeCloseTo(1, 9);
     expect(tr.points.length).toBeGreaterThan(99);
     expect(tr.points.length).toBeLessThan(104);
+    // the adaptive integrator takes steps up to tSpan/4 = 2.5 here and must land on the same border point
+    const ad = integrateAdaptive(compileSystem({ f: "1", g: "0" }), { x: 0, y: 0 }, 10, { box });
+    expect(ad.status).toBe("left_box");
+    expect(last(ad).x).toBeCloseTo(1, 9);
+    expect(ad.times[ad.times.length - 1]).toBeCloseTo(1, 9);
+    // a diagonal exit hits the first violated edge: from (0, 0.5) with velocity (1, 1) the top edge y = 1 comes first, at t = 0.5
+    const diag = integrateAdaptive(compileSystem({ f: "1", g: "1" }), { x: 0, y: 0.5 }, 10, { box });
+    expect(diag.status).toBe("left_box");
+    expect(last(diag).y).toBeCloseTo(1, 9);
+    expect(last(diag).x).toBeCloseTo(0.5, 9);
   });
 
   it("detects arrival at an equilibrium", () => {
@@ -145,31 +156,29 @@ describe("stop conditions", () => {
 describe("blow-up is decided by the position, never by the speed (H2.1)", () => {
   const stiff = compileSystem({ f: "-1e7*x", g: "0" });
 
-  it("x' = -1e7 x from (1, 0) decays to zero and is never called a blow-up (default tolerances)", () => {
-    // Exact solution x = e^{-1e7 t}: speed 1e7 at the start, yet bounded and monotone. With the
-    // default absolute tolerance 1e-9 the controller cannot resolve positions below ~1e-9, so it
-    // may jitter there until the step budget ends: that is a bounded solution at the step limit
-    // (max_steps) or an equilibrium, never blew_up.
+  it("x' = -1e7 x from (1, 0) decays to zero and reaches the equilibrium (default tolerances)", () => {
+    // Exact solution x = e^{-1e7 t}: speed 1e7 at the start, yet bounded and monotone. The
+    // reference speed is the initial 1e7, so 'reached' means 1e7 x < 1e-8 * 1e7, i.e. x < 1e-8,
+    // at t = ln(1e8) / 1e7 ≈ 1.84e-6. The stability cap h <= 3 / 1e7 keeps every accepted step
+    // contracting, so the controller cannot jitter around the sink.
     const tr = integrateAdaptive(stiff, { x: 1, y: 0 }, 1, { h: 0.05 });
-    expect(["reached_equilibrium", "max_steps"]).toContain(tr.status);
+    expect(tr.status).toBe("reached_equilibrium");
     expect(allFinite(tr)).toBe(true);
-    expect(Math.abs(last(tr).x)).toBeLessThan(1e-6);
+    expect(last(tr).x).toBeGreaterThanOrEqual(0);
+    expect(last(tr).x).toBeLessThan(1e-8);
+    const tEnd = tr.times[tr.times.length - 1];
+    expect(tEnd).toBeGreaterThan(1.5e-6);
+    expect(tEnd).toBeLessThan(1e-3);
+    expect(tr.steps).toBeLessThan(2000);
     // No accepted point ever exceeds the start: the controller never lets the solution grow.
     for (const p of tr.points) expect(Math.abs(p.x)).toBeLessThanOrEqual(1);
   });
 
-  it("with pure relative control (atol = 0) the stiff decay reaches the equilibrium exactly", () => {
-    // It counts as an equilibrium once |x'| = 1e7 x < 1e-8, i.e. x < 1e-15, at
-    // t = ln(1e15) / 1e7 ≈ 3.45e-6. Relative control keeps z = -1e7 h small (|R5 - R4| ≤ 1e-6
-    // forces |z| ≲ 0.16), so x decays by a fixed factor per step and gets there in a few hundred steps.
+  it("the same with pure relative control (atol = 0)", () => {
     const tr = integrateAdaptive(stiff, { x: 1, y: 0 }, 1, { h: 0.05, atol: 0 });
     expect(tr.status).toBe("reached_equilibrium");
-    expect(last(tr).x).toBeGreaterThanOrEqual(0);
-    expect(last(tr).x).toBeLessThan(1e-14);
-    const tEnd = tr.times[tr.times.length - 1];
-    expect(tEnd).toBeGreaterThan(3e-6);
-    expect(tEnd).toBeLessThan(1e-3);
-    expect(tr.steps).toBeLessThan(2000);
+    expect(last(tr).x).toBeLessThan(1e-8);
+    expect(tr.times[tr.times.length - 1]).toBeGreaterThan(1.5e-6);
     for (const p of tr.points) {
       expect(p.x).toBeGreaterThanOrEqual(0);
       expect(p.x).toBeLessThanOrEqual(1);
@@ -177,13 +186,21 @@ describe("blow-up is decided by the position, never by the speed (H2.1)", () => 
   });
 
   it("a stiff problem that runs out of steps says max_steps, not blew_up", () => {
-    // x' = -1e7 x + 1 (equilibrium at x = 1e-7, speed there 0 but the transient is stiff):
-    // stability of DOPRI5 forces h ~ 3e-7, so tSpan = 1 needs ~3e6 steps; with maxSteps = 200
-    // the run is truncated. The position stays finite and bounded, so this is a step limit.
-    const tr = integrateAdaptive(compileSystem({ f: "-1e7*x + 1", g: "0" }), { x: 1, y: 0 }, 1, { h: 0.05, maxSteps: 200 });
+    // x' = -1e7 x + 1 (equilibrium at x = 1e-7): the stability cap forces h <= 3e-7 and the error
+    // control ~1.6e-8, so reaching |x - 1e-7| < 1e-8 (t ≈ 1.84e-6) takes ~100 steps; with
+    // maxSteps = 20 the run is truncated. Bounded position -> a step limit, never a blow-up.
+    const tr = integrateAdaptive(compileSystem({ f: "-1e7*x + 1", g: "0" }), { x: 1, y: 0 }, 1, { h: 0.05, maxSteps: 20 });
     expect(tr.status).toBe("max_steps");
     expect(allFinite(tr)).toBe(true);
     expect(Math.max(...tr.points.map((p) => Math.abs(p.x)))).toBeLessThanOrEqual(1);
+  });
+
+  it("an extremely stiff decay beyond the step resolution is 'max_steps', not 'singular' (finite field, no undefined stage)", () => {
+    // x' = -1e20 x: the stable step 3e-20 is below hMin = tSpan * 1e-12, so the controller
+    // collapses. The field is finite and not exploding relative to the initial speed.
+    const tr = integrateAdaptive(compileSystem({ f: "-1e20*x", g: "0" }), { x: 1, y: 0 }, 1, { h: 0.05 });
+    expect(tr.status).toBe("max_steps");
+    expect(allFinite(tr)).toBe(true);
   });
 
   it("x' = x^2 still blows up: the position leaves the finite bound (adaptive)", () => {
@@ -214,6 +231,102 @@ describe("blow-up is decided by the position, never by the speed (H2.1)", () => 
     expect(tr.status).toBe("blew_up");
     expect(last(tr).x).toBeLessThanOrEqual(2);
     expect(last(tr).x).toBeGreaterThan(1.8);
+  });
+
+  it("a huge but finite start point does not overflow the default bound", () => {
+    const tr = integrateAdaptive(compileSystem({ f: "0", g: "0" }), { x: 1e303, y: 0 }, 1);
+    expect(tr.status).toBe("reached_equilibrium");
+  });
+});
+
+describe("reaching an equilibrium is a relative, translation-invariant verdict (review C0 / C8)", () => {
+  it("a sink gives the same verdict and arrival time wherever it sits, and for both integrators", () => {
+    // x' = -(x - a), y' = -(y - b) from (a + 1, b + 1): distance sqrt(2) e^{-t}, speed the same.
+    // Reference speed = initial speed sqrt(2), so 'reached' means e^{-t} < 1e-8: t = ln(1e8) = 18.42.
+    // Before the stability cap the adaptive controller only ever reached the sink at the origin
+    // (where atol happened to force relative accuracy) and said 'completed' at (1, 1).
+    const box = { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } };
+    for (const [a, b] of [[0, 0], [1, 1], [0.5, 0.5], [2, -1], [-1, -1]]) {
+      const sys = compileSystem({ f: `-(x - ${a})`, g: `-(y - ${b})` });
+      const ad = integrateAdaptive(sys, { x: a + 1, y: b + 1 }, 20, { h: 0.05, box });
+      const rk = integrateRK4(sys, { x: a + 1, y: b + 1 }, 20, { h: 0.01, box });
+      expect(ad.status, `adaptive sink (${a}, ${b})`).toBe("reached_equilibrium");
+      expect(rk.status, `rk4 sink (${a}, ${b})`).toBe("reached_equilibrium");
+      const tAd = ad.times[ad.times.length - 1];
+      const tRk = rk.times[rk.times.length - 1];
+      expect(tRk).toBeGreaterThan(18.4);
+      expect(tRk).toBeLessThan(18.5);
+      // the adaptive step near the sink is capped at 3 / L = 3, so it lands within one such step
+      expect(tAd).toBeGreaterThanOrEqual(18.4);
+      expect(tAd).toBeLessThanOrEqual(20);
+      expect(dist(last(ad), { x: a, y: b })).toBeLessThan(1e-8);
+    }
+  });
+
+  it("accepted steps near a sink never move the point away from it", () => {
+    const sys = compileSystem({ f: "-(x - 1)", g: "-(y - 1)" });
+    const tr = integrateAdaptive(sys, { x: 2, y: 2 }, 50, { h: 0.05 });
+    const d = tr.points.map((p) => dist(p, { x: 1, y: 1 }));
+    for (let i = 1; i < d.length; i++) expect(d[i]).toBeLessThanOrEqual(d[i - 1] * (1 + 1e-9));
+  });
+
+  it("a slow field is not an equilibrium: x' = 1e-9 x integrates to the requested time", () => {
+    // Speed 1e-9 everywhere; the reference speed is max(1e-9, scale / tSpan = 1e-3), so the
+    // threshold is 1e-11 and the run proceeds. Exact: x(1000) = e^{1e-6}.
+    const tr = integrateAdaptive(compileSystem({ f: "1e-9*x", g: "0" }), { x: 1, y: 0 }, 1000);
+    expect(tr.status).toBe("completed");
+    expect(last(tr).x).toBeCloseTo(Math.exp(1e-6), 10);
+    // and the verdict does not change when the whole equation is rescaled
+    const fast = integrateAdaptive(compileSystem({ f: "x", g: "0" }), { x: 1, y: 0 }, 1e-6);
+    expect(fast.status).toBe("completed");
+  });
+
+  it("starting exactly on an equilibrium still returns immediately", () => {
+    const tr = integrateAdaptive(compileSystem({ f: "y", g: "-x" }), { x: 0, y: 0 }, 10);
+    expect(tr.status).toBe("reached_equilibrium");
+    expect(tr.points).toHaveLength(1);
+  });
+});
+
+describe("edge of the field's domain (review C13)", () => {
+  it("x' = -sqrt(x) reaches its equilibrium x = 0 at t = 2, and both integrators agree", () => {
+    // Exact: x = (1 - t/2)^2 for t <= 2 (finite-time arrival, the classic non-uniqueness example);
+    // x = 0 is an equilibrium sitting on the edge of the domain. The speed sqrt(x) falls below
+    // 1e-8 of the initial speed 1 when x < 1e-16, i.e. at t = 2 - 2e-8. RK4 halves its step at the
+    // edge instead of declaring a singularity one step short of it.
+    const sys = compileSystem({ f: "-sqrt(x)", g: "0" });
+    const ad = integrateAdaptive(sys, { x: 1, y: 0 }, 5, { h: 0.05 });
+    const rk = integrateRK4(sys, { x: 1, y: 0 }, 5, { h: 0.01 });
+    expect(ad.status).toBe("reached_equilibrium");
+    expect(rk.status).toBe("reached_equilibrium");
+    expect(Math.abs(ad.times[ad.times.length - 1] - 2)).toBeLessThan(1e-3);
+    expect(Math.abs(rk.times[rk.times.length - 1] - 2)).toBeLessThan(1e-3);
+    expect(last(ad).x).toBeGreaterThanOrEqual(0);
+    expect(last(ad).x).toBeLessThan(1e-15);
+    expect(allFinite(ad) && allFinite(rk)).toBe(true);
+  });
+
+  it("x' = -(sqrt(x) + 1) reaches the edge x = 0 with speed 1: domain_edge for both integrators, at the exact time", () => {
+    // dt = -dx / (sqrt(x) + 1): t_edge = ∫_0^1 dx / (sqrt(x) + 1) = [2(sqrt(x) - ln(1 + sqrt(x)))]_0^1
+    //        = 2 (1 - ln 2) = 0.613706. The field is finite there (speed 1) and undefined beyond.
+    const sys = compileSystem({ f: "-(sqrt(x) + 1)", g: "0" });
+    const tEdge = 2 * (1 - Math.LN2);
+    const ad = integrateAdaptive(sys, { x: 1, y: 0 }, 5, { h: 0.05 });
+    const rk = integrateRK4(sys, { x: 1, y: 0 }, 5, { h: 0.01 });
+    expect(ad.status).toBe("domain_edge");
+    expect(rk.status).toBe("domain_edge");
+    expect(Math.abs(ad.times[ad.times.length - 1] - tEdge)).toBeLessThan(1e-3);
+    expect(Math.abs(rk.times[rk.times.length - 1] - tEdge)).toBeLessThan(1e-3);
+    expect(last(ad).x).toBeGreaterThanOrEqual(0);
+    expect(last(ad).x).toBeLessThan(1e-3);
+  });
+
+  it("an explicit slope field with a vertical tangent, dy/dx = -x/y, is 'singular' at y = 0: the field explodes there", () => {
+    const sys = compileSystem({ f: "1", g: "-x/y" });
+    const tr = integrateAdaptive(sys, { x: 0, y: 1 }, 5, { box: { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } } });
+    expect(tr.status).toBe("singular");
+    expect(Math.abs(last(tr).y)).toBeLessThan(1e-3);
+    expect(Math.abs(last(tr).x - 1)).toBeLessThan(1e-3); // the circle x² + y² = 1 meets y = 0 at x = 1
   });
 });
 
@@ -291,7 +404,7 @@ describe("integrateAdaptive (Dormand-Prince 5(4))", () => {
     // position itself is a modest finite number: by the position-only rule this is not a
     // blow-up of the position but a point where the field cannot be evaluated.
     const tr = integrateAdaptive(compileSystem({ f: "exp(x)", g: "0" }), { x: 0, y: 0 }, 2, { h: 0.05 });
-    expect(tr.status).toBe("singular");
+    expect(tr.status).toBe("singular"); // the field there exceeds 1e6 x the reference speed: exploding, not a domain edge
     expect(allFinite(tr)).toBe(true);
     expect(last(tr).x).toBeGreaterThan(20); // it got far along the solution before stopping
     expect(last(tr).x).toBeLessThan(710);

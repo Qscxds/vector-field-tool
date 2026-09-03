@@ -328,7 +328,12 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const integrate = input.method === "rk4" ? integrateRK4 : integrateAdaptive;
         const directions: Array<1 | -1> = input.direction === "both" ? [1, -1] : input.direction === "forward" ? [1] : [-1];
         const trajectories: TrajectoryView[] = directions.map((dir) => {
-          const opts: IntegrateOptions = { direction: dir, box, h: input.method === "rk4" ? 0.01 : 0.05, checkpoint };
+          // rk4 has a fixed step of 0.01; give it enough steps to reach any accepted tSpan (<= 1000)
+          // instead of truncating silently at t = 200.
+          const opts: IntegrateOptions =
+            input.method === "rk4"
+              ? { direction: dir, box, h: 0.01, maxSteps: Math.max(20000, Math.ceil(input.tSpan / 0.01) + 1), checkpoint }
+              : { direction: dir, box, h: 0.05, checkpoint };
           const tr = integrate(sys, start, input.tSpan, opts);
           return {
             direction: dir === 1 ? "forward" : "backward",
