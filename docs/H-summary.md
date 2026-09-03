@@ -1,8 +1,8 @@
 # H 轮总结（2026-09-03）
 
-- **做到哪了**：H1（上线准备）和 H2（数学优先重新拍板，十条全部）完成；tsc 0 错误、309 个测试全绿、build 通过、隧道 smoke 15/15；main 线性，已推 origin。
-- **最后一个良好 tag**：`h2-math-done`（H1 单独的回滚点是 `h1-deploy-ready`）。
-- **你要手动做的**：去 Vercel 导入仓库、关 Deployment Protection、绑域名、在项目环境变量设 `BASE_URL=https://tools.<域名>` 后重新部署；Claude 里断开重连连接器（widget 版本 h-1）；看 `docs/H-open-questions.md` 里的拍板项（最要紧的是积分器默认 `atol`）。
+- **做到哪了**：H1（上线准备）、H2（数学优先重新拍板，十条全部）完成；对抗式审查确认的 14 条全部修复；tsc 0 错误、337 个测试全绿、build 通过、隧道 smoke 15/15；main 线性，已推 origin。
+- **最后一个良好 tag**：`h2-reviewed`（审查修复之后）；之前的回滚点依次是 `h2-math-done`、`h1-deploy-ready`。
+- **你要手动做的**：去 Vercel 导入仓库、关 Deployment Protection、绑域名、在项目环境变量设 `BASE_URL=https://tools.<域名>` 后重新部署；Claude 里断开重连连接器（widget 版本 h-2）；看 `docs/H-open-questions.md` 里的拍板项（最要紧的是积分器默认 `atol`）。
 
 **H1 完成，可以部署了。** 步骤在 README「部署到 Vercel」；绑完域名不设 `BASE_URL` 会静默白屏，日志里会有 `[base-url]` 警告提醒。
 
@@ -34,7 +34,7 @@
 | H2.10 美式拼写 | center / linearization / color / behavior / gray / neighbor …，作用于文案、description、预设、首页 | 断言 "center or weak spiral" | 31c0e38 |
 | 不改但要点明范围 | 两个外壳的结果列表上方加「以下结果按当前可见范围 x∈[…], y∈[…] 计算」 | — | 31c0e38 |
 
-widget HTML 有改动（摘要文字、范围说明），`WIDGET_VERSION` g-1 → h-1，Claude 里必须重连连接器。
+widget HTML 有改动（摘要文字、范围说明；审查修复后又改了一次），`WIDGET_VERSION` g-1 → h-1 → h-2，Claude 里必须重连连接器。
 
 ## 验证输出（最终状态）
 
@@ -107,4 +107,38 @@ PASS GET /mcp -> 405
 
 ## 对抗式审查（在冻结的 `h2-math-done` 上）
 
-（跑完后追加在这里。）
+- **怎么跑的**：6 个视角（积分器 / 类型识别 / 平衡点与分类 / 学生所读文本 / 交互 UI / 成本与部署）各自在冻结工作树里查找并用探针复现，共 44 条；按严重度取前 14 条，每条由 3 个独立反驳者（数学重推、代码复现、学生可见性）验证，默认「驳回」。结果 **14 条全部确认、0 条被驳回**，30 条未验证（其中 15 条顺手修了，其余记在 H-open-questions）。48 个智能体，33 分钟。
+- **14 条确认项及修复**（都影响学生所见结论，5 个 `[H2-fix]` 提交，每条有从推导来的测试）：
+
+| # | 问题 | 修复 | 提交 |
+|---|---|---|---|
+| C0 高 | 汇点在 (1,1) 时永远「completed」、在原点时「reached」：控制器越过稳定区放大偏差 | 每步 h·L ≤ 1（L 由最后两级估计）；平移不变、与 RK4 一致 | a61ff69 |
+| C8 高 | 绝对速度阈值 1e-8：x' = 1e-9 x 在起点就是「平衡点」 | 相对参考速度 max(起始速度, 尺度/tSpan) 的 1e-8 | a61ff69 |
+| C10 中 | 出盒点整步越出，出盒时间随步长变化；20 倍停止盒被叫「观察范围」 | 出盒线段插值切到边界；停止盒有单独文案 | a61ff69 |
+| C11 中 | max_steps 文案硬说刚性；rk4 tSpan > 200 静默截断 | 文案改写；rk4 步数按 tSpan 给足 | a61ff69 |
+| C12 中 | 预览长度被 50 时间单位限制，慢场预览短 | 预览用自己的时间上限，只由屏幕弧长结束 | a61ff69 |
+| C13 中 | 定义域边界报成「无定义/无穷大」；rk4 与自适应结论相反 | 新状态 domain_edge；RK4 在边界对半折步；两者一致 | a61ff69 |
+| C1 高 | 两个采样点落在 y = −x 上，(x−y)/(x+y) 的判定随盒子翻转 | 采样集避开 y = ±x；零阈值用 75 百分位 | e05d302 |
+| C2 高 | Richardson 估计对周期函数混叠，sin(2πy) 的恰当性随盒子翻转 | 非整数步长倍数 + 与最小步一致性检查 + 三模板外推 | e05d302 |
+| C3 高 | LM 微步被当收敛：x' = −x³ 报 2–3 个平衡点 + 连续解集 | 只认 Newton 步收敛；Marquardt 缩放；差分步随 Newton 步缩小 | d77f4c5 |
+| C4 高 | 判零下界取整盒中位数：大盒子上 O(1) 鞍点被判非双曲 | 下界 = 该点雅可比差分误差的 10 倍 | d77f4c5 |
+| C5 高 | 共线的孤立退化根被当连续解集 | 加连通判据：相邻点之间场必须为零 | d77f4c5 |
+| C6 高 | 路径自检除以 max(1, |F|)：dθ 乘 1e-8 就「恰当」并画等值线 | 相对势函数自身量级 | 5a99dd9 |
+| C7 高 | 常数解 / 自治用绝对下界：e^(−x) 在 [30,40] 有几百个常数解 | 相对 M、N、斜率实测量级；无定义探测点跳过 | 5a99dd9 |
+| C9 高 | 课本恰当方程默认参数就超 2 秒预算，且报错怪错对象 | 网格采样一次复用于所有等值线；各阶段加 checkpoint；文案改写 | d3fc151 |
+
+- **修完后的门禁**：tsc 0 错误、337 个测试全绿、build 通过、隧道 smoke 15/15；tag `h2-reviewed`。widget 版本 h-2（重连连接器）。
+- **审查里学到的规律**（已写进 CLAUDE.md）：内核里每个相对容差都必须相对于实测量级，C6、C7、C8 三条全是「除以 max(1, ·)」这种绝对下界。
+
+```
+$ git log --oneline -8
+d3fc151 [H2-fix] budget: sample the potential once for all level curves; checkpoints in every first-order stage (review C9) + small review items; widget h-2
+5a99dd9 [H2-fix] exact and slope-field: scale-free path check and constant-solution tolerances (review C6, C7)
+d77f4c5 [H2-fix] equilibria: Newton-sized LM steps, error-based zero floor, connected continua (review C3, C4, C5)
+e05d302 [H2-fix] detect-form: asymmetric samples, robust zero floor, alias-proof derivatives, honest Bernoulli wording (review C1, C2)
+a61ff69 [H2-fix] integrate: relative equilibrium rule, stability-capped steps, exact border cuts, domain edges (review C0, C8, C10, C11, C12, C13)
+003c779 [H2] docs: H summary, decisions, open questions; CLAUDE.md and README for the H state
+31c0e38 [H2] locale is required; American spelling; results state their range; widget h-1
+be58eff [H2] equilibria: a continuum needs geometry, not just a count; classify: repeated-root caveat and a field-scale floor
+```
+

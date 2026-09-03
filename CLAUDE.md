@@ -14,13 +14,16 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 - `lib/core/` pure math kernel: `parse` (mathjs AST whitelist -> compiled system, eval never throws),
   `field` (grid sampling), `integrate` (RK4 + adaptive Dormand-Prince, shared stop rules; blow-up
-  is decided by the POSITION only, never by speed; statuses completed / left_box /
-  reached_equilibrium / blew_up / singular / arc_length / max_steps; optional arc-length stop with a
-  caller metric; optional `checkpoint` for wall-clock budgets), `jacobian`, `classify` (trace/det
+  is decided by the POSITION only, never by speed; 'reached_equilibrium' is relative to the
+  problem's reference speed; the adaptive step is capped at h*L <= 1 so sinks are actually
+  reached; box exits and arc-length stops are cut exactly; statuses completed / left_box /
+  reached_equilibrium / blew_up / singular / domain_edge / arc_length / max_steps; optional
+  `checkpoint` for wall-clock budgets), `jacobian` (+ `jacobianWithError`), `classify` (trace/det
   classification; `caveat` is a key: center / nonHyperbolic / notFinite / repeatedRoot; optional
-  `fieldScale` floor so a Jacobian that is tiny at the problem's scale is zero), `equilibria`
-  (seeded damped Newton + LM fallback; a continuum needs a counting AND a geometric signal, else
-  `multiple_non_hyperbolic`), `slope-field` (first-order base: `FirstOrderSpec` explicit `dy/dx = g`
+  `zeroFloor` = the numerical error of the Jacobian, never a box-wide statistic), `equilibria`
+  (seeded damped Newton + Marquardt-scaled LM, difference step shrinking with the Newton step; a
+  continuum needs a count signal AND a shape signal AND connectedness (the field vanishes between
+  neighbours), else `multiple_non_hyperbolic`), `slope-field` (first-order base: `FirstOrderSpec` explicit `dy/dx = g`
   or differential `M dx + N dy = 0`, `toSystem`, constant solutions checked along whole lines,
   singular points M = N = 0), `detect-form` (numerical probes for the eight textbook forms, each
   returned with a verdict consistent / borderline / inconsistent / untestable, the measured
@@ -112,5 +115,8 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   is gitignored and excluded from tsconfig / the vitest gate).
 - Commands: `npm run dev`, `npm test`, `npm run typecheck`, `npm run build`, `npm run smoke`.
   For a full gate run all of tsc, vitest and build.
-- Adversarial reviews run on a frozen tag, never on a moving main.
+- Adversarial reviews run on a frozen tag, never on a moving main. The H round's review (6 lenses,
+  3 refuters per finding) confirmed 14/14 verified findings; all are fixed in `[H2-fix]` commits
+  with derived tests. Every relative tolerance in the kernel is relative to magnitudes actually
+  measured (never to an absolute 1 or 1e-8): review items C6, C7, C8 were all absolute floors.
 - Reply to the user in Chinese. Keep code, comments, commit messages and paths in English.
