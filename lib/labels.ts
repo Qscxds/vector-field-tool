@@ -28,8 +28,8 @@ export type LabelTable = {
     | "systemHeader" | "singularSamples" | "equilibriumLine" | "eigenvaluesUnavailable" | "note"
     | "trajectoryHeader" | "forward" | "backward" | "trajectoryLine" | "sampleFieldLine" | "widgetDraws"
     | "firstOrderHeader" | "differentialUndirected" | "directionSingular" | "truncated" | "constantSolution"
-    | "noConstantAutonomous" | "noConstantGeneral" | "formsHeader" | "formLine" | "formsCaveat" | "exactImplicit"
-    | "listSeparator",
+    | "noConstantAutonomous" | "noConstantGeneral" | "formsHeader" | "formLine" | "formBorderlineLine" | "formsCaveat"
+    | "formsInconsistentLine" | "formsUntestableLine" | "exactImplicit" | "exactPathCheckFailed" | "listSeparator",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -114,8 +114,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       noConstantGeneral: "在观察范围内没有常数解（右端依赖 x；斜率场仍然有效）。",
       formsHeader: "方程类型（数值探测，只表示「与该形式一致」，不是证明）：",
       formLine: "- 在数值上表现得像{form}。{evidence}",
+      formBorderlineLine: "- 临界情况：与{form}的偏差落在阈值附近，可能只是舍入误差，也可能真的不是该形式。{evidence}",
       formsCaveat: "注意：{caveat}",
+      formsInconsistentLine: "未通过检验的形式（括号内为最大相对偏差）：{list}。",
+      formsUntestableLine: "无法在此范围内检验的形式（有效采样点不足）：{list}。",
       exactImplicit: "方程恰当：已数值求出势函数 F(x, y)，图中紫色曲线是隐式解 F(x, y) = C（画了 {levels} 条等值线）。两条积分路径的相对偏差 {deviation}，这本身就是恰当性的独立验证。",
+      exactPathCheckFailed: "恰当性判据通过，但势函数的数值积分没有通过路径无关性自检：两条积分路径的相对偏差为 {deviation}，超过了阈值 {tol}，因此不显示等值线。这本身有教学价值：数值方法有自己的失败模式（例如积分路径穿过奇点，或者方程只在局部恰当），而这个工具知道自己什么时候不可靠。",
       listSeparator: "、",
     },
     ui: {
@@ -234,8 +238,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       noConstantGeneral: "No constant solution in the viewing range (the right-hand side depends on x; the slope field is still valid).",
       formsHeader: "Equation type (numerical probes; 'consistent with', never a proof):",
       formLine: "- Numerically behaves like {form}. {evidence}",
+      formBorderlineLine: "- Borderline: the deviation from {form} lies near the threshold; this may be rounding, or the equation may not be of this form. {evidence}",
       formsCaveat: "Note: {caveat}",
+      formsInconsistentLine: "Forms that failed the test (largest relative deviation in brackets): {list}.",
+      formsUntestableLine: "Forms that could not be tested on this box (too few usable sample points): {list}.",
       exactImplicit: "The equation is exact: the potential F(x, y) was integrated numerically and the violet curves are the implicit solutions F(x, y) = C ({levels} level curves). The two integration paths differ by a relative {deviation}, which is itself an independent check of exactness.",
+      exactPathCheckFailed: "The exactness criterion passed, but the numerical integration of the potential failed its path-independence self-check: the two integration paths differ by a relative {deviation}, above the threshold {tol}, so no level curves are shown. This is worth teaching: numerical methods have failure modes of their own (an integration path through a singular point, or an equation that is only locally exact), and this tool knows when it cannot be trusted.",
       listSeparator: ", ",
     },
     ui: {

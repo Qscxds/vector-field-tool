@@ -15,6 +15,7 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
+import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type Locale } from "@/lib/labels";
 import type { Scene, SceneKind } from "@/lib/scene";
@@ -199,14 +200,28 @@ function SceneSummary({ scene }: { scene: Scene }) {
     if (fo.singularities?.length) {
       items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: "" }));
     }
-    if (fo.forms?.length) {
+    const all = fo.forms ?? [];
+    const reported = reportedForms(all);
+    if (reported.length) {
       items.push(L.tool.formsHeader);
-      for (const f of fo.forms) items.push(fill(L.tool.formLine, { form: L.form[f.form], evidence: f.evidence }));
-      items.push(fill(L.tool.formsCaveat, { caveat: fo.forms[0].caveat }));
+      for (const f of reported) items.push(fill(f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine, { form: L.form[f.form], evidence: f.evidence }));
+      const consistent = reported.find((f) => f.verdict === "consistent");
+      const borderline = reported.find((f) => f.verdict === "borderline");
+      if (consistent) items.push(fill(L.tool.formsCaveat, { caveat: consistent.caveat }));
+      if (borderline) items.push(fill(L.tool.formsCaveat, { caveat: borderline.caveat }));
     } else if (fo.formsNote) {
       items.push(fo.formsNote);
     }
+    const rejected = all.filter((f) => f.verdict === "inconsistent");
+    if (rejected.length) {
+      items.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}（${f.maxRelDeviation === null || !Number.isFinite(f.maxRelDeviation) ? "—" : f.maxRelDeviation.toExponential(1)}）`).join(L.tool.listSeparator) }));
+    }
+    const untestable = all.filter((f) => f.verdict === "untestable");
+    if (untestable.length) items.push(fill(L.tool.formsUntestableLine, { list: untestable.map((f) => L.form[f.form]).join(L.tool.listSeparator) }));
     if (fo.implicit) items.push(fill(L.tool.exactImplicit, { levels: fo.implicit.levels.length, deviation: fo.implicit.pathDeviation.toExponential(1) }));
+    else if (fo.implicitCheck && !fo.implicitCheck.passed) {
+      items.push(fill(L.tool.exactPathCheckFailed, { deviation: Number.isFinite(fo.implicitCheck.pathDeviation) ? fo.implicitCheck.pathDeviation.toExponential(1) : "∞", tol: fo.implicitCheck.tol.toExponential(0) }));
+    }
   }
 
   return (

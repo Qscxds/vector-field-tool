@@ -43,7 +43,11 @@ export function simpson(fn: (s: number) => number, a: number, b: number, panels 
 
 export function exactPotential(spec: FirstOrderSpec, box: Box, opts: ExactPotentialOptions = {}): ExactPotential {
   const { M, N } = compileDifferential(spec);
-  const base = opts.base ?? { x: (box.x.min + box.x.max) / 2, y: (box.y.min + box.y.max) / 2 };
+  const centre = { x: (box.x.min + box.x.max) / 2, y: (box.y.min + box.y.max) / 2 };
+  // A singular centre (e.g. the origin of (x dy - y dx)/(x² + y²)) would make every path integral
+  // NaN; fall back to an irrational-fraction point so the check can report a real deviation.
+  const fallback = { x: box.x.min + 0.3819 * (box.x.max - box.x.min), y: box.y.min + 0.6181 * (box.y.max - box.y.min) };
+  const base = opts.base ?? (Number.isFinite(M(centre)) && Number.isFinite(N(centre)) ? centre : fallback);
   const panels = opts.panels ?? 64;
   const tol = opts.tol ?? 1e-6;
 

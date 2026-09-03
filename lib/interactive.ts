@@ -11,7 +11,7 @@
  *   leaves a box 20 times the original problem domain, so zooming out never exposes a curve that
  *   was cut where the old view ended. The view only clips what is drawn.
  */
-import { detectForms, NO_FORM_NOTE } from "./core/detect-form";
+import { detectForms, NO_FORM_NOTE, reportedForms } from "./core/detect-form";
 import { findEquilibria } from "./core/equilibria";
 import { exactPotential, potentialLevels } from "./core/exact";
 import { integrateAdaptive } from "./core/integrate";
@@ -23,6 +23,9 @@ import { worldToScreen, type Viewport } from "./render/viewport";
 import type { FirstOrderView, Scene, TrajectoryView } from "./scene";
 
 export type Features = Pick<Scene, "equilibria" | "warning" | "firstOrder">;
+
+/** Path-independence tolerance of the numerical potential (exactPotential's default). */
+export const EXACT_PATH_TOL = 1e-6;
 
 /** Fixed trajectories: how long to integrate in each direction. */
 export const CLICK_TSPAN = 50;
@@ -54,9 +57,12 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
     const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x });
     const singular = firstOrderSingularities(spec, box);
     const forms = detectForms(spec, box, locale);
+    const reported = reportedForms(forms);
     let implicit: FirstOrderView["implicit"];
-    if (forms.some((f) => f.form === "exact")) {
+    let implicitCheck: FirstOrderView["implicitCheck"];
+    if (reported.some((f) => f.form === "exact")) {
       const pot = exactPotential(spec, box);
+      implicitCheck = { pathDeviation: pot.pathDeviation, tol: EXACT_PATH_TOL, passed: pot.consistent };
       if (pot.consistent) {
         const levels = potentialLevels(pot.F, box, 8).map((level) => ({ level, segments: contourSegments(pot.F, box, level, 60, 60) }));
         implicit = { levels, pathDeviation: pot.pathDeviation };
@@ -70,8 +76,9 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
         solutions: eq.solutions,
         singularities: singular.points,
         forms,
-        formsNote: forms.length === 0 ? NO_FORM_NOTE[locale] : undefined,
+        formsNote: reported.length === 0 ? NO_FORM_NOTE[locale] : undefined,
         implicit,
+        implicitCheck,
       },
     };
   } catch {

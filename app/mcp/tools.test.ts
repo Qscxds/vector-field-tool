@@ -323,11 +323,13 @@ describe("analyze_first_order", () => {
     expect(ys).toEqual([[0, "unstable"], [1, "stable"]]);
     expect(r.text).toContain("常数解 y = 1");
     expect(r.scene.field?.samples).toHaveLength(400);
-    const forms = r.scene.firstOrder!.forms!.map((f) => f.form);
+    const forms = r.scene.firstOrder!.forms!.filter((f) => f.verdict === "consistent").map((f) => f.form);
     expect(forms).toContain("separable");
     expect(forms).toContain("autonomous");
+    expect(r.scene.firstOrder!.forms!.map((f) => f.form)).toHaveLength(8); // every form, with a verdict
     expect(r.text).toContain("在数值上表现得像");
     expect(r.text).toContain("不是证明");
+    expect(r.text).toContain("未通过检验的形式");
     expect(r.scene.firstOrder?.formsNote).toBeUndefined();
   });
 
@@ -355,7 +357,7 @@ describe("analyze_first_order", () => {
     expect(Math.hypot(sing[0].x, sing[0].y)).toBeLessThan(1e-6);
     expect(r.text).toContain("方向场奇点");
     expect(r.text).toContain("无向线段");
-    const forms = r.scene.firstOrder!.forms!.map((f) => f.form);
+    const forms = r.scene.firstOrder!.forms!.filter((f) => f.verdict === "consistent").map((f) => f.form);
     expect(forms).toContain("integrating_factor_x");
     expect(forms).not.toContain("exact");
   });
@@ -363,7 +365,8 @@ describe("analyze_first_order", () => {
   it("draws the implicit solution of an exact equation: 2xy dx + (x² + y²) dy = 0", async () => {
     const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
-    expect(r.scene.firstOrder!.forms!.map((f) => f.form)).toContain("exact");
+    expect(r.scene.firstOrder!.forms!.filter((f) => f.verdict === "consistent").map((f) => f.form)).toContain("exact");
+    expect(r.scene.firstOrder!.implicitCheck).toEqual({ pathDeviation: expect.any(Number), tol: 1e-6, passed: true });
     const implicit = r.scene.firstOrder!.implicit!;
     expect(implicit.pathDeviation).toBeLessThan(1e-9);
     expect(implicit.levels.length).toBeGreaterThan(3);
@@ -381,9 +384,30 @@ describe("analyze_first_order", () => {
 
   it("the Riccati equation dy/dx = x² + y² matches no form and gets the positive note", async () => {
     const r = await call("analyze_first_order", { expr: "x^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3, locale: "zh" });
-    expect(r.scene.firstOrder?.forms).toEqual([]);
+    expect(r.scene.firstOrder?.forms?.filter((f) => f.verdict === "consistent" || f.verdict === "borderline")).toEqual([]);
+    expect(r.scene.firstOrder?.forms?.every((f) => f.verdict === "inconsistent")).toBe(true);
     expect(r.scene.firstOrder?.formsNote).toMatch(/Riccati/);
     expect(r.text).toContain("这不是失败");
+    expect(r.text).toContain("未通过检验的形式");
+  });
+
+  it("closed but not exact: (x dy - y dx)/(x² + y²) passes the exactness probe but fails the path check, and says so", async () => {
+    // M = -y/(x²+y²), N = x/(x²+y²): ∂M/∂y = ∂N/∂x = (y² - x²)/(x²+y²)² everywhere except the
+    // origin, so the local criterion holds; but the form is dθ, whose integral around the origin is
+    // 2π, so a potential on a box containing the origin cannot exist: the two integration paths
+    // disagree wherever they wind differently around the origin.
+    const r = await call("analyze_first_order", { M: "-y/(x^2 + y^2)", N: "x/(x^2 + y^2)", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    const exact = r.scene.firstOrder!.forms!.find((f) => f.form === "exact")!;
+    expect(["consistent", "borderline"]).toContain(exact.verdict);
+    expect(r.scene.firstOrder!.implicit).toBeUndefined();
+    const check = r.scene.firstOrder!.implicitCheck!;
+    expect(check.passed).toBe(false);
+    expect(Number.isFinite(check.pathDeviation)).toBe(true);
+    expect(check.pathDeviation).toBeGreaterThan(1e-6);
+    expect(r.text).toContain("path-independence self-check");
+    expect(r.text).toContain(check.pathDeviation.toExponential(1));
+    expect(r.text).not.toContain("level curves)"); // the exactImplicit sentence must not appear
   });
 
   it("rejects neither-or-both input forms with a readable error", async () => {

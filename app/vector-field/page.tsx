@@ -8,6 +8,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
+import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, type CompiledSystem } from "@/lib/core/parse";
 import { toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
@@ -321,28 +322,62 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
           <p style={{ margin: 0 }}>{fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator)}</p>
         </div>
       ) : null}
-      <div>
-        <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.formsHeading}</h2>
-        {fo.forms?.length ? (
-          <>
-            <ul style={{ margin: 0, paddingLeft: 20 }}>
-              {fo.forms.map((f) => (
-                <li key={f.form}>{fill(L.tool.formLine, { form: L.form[f.form], evidence: f.evidence }).replace(/^- /, "")}</li>
-              ))}
-            </ul>
-            <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.tool.formsCaveat, { caveat: fo.forms[0].caveat })}</p>
-          </>
-        ) : (
-          <p style={{ margin: 0 }}>{fo.formsNote}</p>
-        )}
-      </div>
+      <FormsList fo={fo} L={L} />
       {fo.implicit ? (
         <div>
           <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.implicitHeading}</h2>
           <p style={{ margin: 0 }}>{fill(L.tool.exactImplicit, { levels: fo.implicit.levels.length, deviation: fo.implicit.pathDeviation.toExponential(1) })}</p>
         </div>
+      ) : fo.implicitCheck && !fo.implicitCheck.passed ? (
+        <div>
+          <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.implicitHeading}</h2>
+          <p style={{ margin: 0, color: "#92400e" }}>
+            {fill(L.tool.exactPathCheckFailed, { deviation: Number.isFinite(fo.implicitCheck.pathDeviation) ? fo.implicitCheck.pathDeviation.toExponential(1) : "∞", tol: fo.implicitCheck.tol.toExponential(0) })}
+          </p>
+        </div>
       ) : null}
     </section>
+  );
+}
+
+/** Detected forms by verdict: consistent, borderline (flagged), then the rejected and untestable ones. */
+export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: LabelTable }) {
+  const all = fo.forms ?? [];
+  const reported = reportedForms(all);
+  const consistent = reported.find((f) => f.verdict === "consistent");
+  const borderline = reported.find((f) => f.verdict === "borderline");
+  const rejected = all.filter((f) => f.verdict === "inconsistent");
+  const untestable = all.filter((f) => f.verdict === "untestable");
+  const dev = (d: number | null) => (d === null || !Number.isFinite(d) ? "—" : d.toExponential(1));
+  return (
+    <div>
+      <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.formsHeading}</h2>
+      {reported.length ? (
+        <>
+          <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {reported.map((f) => (
+              <li key={f.form} style={f.verdict === "borderline" ? { color: "#92400e" } : undefined}>
+                {fill(f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine, { form: L.form[f.form], evidence: f.evidence }).replace(/^- /, "")}
+              </li>
+            ))}
+          </ul>
+          {consistent ? <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.tool.formsCaveat, { caveat: consistent.caveat })}</p> : null}
+          {borderline ? <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.tool.formsCaveat, { caveat: borderline.caveat })}</p> : null}
+        </>
+      ) : (
+        <p style={{ margin: 0 }}>{fo.formsNote}</p>
+      )}
+      {rejected.length ? (
+        <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>
+          {fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}（${dev(f.maxRelDeviation)}）`).join(L.tool.listSeparator) })}
+        </p>
+      ) : null}
+      {untestable.length ? (
+        <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>
+          {fill(L.tool.formsUntestableLine, { list: untestable.map((f) => L.form[f.form]).join(L.tool.listSeparator) })}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

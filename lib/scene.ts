@@ -40,6 +40,12 @@ export type FirstOrderView = {
    * solution), as world-space segments per level, plus the path-independence check result.
    */
   implicit?: { levels: { level: number; segments: [Vec2, Vec2][] }[]; pathDeviation: number };
+  /**
+   * Present whenever exactness was detected (consistent or borderline): the result of the
+   * path-independence self-check of the numerical potential. `passed` false means no level curves
+   * are shown, and the student must be told why (labels tool.exactPathCheckFailed).
+   */
+  implicitCheck?: { pathDeviation: number; tol: number; passed: boolean };
 };
 
 /**

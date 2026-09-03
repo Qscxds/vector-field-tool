@@ -12,7 +12,7 @@ import { sampleField } from "@/lib/core/field";
 import { integrateAdaptive, integrateRK4, type IntegrateOptions } from "@/lib/core/integrate";
 import { compileSystem, ParseError } from "@/lib/core/parse";
 import { contourSegments } from "@/lib/render/contours";
-import { detectForms, NO_FORM_NOTE } from "@/lib/core/detect-form";
+import { detectForms, NO_FORM_NOTE, reportedForms, type FormDetection } from "@/lib/core/detect-form";
 import { exactPotential, potentialLevels } from "@/lib/core/exact";
 import {
   firstOrderEquilibria,
@@ -21,6 +21,7 @@ import {
   type FirstOrderSpec,
 } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
+import { EXACT_PATH_TOL } from "@/lib/interactive";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
@@ -159,6 +160,40 @@ function describeEquilibria(scene: Scene, locale: Locale): string {
     );
   });
   return lines.join("\n");
+}
+
+const formatDeviation = (d: number) => (Number.isFinite(d) ? d.toExponential(1) : "∞");
+
+/**
+ * Lines about the detected forms: consistent ones as "behaves like", borderline ones flagged as
+ * such, then the caveats (the general one, plus the borderline one when present), then a compact
+ * list of the forms that failed (with their deviations) and of those that could not be tested.
+ */
+export function describeForms(forms: FormDetection[], locale: Locale): string[] {
+  const L = labels(locale);
+  const lines: string[] = [];
+  const reported = reportedForms(forms);
+  if (reported.length) {
+    lines.push(L.tool.formsHeader);
+    for (const f of reported) {
+      lines.push(fill(f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine, { form: L.form[f.form], evidence: f.evidence }));
+    }
+    const consistent = reported.find((f) => f.verdict === "consistent");
+    const borderline = reported.find((f) => f.verdict === "borderline");
+    if (consistent) lines.push(fill(L.tool.formsCaveat, { caveat: consistent.caveat }));
+    if (borderline) lines.push(fill(L.tool.formsCaveat, { caveat: borderline.caveat }));
+  } else {
+    lines.push(NO_FORM_NOTE[locale]);
+  }
+  const rejected = forms.filter((f) => f.verdict === "inconsistent");
+  if (rejected.length) {
+    lines.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}（${formatDeviation(f.maxRelDeviation ?? NaN)}）`).join(L.tool.listSeparator) }));
+  }
+  const untestable = forms.filter((f) => f.verdict === "untestable");
+  if (untestable.length) {
+    lines.push(fill(L.tool.formsUntestableLine, { list: untestable.map((f) => L.form[f.form]).join(L.tool.listSeparator) }));
+  }
+  return lines;
 }
 
 function ok(text: string, scene: Scene): CallToolResult {
@@ -418,10 +453,13 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x });
         const singular = firstOrderSingularities(spec, box);
         const forms = detectForms(spec, box, locale);
+        const reported = reportedForms(forms);
 
         let implicit: NonNullable<Scene["firstOrder"]>["implicit"];
-        if (forms.some((f) => f.form === "exact")) {
-          const pot = exactPotential(spec, box, { checkpoint });
+        let implicitCheck: NonNullable<Scene["firstOrder"]>["implicitCheck"];
+        if (reported.some((f) => f.form === "exact")) {
+          const pot = exactPotential(spec, box, { checkpoint, tol: EXACT_PATH_TOL });
+          implicitCheck = { pathDeviation: pot.pathDeviation, tol: EXACT_PATH_TOL, passed: pot.consistent };
           if (pot.consistent) {
             const levels = potentialLevels(pot.F, box, 8).map((level) => {
               checkpoint();
@@ -445,8 +483,9 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             solutions: eq.solutions,
             singularities: singular.points,
             forms,
-            formsNote: forms.length === 0 ? NO_FORM_NOTE[locale] : undefined,
+            formsNote: reported.length === 0 ? NO_FORM_NOTE[locale] : undefined,
             implicit,
+            implicitCheck,
           },
         };
 
@@ -467,15 +506,11 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         } else {
           lines.push(eq.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);
         }
-        if (forms.length) {
-          lines.push(L.tool.formsHeader);
-          for (const f of forms) lines.push(fill(L.tool.formLine, { form: L.form[f.form], evidence: f.evidence }));
-          lines.push(fill(L.tool.formsCaveat, { caveat: forms[0].caveat }));
-        } else {
-          lines.push(NO_FORM_NOTE[locale]);
-        }
+        lines.push(...describeForms(forms, locale));
         if (implicit) {
           lines.push(fill(L.tool.exactImplicit, { levels: implicit.levels.length, deviation: implicit.pathDeviation.toExponential(1) }));
+        } else if (implicitCheck && !implicitCheck.passed) {
+          lines.push(fill(L.tool.exactPathCheckFailed, { deviation: formatDeviation(implicitCheck.pathDeviation), tol: implicitCheck.tol.toExponential(0) }));
         }
         return ok(lines.join("\n"), scene);
       }),
