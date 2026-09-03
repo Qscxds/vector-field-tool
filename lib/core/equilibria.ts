@@ -10,7 +10,7 @@
  */
 import { classify, type ClassifyResult } from "./classify";
 import { assertBox } from "./field";
-import { determinant, jacobianAt } from "./jacobian";
+import { determinant, jacobianAt, jacobianWithError } from "./jacobian";
 import type { CompiledSystem } from "./parse";
 import type { Box, Matrix2, Vec2 } from "./types";
 
@@ -27,7 +27,7 @@ export type EquilibriaResult = {
    * the fraction of points whose nearest neighbours are locally collinear. Both are what decided
    * between 'possible_continuum' and 'multiple_non_hyperbolic'.
    */
-  geometry?: { collinearity: number; curveLike: number };
+  geometry?: { collinearity: number; curveLike: number; connected: number };
 };
 
 /** Continuum test thresholds (H2.7). */
@@ -35,6 +35,7 @@ export const COLLINEAR_RATIO = 1e-6;
 export const CURVE_LOCAL_RATIO = 0.02;
 export const CURVE_FRACTION = 0.8;
 export const CURVE_MIN_POINTS = 6;
+export const CONNECTED_FRACTION = 0.8;
 
 /** Ratio λ_min / λ_max of the covariance matrix of a point cloud: 0 for a perfect line, 1 for an isotropic cloud. NaN for fewer than 3 points. */
 export function collinearity(points: Vec2[]): number {
@@ -56,6 +57,33 @@ export function collinearity(points: Vec2[]): number {
   const lMax = (tr + disc) / 2;
   const lMin = Math.max(0, (tr - disc) / 2);
   return lMin / lMax;
+}
+
+/**
+ * Fraction of points whose nearest neighbour is CONNECTED to them by equilibria: a Newton polish
+ * from the chord midpoint must land on an equilibrium strictly between the two (not at either end).
+ * True for a line or curve of equilibria (the field vanishes all along it), false for isolated
+ * roots that merely happen to be collinear (the field is non-zero between them).
+ */
+function connectedFraction(sys: CompiledSystem, pts: Vec2[], box: Box, scale: number, fTol: number, maxIterations: number): number {
+  if (pts.length < 2) return 0;
+  let connected = 0;
+  for (const p of pts) {
+    let q: Vec2 | null = null;
+    let best = Infinity;
+    for (const r of pts) {
+      if (r === p) continue;
+      const d = Math.hypot(r.x - p.x, r.y - p.y);
+      if (d < best) { best = d; q = r; }
+    }
+    if (!q) continue;
+    const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
+    const polished = newton(sys, mid, box, scale, fTol, maxIterations);
+    if (!polished) continue;
+    const gap = Math.hypot(q.x - p.x, q.y - p.y);
+    if (Math.hypot(polished.x - p.x, polished.y - p.y) < 0.9 * gap && Math.hypot(polished.x - q.x, polished.y - q.y) < 0.9 * gap) connected++;
+  }
+  return connected / pts.length;
 }
 
 /**
@@ -85,7 +113,7 @@ export type FindEquilibriaOptions = {
   tol?: number;
   /** Maximum points returned. Default 30. */
   maxPoints?: number;
-  /** Newton iterations per seed. Default 60. */
+  /** Newton iterations per seed. Default 200 (multiple roots converge only linearly). */
   maxIterations?: number;
   /** Called before every seed; a caller enforcing a wall-clock budget throws from it. */
   checkpoint?: () => void;
@@ -94,25 +122,34 @@ export type FindEquilibriaOptions = {
 const norm = (v: Vec2) => Math.hypot(v.x, v.y);
 const isFiniteVec = (v: Vec2) => Number.isFinite(v.x) && Number.isFinite(v.y);
 
-/** Solves J d = -F, falling back to Levenberg-Marquardt when J is (nearly) singular. */
-function newtonDirection(J: Matrix2, F: Vec2, scale: number): Vec2 | null {
+/**
+ * Solves J d = -F, falling back to Levenberg-Marquardt when J is (nearly) singular. Marquardt's
+ * diagonal scaling (JᵀJ + λ diag(JᵀJ)) keeps the step in a weak direction Newton-sized (for
+ * x' = -x³ the x step is x/3, geometric convergence) instead of killing it with a λ taken from
+ * the strong direction (review C3). `lm` tells the caller which branch produced the step.
+ */
+function newtonDirection(J: Matrix2, F: Vec2, scale: number): { dir: Vec2; lm: boolean } | null {
   const [[a, b], [c, d]] = J;
   if (![a, b, c, d].every(Number.isFinite)) return null;
   const det = determinant(J);
   const jNorm = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d), 1e-300);
   if (Math.abs(det) > 1e-10 * jNorm * jNorm) {
-    return { x: -(d * F.x - b * F.y) / det, y: -(-c * F.x + a * F.y) / det };
+    return { dir: { x: -(d * F.x - b * F.y) / det, y: -(-c * F.x + a * F.y) / det }, lm: false };
   }
-  // (JᵀJ + λI) d = -Jᵀ F
-  const lambda = 1e-6 * jNorm * jNorm + 1e-300 * scale;
-  const m00 = a * a + c * c + lambda;
-  const m01 = a * b + c * d;
-  const m11 = b * b + d * d + lambda;
+  const g00 = a * a + c * c;
+  const g11 = b * b + d * d;
+  const g01 = a * b + c * d;
+  const lambda = 1e-6;
+  // Only guards against an exactly zero diagonal: any larger floor would dominate g00 = a² once the
+  // weak-direction derivative is ~1e-16 (x' = -x³ at x ~ 1e-8) and stall the convergence.
+  const floor = 1e-300;
+  const m00 = g00 * (1 + lambda) + floor;
+  const m11 = g11 * (1 + lambda) + floor;
   const g0 = -(a * F.x + c * F.y);
   const g1 = -(b * F.x + d * F.y);
-  const mdet = m00 * m11 - m01 * m01;
+  const mdet = m00 * m11 - g01 * g01;
   if (!(Math.abs(mdet) > 0)) return null;
-  return { x: (m11 * g0 - m01 * g1) / mdet, y: (-m01 * g0 + m00 * g1) / mdet };
+  return { dir: { x: (m11 * g0 - g01 * g1) / mdet, y: (-g01 * g0 + m00 * g1) / mdet }, lm: true };
 }
 
 function newton(
@@ -133,11 +170,21 @@ function newton(
   // (each then mis-classified as hyperbolic). Newton still shrinks the step geometrically there.
   const stepTol = 1e-13 * scale;
   let lastStep = Infinity;
+  let lastFromLM = false;
 
   for (let iter = 0; iter < maxIterations; iter++) {
-    if (fNorm <= fTol && lastStep <= stepTol) return p;
-    const dir = newtonDirection(jacobianAt(sys, p), F, scale);
-    if (dir === null || !isFiniteVec(dir)) return fNorm <= fTol ? p : null;
+    // A microscopic Levenberg-Marquardt step is not evidence of convergence (it may simply have
+    // been damped); only a Newton-branch step that has shrunk below stepTol counts (review C3).
+    if (fNorm <= fTol && lastStep <= stepTol && !lastFromLM) return p;
+    // Finite-difference step for the Jacobian: shrink it with the Newton step. Near a multiple
+    // root the truncation error h^2 f_xxx / 6 of a fixed h = 1e-6 swamps the true derivative
+    // (3x^2 for x' = -x^3 once x < 6e-7) and the damped step crawls; h ~ step/100 keeps the
+    // error far below the derivative while rounding (eps |f| / h) stays negligible.
+    const hJ = Math.min(1e-6 * Math.max(1, Math.hypot(p.x, p.y)), Math.max(1e-2 * lastStep, 1e-15 * scale));
+    const nd = newtonDirection(jacobianAt(sys, p, hJ), F, scale);
+    if (nd === null || !isFiniteVec(nd.dir)) return fNorm <= fTol ? p : null;
+    const dir = nd.dir;
+    lastFromLM = nd.lm;
 
     // Backtracking: accept the first step that does not increase the residual.
     let step = 1;
@@ -172,7 +219,7 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   const seedGrid = opts.seedGrid ?? 12;
   const tol = opts.tol ?? 1e-9;
   const maxPoints = opts.maxPoints ?? 30;
-  const maxIterations = opts.maxIterations ?? 60;
+  const maxIterations = opts.maxIterations ?? 200;
   if (!Number.isInteger(seedGrid) || seedGrid < 1) throw new RangeError("seedGrid must be a positive integer.");
 
   const width = box.x.max - box.x.min;
@@ -213,12 +260,12 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
 
   found.sort((u, v) => u.x - v.x || u.y - v.y);
 
-  // Natural Jacobian scale of this problem: typical field magnitude per unit length of the box. A
-  // Jacobian far below it (multiple roots, where Newton stops a hair from the root) is zero here.
-  const fieldScale = typical / scale;
+  // A Jacobian whose entries are all within (10x) the numerical error of the finite differences
+  // is zero for this problem: multiple roots, where Newton stops a hair from the root. The floor
+  // is local to the point, never a box-wide statistic (review C4).
   const equilibria: Equilibrium[] = found.map((at) => {
-    const jacobian = jacobianAt(sys, at);
-    return { at, jacobian, ...classify(jacobian, undefined, { fieldScale }) };
+    const { J: jacobian, error } = jacobianWithError(sys, at);
+    return { at, jacobian, ...classify(jacobian, undefined, { zeroFloor: 10 * error }) };
   });
 
   if (equilibria.length === 0) return { points: [], warning: "none_found" };
@@ -232,8 +279,12 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   let continuum = false;
   if (manyNonHyperbolic) {
     const pts = nonHyperbolic.map((e) => e.at);
-    geometry = { collinearity: collinearity(pts), curveLike: curveLikeFraction(pts) };
-    continuum = geometry.collinearity <= COLLINEAR_RATIO || (pts.length >= CURVE_MIN_POINTS && geometry.curveLike >= CURVE_FRACTION);
+    const shape = collinearity(pts) <= COLLINEAR_RATIO || (pts.length >= CURVE_MIN_POINTS && curveLikeFraction(pts) >= CURVE_FRACTION);
+    // Shape is not enough: isolated double roots on a line have the shape of a continuum. The field
+    // must also vanish BETWEEN neighbouring points (review C5).
+    const connected = shape ? connectedFraction(sys, pts, box, scale, fTol, maxIterations) : 0;
+    geometry = { collinearity: collinearity(pts), curveLike: curveLikeFraction(pts), connected };
+    continuum = shape && connected >= CONNECTED_FRACTION;
   }
   const warning: EquilibriaWarning | undefined = continuum ? "possible_continuum" : manyNonHyperbolic ? "multiple_non_hyperbolic" : undefined;
 

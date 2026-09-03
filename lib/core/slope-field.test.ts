@@ -83,6 +83,13 @@ describe("firstOrderSingularities (M = N = 0)", () => {
     expect(firstOrderSingularities({ kind: "explicit", g: "x/y" }, box(-2, 2)).points).toEqual([]);
   });
 
+  it("x³ dx + y dy = 0 has exactly one singular point (the origin, a triple root in x)", () => {
+    const s = firstOrderSingularities({ kind: "differential", M: "x^3", N: "y" }, { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } });
+    expect(s.points).toHaveLength(1);
+    expect(Math.hypot(s.points[0].x, s.points[0].y)).toBeLessThan(1e-9);
+    expect(s.warning).toBeUndefined();
+  });
+
   it("finds two isolated singular points: (x² - 1) dx + y dy = 0", () => {
     const r = firstOrderSingularities({ kind: "differential", M: "x^2 - 1", N: "y" }, box(-2, 2));
     expect(r.points.map((p) => Math.round(p.x * 1e6) / 1e6).sort()).toEqual([-1, 1]);

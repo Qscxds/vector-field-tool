@@ -168,17 +168,31 @@ describe("repeated roots inside the tolerance band carry a caveat (H2.8)", () =>
     const r = classify([[1, -1e-6], [1e-6, 1]]);
     expect(r.classification).toBe("star_node");
     expect(r.caveat).toBe("repeatedRoot");
-    expect(classify([[1, -1e-12], [1e-12, 1]]).caveat).toBeUndefined();
+    // [[1, -1e-12], [1e-12, 1]] is, in exact arithmetic, a slow spiral (eigenvalues 1 ± 1e-12 i); in
+    // double precision its discriminant is exactly 0 but the off-diagonals are not: still a caveat.
+    expect(classify([[1, -1e-12], [1e-12, 1]]).classification).toBe("star_node");
+    expect(classify([[1, -1e-12], [1e-12, 1]]).caveat).toBe("repeatedRoot");
   });
 
-  it("a Jacobian that is tiny at the problem's own scale is zero, not a small star node", () => {
+  it("a Jacobian within the numerical error of zero is zero, not a small star node", () => {
     // Purely relative: 1e-12 x I is a star node like any other multiple of the identity.
     expect(classify([[1e-12, 0], [0, 1e-12]]).classification).toBe("star_node");
-    // With the field scale of the problem given (say 1), 1e-12 is below 1e-9 x 1: it is zero.
-    const r = classify([[1e-12, 0], [0, 1e-12]], 1e-9, { fieldScale: 1 });
+    // With the finite-difference error of the Jacobian known to be ~4e-12, entries of 1e-12 are zero.
+    const r = classify([[1e-12, 0], [0, 1e-12]], 1e-9, { zeroFloor: 4e-11 });
     expect(r.classification).toBe("non_hyperbolic");
     expect(r.caveat).toBe("nonHyperbolic");
-    // A genuinely slow but hyperbolic system keeps its type: entries 1e-6 against a field scale 1e-6.
-    expect(classify([[1e-6, 0], [0, -1e-6]], 1e-9, { fieldScale: 1e-6 }).classification).toBe("saddle");
+    // A genuinely slow but hyperbolic system keeps its type: entries 1e-6 with an error of 1e-15.
+    expect(classify([[1e-6, 0], [0, -1e-6]], 1e-9, { zeroFloor: 1e-14 }).classification).toBe("saddle");
+    // and an O(1) saddle is a saddle whatever the field does elsewhere in the box
+    expect(classify([[0, 1], [6, -1]], 1e-9, { zeroFloor: 1e-10 }).classification).toBe("saddle");
+  });
+
+  it("a star node decided with off-diagonal entries that are tiny but not zero carries the caveat", () => {
+    // disc = 0 exactly (a = d, c = 0) but b = 1e-5 lies inside the sqrt(tol) band: this matrix has a
+    // single eigenvector, so 'star node' is a tolerance verdict, not a fact.
+    const r = classify([[2, 1e-5], [0, 2]]);
+    expect(r.classification).toBe("star_node");
+    expect(r.caveat).toBe("repeatedRoot");
+    expect(classify([[2, 0], [0, 2]]).caveat).toBeUndefined();
   });
 });

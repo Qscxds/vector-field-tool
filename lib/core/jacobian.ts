@@ -22,6 +22,25 @@ export function jacobianAt(sys: CompiledSystem, p: Vec2, h?: number, t = 0): Mat
   ];
 }
 
+/**
+ * Jacobian with an error estimate: central differences at h and 2h (truncation ≈ |J_h - J_2h| / 3,
+ * the leading h² term) plus the rounding floor eps * |f| / h. Callers use the error as the level
+ * below which an entry is zero for this problem (review C4): a finite-difference Jacobian of
+ * ~1e-12 at a double root is zero, an O(1) Jacobian in a field whose box-wide median is 1e9 is not.
+ */
+export function jacobianWithError(sys: CompiledSystem, p: Vec2, t = 0): { J: Matrix2; error: number } {
+  const h = 1e-6 * Math.max(1, Math.hypot(p.x, p.y));
+  const J = jacobianAt(sys, p, h, t);
+  const J2 = jacobianAt(sys, p, 2 * h, t);
+  let truncation = 0;
+  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) truncation = Math.max(truncation, Math.abs(J[i][j] - J2[i][j]) / 3);
+  const mags = [sys.eval({ x: p.x + h, y: p.y }, t), sys.eval({ x: p.x - h, y: p.y }, t), sys.eval({ x: p.x, y: p.y + h }, t), sys.eval({ x: p.x, y: p.y - h }, t)]
+    .flatMap((v) => [Math.abs(v.x), Math.abs(v.y)])
+    .filter(Number.isFinite);
+  const rounding = (4 * 2.220446049250313e-16 * (mags.length ? Math.max(...mags) : 0)) / (2 * h);
+  return { J, error: Number.isFinite(truncation) ? truncation + rounding : Infinity };
+}
+
 export function trace(J: Matrix2): number {
   return J[0][0] + J[1][1];
 }

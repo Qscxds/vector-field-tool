@@ -149,6 +149,7 @@ describe("continuum needs a geometric criterion, not just a count (H2.7)", () =>
     const r = findEquilibria(compileSystem({ f: "0", g: "-y" }), box(-1, 1));
     expect(r.warning).toBe("possible_continuum");
     expect(r.geometry!.collinearity).toBeLessThan(1e-6);
+    expect(r.geometry!.connected).toBeGreaterThanOrEqual(0.8);
   });
 
   it("a circle of equilibria, x' = x(1 - x² - y²), y' = y(1 - x² - y²), is a continuum by the curve test", () => {
@@ -161,6 +162,52 @@ describe("continuum needs a geometric criterion, not just a count (H2.7)", () =>
     const onCircle = r.points.filter((p) => Math.abs(Math.hypot(p.at.x, p.at.y) - 1) < 1e-6);
     expect(onCircle.length).toBeGreaterThanOrEqual(6);
     for (const p of onCircle) expect(p.classification).toBe("non_hyperbolic");
+  });
+
+  it("isolated double roots that happen to be collinear are NOT a continuum: the field is non-zero between them (review C5)", () => {
+    // f = sin(πx)², g = y: double roots at every integer x on the x-axis, all non-hyperbolic and
+    // exactly collinear, yet f = 1 at the midpoints. Seven of them on [-3.5, 3.5].
+    const r = findEquilibria(compileSystem({ f: "sin(pi*x)^2", g: "y" }), box(-3.5, 3.5));
+    expect(r.points).toHaveLength(7);
+    for (const p of r.points) expect(p.classification).toBe("non_hyperbolic");
+    expect(r.warning).toBe("multiple_non_hyperbolic");
+    expect(r.geometry!.collinearity).toBeLessThan(1e-6);
+    expect(r.geometry!.connected).toBeLessThan(0.2);
+    // three collinear double roots: f = (x³ - x)², g = y
+    const r3 = findEquilibria(compileSystem({ f: "(x^3 - x)^2", g: "y" }), box(-2, 2));
+    expect(r3.points).toHaveLength(3);
+    expect(r3.warning).toBe("multiple_non_hyperbolic");
+  });
+
+  it("a multiple root is one equilibrium, not a cluster mistaken for a continuum (review C3)", () => {
+    // x' = -x³, y' = -y: the origin is the only zero (a degenerate, actually stable, equilibrium).
+    // Newton converges only linearly there (x -> 2x/3); the old LM step was so small that it
+    // passed the step-convergence test a few 1e-6 from the root, and different seeds stopped at
+    // different places: 2-3 'equilibria' plus a 'possible_continuum'.
+    for (const b of [box(-2, 2), box(-0.5, 0.5), box(-10, 10)]) {
+      const r = findEquilibria(compileSystem({ f: "-x^3", g: "-y" }), b);
+      expect(r.points, JSON.stringify(b)).toHaveLength(1);
+      expect(near(r.points[0].at, 0, 0, 1e-9)).toBe(true);
+      expect(r.points[0].classification).toBe("non_hyperbolic");
+      expect(r.warning).toBeUndefined();
+    }
+    const quartic = findEquilibria(compileSystem({ f: "x^4", g: "-y" }), box(-2, 2));
+    expect(quartic.points).toHaveLength(1);
+    expect(quartic.warning).toBeUndefined();
+    const octic = findEquilibria(compileSystem({ f: "x^8", g: "-y" }), box(-2, 2));
+    expect(octic.points).toHaveLength(1);
+    expect(octic.warning).toBeUndefined();
+  });
+
+  it("an O(1) saddle stays a saddle on a huge box (review C4)", () => {
+    // x' = y, y' = -x - y + x^7: equilibria at x^7 = x, i.e. 0, ±1. At (1, 0): J = [[0, 1], [6, -1]],
+    // det = -6: a saddle. The median field magnitude over a [-100, 100]² box is enormous, which
+    // used to declare this Jacobian zero.
+    const r = findEquilibria(compileSystem({ f: "y", g: "-x - y + x^7" }), box(-100, 100));
+    const saddle = r.points.find((p) => near(p.at, 1, 0, 1e-6));
+    expect(saddle).toBeTruthy();
+    expect(saddle!.classification).toBe("saddle");
+    expect(saddle!.determinant).toBeCloseTo(-6, 4);
   });
 
   it("four isolated degenerate equilibria that are not collinear are NOT a continuum", () => {

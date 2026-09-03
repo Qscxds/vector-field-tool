@@ -47,13 +47,15 @@ const CAVEATS: Record<CaveatKey, CaveatKey> = { center: "center", nonHyperbolic:
 
 export type ClassifyOptions = {
   /**
-   * Natural scale of the Jacobian for this problem (typical field magnitude / box size). A Jacobian
-   * whose largest entry is below tol x this scale is ZERO for the problem at hand, not a tiny but
-   * hyperbolic matrix: at a multiple root (f = (x² - 1)²) Newton stops a hair from the root and
-   * the finite-difference Jacobian is ~1e-12 x I, which a purely relative classification would call
-   * a perfectly good star node. Without this option the classification is purely relative.
+   * Absolute level below which an entry of J is zero for this problem: the error estimate of the
+   * numerical Jacobian (jacobianWithError), scaled by the caller. At a multiple root
+   * (f = (x² - 1)²) Newton stops a hair from the root and the finite-difference Jacobian is
+   * ~1e-12 x I with an error of the same size, which a purely relative classification would call
+   * a perfectly good star node. Never derive this from a box-wide statistic (review C4): an O(1)
+   * saddle in a field whose median over a huge box is 1e9 is still a saddle. Without this option
+   * the classification is purely relative.
    */
-  fieldScale?: number;
+  zeroFloor?: number;
 };
 
 /**
@@ -74,8 +76,8 @@ export function classify(J: Matrix2, tol = 1e-9, opts: ClassifyOptions = {}): Cl
   if (!(scale > 0)) {
     return { classification: "non_hyperbolic", trace: tr, determinant: det, eigenvalues: [{ re: 0, im: 0 }, { re: 0, im: 0 }], caveat: CAVEATS.nonHyperbolic };
   }
-  if (opts.fieldScale !== undefined && Number.isFinite(opts.fieldScale) && opts.fieldScale > 0 && scale <= tol * opts.fieldScale) {
-    // Every entry is zero at the problem's own scale: both eigenvalues vanish to precision.
+  if (opts.zeroFloor !== undefined && Number.isFinite(opts.zeroFloor) && opts.zeroFloor >= 0 && scale <= opts.zeroFloor) {
+    // Every entry is within the numerical error of zero: both eigenvalues vanish to precision.
     return { classification: "non_hyperbolic", trace: tr, determinant: det, eigenvalues: eigenvalues2(J), caveat: CAVEATS.nonHyperbolic };
   }
 
@@ -116,7 +118,10 @@ export function classify(J: Matrix2, tol = 1e-9, opts: ClassifyOptions = {}): Cl
     // working precision. diag(1 + 1e-6, 1 - 1e-6) is called a star node although its eigenvalues
     // differ; the name must come with that admission. An exactly zero discriminant (diag(2, 2),
     // a Jordan block) is a genuine repeated root and needs no caveat.
-    const caveat = discN === 0 ? undefined : CAVEATS.repeatedRoot;
+    // The star / degenerate split is itself a tolerance decision: a star node with off-diagonal
+    // entries that are tiny but not zero is really a near-Jordan block, so it gets the caveat too.
+    const exactStar = b === 0 && c === 0 && a === d;
+    const caveat = discN === 0 && (isScalarMultiple ? exactStar : true) ? undefined : CAVEATS.repeatedRoot;
     return { classification: isScalarMultiple ? "star_node" : "degenerate_node", ...base, eigenvalues: [repeated, { ...repeated }], ...(caveat ? { caveat } : {}) };
   }
 
