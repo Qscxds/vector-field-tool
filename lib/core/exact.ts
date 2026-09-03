@@ -57,8 +57,10 @@ export function exactPotential(spec: FirstOrderSpec, box: Box, opts: ExactPotent
     simpson((t) => N({ x: base.x, y: t }), base.y, p.y, panels) + simpson((s) => M({ x: s, y: p.y }), base.x, p.x, panels);
 
   // Path-independence check on a coarse grid of irrational fractions (avoids the base point itself).
+  // The deviation is relative to the potential's own magnitude over the grid (with a rounding floor),
+  // never to an absolute 1: scaling M and N by a constant must not change the verdict (review C6).
   const fr = [0.1618, 0.3819, 0.618, 0.8541];
-  let scale = 1;
+  let scale = 0;
   const pairs: Array<[number, number]> = [];
   for (const fx of fr) {
     for (const fy of fr) {
@@ -71,7 +73,8 @@ export function exactPotential(spec: FirstOrderSpec, box: Box, opts: ExactPotent
       scale = Math.max(scale, Math.abs(a), Math.abs(b));
     }
   }
-  const pathDeviation = pairs.length ? Math.max(...pairs.map(([a, b]) => Math.abs(a - b) / scale)) : Infinity;
+  const floor = 1e3 * 2.220446049250313e-16 * scale;
+  const pathDeviation = pairs.length ? Math.max(...pairs.map(([a, b]) => Math.abs(a - b))) / Math.max(scale, floor, 1e-300) : Infinity;
 
   return { F: viaHorizontalFirst, base, pathDeviation, consistent: pathDeviation <= tol };
 }

@@ -139,10 +139,23 @@ export function firstOrderEquilibria(
   const refIndex = finiteCounts.indexOf(Math.max(...finiteCounts));
   const ref = table[refIndex];
   const xRef = xProbe[refIndex];
-  const mScale = Math.max(1, ...table.flat().filter(Number.isFinite).map(Math.abs));
+  // Scales of M and N over the probe table: every tolerance below is relative to them (review C7),
+  // so an equation whose right-hand side is 1e-12 everywhere is not a sheet of 'constant solutions'.
+  const mValues = table.flat().filter(Number.isFinite).map(Math.abs);
+  const mScale = mValues.length ? Math.max(...mValues) : 0;
+  const nValues = xProbe.flatMap((x) => ys.filter((_, i) => i % 8 === 0).map((y) => N({ x, y }))).filter(Number.isFinite).map(Math.abs);
+  const nScale = nValues.length ? Math.max(...nValues) : 0;
+  if (!(mScale > 0) || !(nScale > 0)) {
+    // M ≡ 0 (every y is trivially constant: no direction field to speak of) or N ≡ 0 (no slope anywhere).
+    return { autonomous: false, solutions: [] };
+  }
   const fTol = tol * mScale;
+  const nFloor = 1e3 * 2.220446049250313e-16 * nScale;
 
-  // Autonomy of the slope (informational).
+  // Autonomy of the slope (informational), relative to the slopes actually seen.
+  const slopeValues: number[] = [];
+  for (let i = 0; i < ys.length; i += 5) for (const x of xProbe) { const s = slope(x, ys[i]); if (Number.isFinite(s)) slopeValues.push(Math.abs(s)); }
+  const sFloor = 1e3 * 2.220446049250313e-16 * (slopeValues.length ? Math.max(...slopeValues) : 0);
   let comparable = 0;
   let autonomous = true;
   outer: for (let i = 0; i < ys.length; i += 5) {
@@ -153,7 +166,7 @@ export function firstOrderEquilibria(
       const s = slope(x, ys[i]);
       if (!Number.isFinite(s)) continue;
       comparable++;
-      if (Math.abs(s - s0) > 1e-9 * Math.max(1, Math.abs(s0))) {
+      if (Math.abs(s - s0) > 1e-9 * Math.max(Math.abs(s0), Math.abs(s), sFloor)) {
         autonomous = false;
         break outer;
       }
@@ -162,7 +175,7 @@ export function firstOrderEquilibria(
   if (comparable < 3) autonomous = false;
 
   const mAt = (y: number) => M({ x: xRef, y });
-  const isRootAtRef = (y: number) => Number.isFinite(y) && Math.abs(mAt(y)) <= Math.max(fTol, 1e-9 * mScale);
+  const isRootAtRef = (y: number) => Number.isFinite(y) && Math.abs(mAt(y)) <= fTol;
 
   const polish = (y0: number): number => {
     let y = y0;
@@ -222,7 +235,10 @@ export function firstOrderEquilibria(
     for (const x of xProbe) {
       const m = M({ x, y: c });
       const n = N({ x, y: c });
-      if (!Number.isFinite(m) || !Number.isFinite(n) || Math.abs(m) > Math.max(fTol, 1e-9 * mScale)) {
+      // M or N undefined at this probe (dy/dx = y/x at x = 0): the line may still be a solution on
+      // either side; skip the probe rather than reject the line, like the singular case below.
+      if (!Number.isFinite(m) || !Number.isFinite(n)) continue;
+      if (Math.abs(m) > fTol) {
         ok = false;
         break;
       }
@@ -231,7 +247,7 @@ export function firstOrderEquilibria(
       // counted against the line; otherwise a probe landing exactly on the point would make the
       // answer depend on whether the box happens to be symmetric. A line singular at (almost)
       // every probe is not a solution of anything and is dropped.
-      if (Math.abs(n) <= 1e-12 * Math.max(1, Math.abs(m))) continue;
+      if (Math.abs(n) <= nFloor) continue;
       goodX.push(x);
     }
     if (!ok || goodX.length < 3) continue;

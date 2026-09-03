@@ -181,6 +181,33 @@ describe("firstOrderEquilibria", () => {
   });
 });
 
+describe("relative tolerances for constant solutions and autonomy (review C7)", () => {
+  it("dy/dx = exp(-x) on [30, 40] has no constant solution although |g| < 1e-13 everywhere", () => {
+    // M = -e^{-x} is never zero; the old absolute floor 1e-9 called every sampled y a root.
+    const r = firstOrderEquilibria({ kind: "explicit", g: "exp(-x)" }, { min: -1, max: 1 }, { xRange: { min: 30, max: 40 } });
+    expect(r.solutions).toEqual([]);
+    expect(r.autonomous).toBe(false); // e^{-x} depends on x, however small it is
+  });
+
+  it("scaling an equation by 1e-12 changes neither its constant solutions nor its autonomy", () => {
+    const a = firstOrderEquilibria({ kind: "explicit", g: "y*(1-y)" }, { min: -1, max: 2 }, { xRange: { min: -2, max: 2 } });
+    const b = firstOrderEquilibria({ kind: "explicit", g: "1e-12*y*(1-y)" }, { min: -1, max: 2 }, { xRange: { min: -2, max: 2 } });
+    expect(b.autonomous).toBe(true);
+    expect(b.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability])).toEqual(a.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability]));
+    const c = firstOrderEquilibria({ kind: "explicit", g: "1e-12*(x + y)" }, { min: -2, max: 2 }, { xRange: { min: -2, max: 2 } });
+    expect(c.autonomous).toBe(false);
+  });
+
+  it("dy/dx = y/x: y = 0 is a constant solution on a box where a probe lands on x = 0 (review, dropped item)", () => {
+    // M = -y/x is 0 on y = 0 for x ≠ 0 and undefined at x = 0; the undefined probe is skipped, not
+    // held against the line. Solutions go away from y = 0 for x > 0 and towards it for x < 0: 'varies'.
+    const r = firstOrderEquilibria({ kind: "explicit", g: "y/x" }, { min: -2, max: 2 }, { xRange: { min: -2, max: 2 } });
+    expect(r.solutions).toHaveLength(1);
+    expect(Math.abs(r.solutions[0].y)).toBeLessThan(1e-9);
+    expect(r.solutions[0].stability).toBe("varies");
+  });
+});
+
 describe("constant solutions through a singular point", () => {
   const spec = { kind: "differential" as const, M: "2*x*y", N: "x^2 + y^2" };
 

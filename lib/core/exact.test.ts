@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+// review C6: the path check must be scale-free
 import { exactPotential, potentialLevels, simpson } from "./exact";
 
 const box = { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } };
@@ -66,5 +67,31 @@ describe("potentialLevels", () => {
 
   it("returns nothing for a constant potential", () => {
     expect(potentialLevels(() => 1, box, 5)).toEqual([]);
+  });
+});
+
+describe("path-independence check is scale-free (review C6)", () => {
+  const box = { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } };
+
+  it("the closed-but-not-exact form dθ fails the check whether or not it is multiplied by 1e-8", () => {
+    // (x dy - y dx)/(x² + y²) is closed but has no potential on a box containing the origin: the two
+    // integration paths differ by multiples of 2π wherever they wind differently around the origin.
+    const plain = exactPotential({ kind: "differential", M: "-y/(x^2 + y^2)", N: "x/(x^2 + y^2)" }, box);
+    const tiny = exactPotential({ kind: "differential", M: "-1e-8*y/(x^2 + y^2)", N: "1e-8*x/(x^2 + y^2)" }, box);
+    const huge = exactPotential({ kind: "differential", M: "1e8*(-y)/(x^2 + y^2)", N: "1e8*x/(x^2 + y^2)" }, box);
+    expect(plain.consistent).toBe(false);
+    expect(tiny.consistent).toBe(false);
+    expect(huge.consistent).toBe(false);
+    expect(tiny.pathDeviation).toBeCloseTo(plain.pathDeviation, 6);
+    expect(huge.pathDeviation).toBeCloseTo(plain.pathDeviation, 6);
+    expect(plain.pathDeviation).toBeGreaterThan(0.1);
+  });
+
+  it("a genuinely exact equation passes at any scale", () => {
+    for (const k of ["1", "1e-9", "1e9"]) {
+      const r = exactPotential({ kind: "differential", M: `${k}*2*x*y`, N: `${k}*(x^2 + y^2)` }, box);
+      expect(r.consistent, k).toBe(true);
+      expect(r.pathDeviation, k).toBeLessThan(1e-12);
+    }
   });
 });
