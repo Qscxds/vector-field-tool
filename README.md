@@ -11,7 +11,7 @@
 - **网页外壳** `/vector-field`：中英切换、三种输入（二维系统 / 显式一阶 / 微分形式）、十个预设、等比视口、滚轮缩放、拖动平移、双击复位、悬停预览解曲线、点击固定轨线。
 - **widget**：Scene 里带着方程，widget 用同一份内核本地编译，缩放 / 平移 / 悬停 / 点击都在沙箱里算（S 阶段证实 mathjs 编译不需要 `unsafe-eval`）；编译被挡时退回静态图并说明。**Claude 实机验证 widget 交互待人工做**（版本号 e-2 → g-1，Claude 里必须断开重连连接器）。
 - 单测 252 个，期望值全部来自数学推导。
-- 未做：部署 Vercel、限流。
+- **上线准备完成**（H1）：显式 `BASE_URL` 优先级最高并有启动自检；每次调用 2 秒预算 + 进程内限流 + 参数上界；首页有交互页面入口。未做：实际部署到 Vercel（见下文步骤）。
 
 文档：`docs/P0-handoff.md`（P0）、`docs/NIGHT-*.md`（夜跑 A–E）、`docs/FG-summary.md`（S/F/G 进度与验证清单）、`docs/FG-decisions.md`（所有偏离原计划的决定）、`docs/FG-open-questions.md`（待拍板事项）。
 
@@ -157,20 +157,42 @@ Claude 把 widget HTML 渲染在它自己的沙箱域名 `<hash>.claudemcpconten
 
 ## 部署到 Vercel
 
-1. import 仓库，框架自动识别为 Next.js，不需要环境变量。
+1. import 仓库，框架自动识别为 Next.js。第一次部署（还没绑域名）不需要任何环境变量。
 2. **关掉 Deployment Protection**（Settings → Deployment Protection → Vercel Authentication → Disabled）。有意为之：没有 secret、没有用户数据，关掉后 preview URL 也能给 Claude 连。
-3. Claude 里添加 `https://<project>.vercel.app/mcp`。
+3. 先用 `https://<project>.vercel.app/mcp` 在 Claude 里试通。
+4. **绑定自定义域名（例如 `tools.<你的域名>`）之后，必须在 Vercel 项目设置里加环境变量 `BASE_URL=https://tools.<你的域名>`（Production 环境），然后重新部署。** 不设的话不会报错，但 widget 在 Claude 里会静默白屏，见下面的解释。
+5. Claude 里把连接器改成 `https://tools.<你的域名>/mcp`（改过地址或 widget 版本都要断开重连）。
+
+### 为什么绑了域名就必须设 BASE_URL
+
+`base-url.ts` 在构建时决定这个部署的「公网源」，它同时喂给三处：Next 的 `assetPrefix`（widget 的 JS/CSS 绝对地址和 Turbopack 的 chunk 前缀）、widget HTML 里注入的 `<base href>`、widget 资源的 `_meta.ui.csp`（`connectDomains` / `resourceDomains` / `baseUriDomains`）。优先级：
+
+1. 显式 `BASE_URL`（最高，压过所有 Vercel 系统变量；有测试 `base-url.test.ts` 保证）；
+2. Vercel 生产环境的 `VERCEL_PROJECT_PRODUCTION_URL`，即 `xxx.vercel.app`；
+3. Vercel 预览部署的分支 / 部署地址；
+4. 都没有：本地开发，`/mcp` 从请求头推。
+
+绑了自定义域名之后学生和 Claude 都从 `tools.<域名>` 加载，而第 2 条推出来的仍是 `xxx.vercel.app`：三处全部指向另一个源，Claude 沙箱的 CSP 把 `_next/*` 资源拦掉，iframe 里什么都不出现，也没有任何错误。所以启动时有一道自检：检测到运行在 Vercel 生产环境但 `BASE_URL` 未设置时，构建日志和函数日志里会打一行 `[base-url] BASE_URL is not set on this Vercel production deployment ...` 的警告。**看到这行就去设 `BASE_URL` 并重新部署。**
+
+### 公开端点的成本上限
+
+`/mcp` 完全公开、无鉴权，任何人拿到地址都能调。它不读写任何数据，最坏情况是被人当免费的 ODE 求解器刷。这里没有做分布式限流（serverless 没有共享状态，做对需要外部存储，对这个项目不值），而是把**单次请求的成本**压死：
+
+- 参数上界：`density` ≤ 60、`tSpan` ≤ 1000、盒子每边 ≤ 1e6、表达式 ≤ 200 字符（`f`、`g`、`expr`、`M`、`N` 一视同仁，解析器另有 500 字符硬上限）、积分步数上限 20000 步 / 方向、平衡点种子固定 12×12、等值线固定 8 条 × 60×60 网格。
+- **每次工具调用 2 秒的墙钟预算**：积分器、平衡点搜索、势函数和等值线循环都会定期检查，超时返回可读的 `isError`（「范围太大或表达式太复杂，请缩小 tSpan / density / 范围」），不会让函数一直跑。最贵的合法调用（恰当方程 + 等值线，density 60）实测远在 1 秒以内。
+- **进程内滑动窗口限流**（每实例每分钟 240 次工具调用）作为减速带。它在 serverless 上只是尽力而为：每个实例各算各的、冷启动清零、多实例并行时上限成倍放大，所以它不是真正的限流，只是让单个实例上的死循环脚本得到 `isError` 而不是计算。
 
 Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 ≥20.9，Vercel 默认选 24。
 
 ## 排错
 
-- **widget 不出现或一块空白**：先确认启动时设了 `BASE_URL` 且与连接器地址一致；改过版本号要重连连接器；然后 Claude 桌面版 Help → Troubleshooting → Enable Developer Mode，Ctrl+Shift+I 看内层 iframe 控制台。其他原因：`/_next/*` 被 403、ngrok 免费版、Vercel Deployment Protection 没关。先用 `ping` 判断传输层是否正常。
+- **widget 不出现或一块空白**：先确认启动时设了 `BASE_URL` 且与连接器地址一致（Vercel 上绑了自定义域名却没设 `BASE_URL` 是最常见的原因，日志里会有 `[base-url]` 警告）；改过版本号要重连连接器；然后 Claude 桌面版 Help → Troubleshooting → Enable Developer Mode，Ctrl+Shift+I 看内层 iframe 控制台。其他原因：`/_next/*` 被 403、ngrok 免费版、Vercel Deployment Protection 没关。先用 `ping` 判断传输层是否正常。
 - **widget 有图但不能缩放 / 悬停，并显示「本地重算不可用」**：沙箱里编译表达式失败。把控制台里的异常贴到 issue；服务器给的静态图仍然正确。
 - **resources/read 报 `widget fetch failed for <url>`**：服务器推算出的公网地址它自己访问不到。检查隧道、`x-forwarded-host`、`BASE_URL`。
 - **日志里出现 400**：Claude 有些请求带 `mcp-protocol-version: 2026-07-28`，路由会降级为 SDK 支持的版本再处理。每个 POST 打一行 `[mcp] <method> ...` 日志。
 - **连接器无法连接**：URL 带 `/mcp`、是 https、cloudflared 还活着。Claude 出口 IP 段见 <https://platform.claude.com/docs/en/api/ip-addresses>。
 - **工具返回 isError**：文字里点名了哪个参数或哪个表达式有问题（例如 `xy` 会提示写成 `x*y`）。参数越界由 zod 校验，同样以 isError 结果返回，不会 500。
+- **isError 说超出 2 秒预算或 Too many requests**：前者是单次调用太贵（缩小范围 / tSpan / density），后者是这个实例一分钟内已处理 240 次调用，几秒后再试。
 
 ## 决策记录
 
