@@ -11,7 +11,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledSystem } from "@/lib/core/parse";
 import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
-import { computeFeatures, FEATURE_DEBOUNCE_MS, HOVER_PIXEL_THRESHOLD, HOVER_STEP_BUDGET, SINGULAR_PIXEL_RADIUS, traceBoth, type Features } from "@/lib/interactive";
+import { computeFeatures, FEATURE_DEBOUNCE_MS, HOVER_PIXEL_THRESHOLD, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features } from "@/lib/interactive";
 import { labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
@@ -144,9 +144,10 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
 
   const onClickWorld = useCallback((p: Vec2) => {
     const s = sysRef.current;
-    const vp = viewportRef.current;
-    if (!s || !vp) return;
-    setTrajectories((prev) => [...prev, ...traceBoth(s, p, vp.box)]);
+    const home = homeBoxRef.current;
+    if (!s || !home) return;
+    // The curve's extent is the solution's business (20x the home box); the view only clips it.
+    setTrajectories((prev) => [...prev, ...traceFixed(s, p, home)]);
   }, []);
 
   const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
@@ -181,7 +182,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
         return;
       }
       setHint(null);
-      setOverlay(traceBoth(s, h.world, vp.box, HOVER_STEP_BUDGET));
+      setOverlay(tracePreview(s, h.world, vp));
     });
   }, []);
   useEffect(

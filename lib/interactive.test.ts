@@ -1,9 +1,24 @@
 import { describe, expect, it } from "vitest";
 import { compileSystem } from "./core/parse";
 import { toSystem } from "./core/slope-field";
-import { computeFeatures, expandBox, HOVER_STEP_BUDGET, traceBoth } from "./interactive";
+import type { Vec2 } from "./core/types";
+import {
+  computeFeatures,
+  expandBox,
+  fixedStopBox,
+  HOVER_DIAGONALS,
+  HOVER_STEP_CAP,
+  screenMetric,
+  traceBoth,
+  traceFixed,
+  tracePreview,
+} from "./interactive";
+import { fitViewport, zoomAt } from "./render/viewport";
+import type { TrajectoryView } from "./scene";
 
 const box = { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } };
+const screenLength = (t: TrajectoryView, metric: (a: Vec2, b: Vec2) => number) =>
+  t.points.slice(1).reduce((s, p, i) => s + metric(t.points[i], p), 0);
 
 describe("computeFeatures", () => {
   it("returns equilibria for a system", () => {
@@ -32,34 +47,84 @@ describe("computeFeatures", () => {
   });
 });
 
-describe("expandBox and traceBoth", () => {
+describe("expandBox and stop boxes", () => {
   it("expandBox grows symmetrically", () => {
     expect(expandBox(box, 1)).toEqual({ x: { min: -6, max: 6 }, y: { min: -6, max: 6 } });
     expect(expandBox({ x: { min: 0, max: 1 }, y: { min: 0, max: 2 } }, 0.5)).toEqual({ x: { min: -0.5, max: 1.5 }, y: { min: -1, max: 3 } });
   });
 
-  it("traces both directions and respects the step budget", () => {
-    const sys = compileSystem({ f: "y", g: "-x" });
-    const both = traceBoth(sys, { x: 1, y: 0 }, box, HOVER_STEP_BUDGET);
-    expect(both.map((t) => t.direction)).toEqual(["forward", "backward"]);
-    for (const t of both) {
-      expect(t.steps).toBeLessThanOrEqual(HOVER_STEP_BUDGET);
-      expect(t.points.length).toBeGreaterThan(10);
-      expect(t.points.every((p) => Math.abs(Math.hypot(p.x, p.y) - 1) < 1e-3)).toBe(true);
+  it("the fixed stop box is 20 times the home box in each dimension", () => {
+    const s = fixedStopBox({ x: { min: -3, max: 3 }, y: { min: -1, max: 1 } });
+    expect(s.x.max - s.x.min).toBeCloseTo(120, 12);
+    expect(s.y.max - s.y.min).toBeCloseTo(40, 12);
+    expect((s.x.min + s.x.max) / 2).toBeCloseTo(0, 12);
+  });
+});
+
+describe("hover preview length is measured on screen (H2.2)", () => {
+  const viewport = fitViewport(box, 400, 400); // 100 px per world unit
+  const metric = screenMetric(viewport);
+  const limit = HOVER_DIAGONALS * Math.hypot(400, 400);
+
+  it("a fast field and a slow field give previews of the same on-screen length", () => {
+    // Both systems have circular orbits through (1, 0); the fast one goes round 100 times faster.
+    const slow = tracePreview(compileSystem({ f: "y", g: "-x" }), { x: 1, y: 0 }, viewport);
+    const fast = tracePreview(compileSystem({ f: "100*y", g: "-100*x" }), { x: 1, y: 0 }, viewport);
+    for (const t of [...slow, ...fast]) {
+      expect(t.status).toBe("arc_length");
+      expect(screenLength(t, metric)).toBeCloseTo(limit, 6);
+      expect(t.steps).toBeLessThanOrEqual(HOVER_STEP_CAP);
     }
-    const fixed = traceBoth(sys, { x: 1, y: 0 }, box);
-    expect(fixed[0].status).toBe("completed");
-    expect(fixed[0].tEnd).toBeCloseTo(50, 9);
+    // The fast preview took far fewer time units for the same picture.
+    expect(Math.abs(fast[0].tEnd)).toBeLessThan(Math.abs(slow[0].tEnd) / 50);
   });
 
-  it("a trajectory may leave the visible box but stops at three times its size", () => {
+  it("zooming in keeps the on-screen length: fewer world units, same pixels", () => {
+    const zoomed = zoomAt(viewport, { x: 200, y: 200 }, 4, { original: box });
     const sys = compileSystem({ f: "1", g: "0" });
-    const [fwd] = traceBoth(sys, { x: 0, y: 0 }, box);
+    const wide = tracePreview(sys, { x: 0, y: 0 }, viewport)[0];
+    const close = tracePreview(sys, { x: 0, y: 0 }, zoomed)[0];
+    expect(screenLength(wide, metric)).toBeCloseTo(limit, 6);
+    expect(screenLength(close, screenMetric(zoomed))).toBeCloseTo(limit, 6);
+    // In world units the zoomed preview is four times shorter: 1131 px / 400 px-per-unit.
+    const worldLen = (t: TrajectoryView) => Math.abs(t.points[t.points.length - 1].x);
+    expect(worldLen(wide)).toBeCloseTo(limit / 100, 6);
+    expect(worldLen(close)).toBeCloseTo(limit / 400, 6);
+  });
+
+  it("a preview that reaches an equilibrium or leaves the stop box is shorter, and says why", () => {
+    const t = tracePreview(compileSystem({ f: "-x", g: "-y" }), { x: 1, y: 1 }, viewport);
+    expect(t[0].status).toBe("reached_equilibrium");
+    expect(screenLength(t[0], metric)).toBeLessThan(limit);
+  });
+});
+
+describe("fixed trajectories extend by the solution, not the view (H2.3)", () => {
+  it("clicked in a 10x zoomed view, the curve runs far beyond the visible range", () => {
+    const home = { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } };
+    const v = zoomAt(fitViewport(home, 600, 600), { x: 300, y: 300 }, 10, { original: home });
+    expect(v.box.x.max - v.box.x.min).toBeCloseTo(0.6, 9); // the visible range is now ±0.3
+    const [fwd, back] = traceFixed(compileSystem({ f: "1", g: "0" }), { x: 0, y: 0 }, home);
+    // x' = 1 for 50 time units: x = 50, inside the 20x stop box (±60) -> completed, not truncated.
+    expect(fwd.status).toBe("completed");
+    expect(fwd.points[fwd.points.length - 1].x).toBeCloseTo(50, 6);
+    expect(back.points[back.points.length - 1].x).toBeCloseTo(-50, 6);
+    expect(fwd.points[fwd.points.length - 1].x).toBeGreaterThan(v.box.x.max * 100);
+  });
+
+  it("stops at 20x the home box, wherever the view is", () => {
+    const home = { x: { min: -1, max: 1 }, y: { min: -1, max: 1 } };
+    const [fwd] = traceFixed(compileSystem({ f: "5", g: "0" }), { x: 0, y: 0 }, home);
+    // Stop box is ±20; x = 5t reaches 20 at t = 4 (< 50) -> left_box with the exit point kept.
     expect(fwd.status).toBe("left_box");
-    // The integrator records the first point outside the stop box; every earlier point is inside it.
     const end = fwd.points[fwd.points.length - 1];
-    const beforeEnd = fwd.points[fwd.points.length - 2];
-    expect(end.x).toBeGreaterThan(6);
-    expect(beforeEnd.x).toBeLessThanOrEqual(6);
+    expect(end.x).toBeGreaterThanOrEqual(20);
+    expect(fwd.points[fwd.points.length - 2].x).toBeLessThanOrEqual(20);
+  });
+
+  it("traceBoth honours an explicit step cap", () => {
+    const [fwd] = traceBoth(compileSystem({ f: "y", g: "-x" }), { x: 1, y: 0 }, { stopBox: box, maxSteps: 7 });
+    expect(fwd.status).toBe("max_steps");
+    expect(fwd.steps).toBe(7);
   });
 });
