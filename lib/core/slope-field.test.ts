@@ -53,10 +53,10 @@ describe("vertical tangents are not singularities", () => {
     expect(Math.max(...radii) - Math.min(...radii)).toBeLessThan(1e-6);
   });
 
-  it("the same circle written explicitly, dy/dx = -x/y, blows up at y = 0 (why the base changed)", () => {
+  it("the same circle written explicitly, dy/dx = -x/y, hits the singularity at y = 0 (why the base changed)", () => {
     const sys = compileSystem(toSystem({ kind: "explicit", g: "-x/y" }));
     const tr = integrateAdaptive(sys, { x: 0, y: 1 }, 5, { box: box(-2, 2) });
-    expect(tr.status).toBe("blew_up");
+    expect(tr.status).toBe("singular");
   });
 
   it("x dx + y dy = 0 and dy/dx = -x/y describe the same family (slopes agree where both are finite)", () => {

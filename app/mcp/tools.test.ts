@@ -264,12 +264,24 @@ describe("trace_trajectory", () => {
     expect(zero.text).toMatch(/tSpan/);
   });
 
-  it("reports blow-up without NaN", async () => {
+  it("a solution that blows up leaves the viewing box first, and is reported as such without NaN", async () => {
+    // x(t) = 1/(1 - t) exits the box at x = 1e5 (t = 1 - 1e-5) long before any position bound;
+    // through the tool a blow-up therefore always shows as left_box, never as a speed-based verdict.
     const r = await call("trace_trajectory", { f: "x^2", g: "0", x0: 1, y0: 0, direction: "forward", tSpan: 5, xMin: -1e5, xMax: 1e5, yMin: -1, yMax: 1, locale: "zh" });
     const t = r.scene.trajectories![0];
-    expect(t.status).toBe("blew_up");
+    expect(t.status).toBe("left_box");
     expect(t.points.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))).toBe(true);
-    expect(r.text).toContain("发散");
+    expect(t.points[t.points.length - 1].x).toBeGreaterThan(1e5);
+    expect(Math.abs(t.tEnd - 1)).toBeLessThan(1e-3);
+    expect(r.text).toContain("离开了观察范围");
+  });
+
+  it("a stiff decay is never called a blow-up by the tool", async () => {
+    const r = await call("trace_trajectory", { f: "-1e7*x", g: "0", x0: 1, y0: 0, direction: "forward", tSpan: 1, locale: "en" });
+    const t = r.scene.trajectories![0];
+    expect(t.status).not.toBe("blew_up");
+    expect(["reached_equilibrium", "max_steps"]).toContain(t.status);
+    expect(Math.abs(t.points[t.points.length - 1].x)).toBeLessThan(1e-6);
   });
 });
 

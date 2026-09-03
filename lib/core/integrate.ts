@@ -2,13 +2,22 @@
  * Trajectory integration: classic fixed-step RK4 and adaptive Dormand-Prince 5(4).
  *
  * Both integrators share the same stop rules and never write a non-finite point:
- * - a non-finite stage or state, or a speed above `maxSpeed`  -> stop at the last finite point,
- *   status 'blew_up'
- * - `box` given and the new point lies outside            -> keep that point (so a drawn curve
- *   reaches the border), status 'left_box'
- * - speed below `equilibriumTol`                          -> status 'reached_equilibrium'
- * - step budget exhausted                                 -> status 'max_steps'
+ * - the POSITION becomes non-finite or leaves a huge bound   -> stop at the last finite point,
+ *   (`maxPosition`, default 1e6 x the problem scale)            status 'blew_up'
+ * - the field is undefined / infinite at the current point,  -> keep that point, status 'singular'
+ *   or the adaptive step collapses to nothing
+ * - `box` given and the new point lies outside               -> keep that point (so a drawn curve
+ *                                                               reaches the border), status 'left_box'
+ * - speed below `equilibriumTol`                             -> status 'reached_equilibrium'
+ * - `arcLength` given and the polyline reaches the limit     -> last segment cut exactly at the
+ *                                                               limit, status 'arc_length'
+ * - step budget exhausted                                    -> status 'max_steps'
  * - otherwise the final time t0 + direction * tSpan is hit exactly, status 'completed'
+ *
+ * Speed is deliberately NOT a blow-up criterion (decided 2026-09-03, H2.1): a large derivative is
+ * not evidence that the solution diverges. x' = -1e7 x has speed 1e7 at x = 1 and decays to zero;
+ * calling that "blew up" was wrong. A stiff problem makes the adaptive controller take tiny steps
+ * and, if it runs out, it says so: 'max_steps', not 'blew_up'.
  *
  * Backward integration (direction -1) is a first-class feature: phase portraits need both halves
  * of every trajectory.
@@ -21,6 +30,8 @@ export type IntegrationStatus =
   | "left_box"
   | "reached_equilibrium"
   | "blew_up"
+  | "singular"
+  | "arc_length"
   | "max_steps";
 
 export type Trajectory = {
@@ -29,6 +40,19 @@ export type Trajectory = {
   status: IntegrationStatus;
   /** Number of accepted steps taken. */
   steps: number;
+  /** Polyline length accumulated in the `arcLength` metric (0 when no metric was given). */
+  arcLength: number;
+};
+
+export type ArcLengthStop = {
+  /** Stop once the accumulated polyline length reaches this value (in the metric's units). */
+  limit: number;
+  /**
+   * Distance between two consecutive points. Default Euclidean distance in world units; the
+   * interactive shells pass screen-pixel distance so a preview has a fixed on-screen length.
+   * Must be affine-compatible (the last segment is cut by linear interpolation).
+   */
+  metric?: (a: Vec2, b: Vec2) => number;
 };
 
 export type IntegrateOptions = {
@@ -42,8 +66,13 @@ export type IntegrateOptions = {
   box?: Box;
   /** Speed below which the point counts as an equilibrium. Default 1e-8. */
   equilibriumTol?: number;
-  /** Speed above which the trajectory counts as blown up. Default 1e6. */
-  maxSpeed?: number;
+  /**
+   * Largest |x| or |y| a point may reach before the solution counts as blown up.
+   * Default 1e6 times the problem scale (max of 1, the start point and the box extent).
+   */
+  maxPosition?: number;
+  /** Stop after a given polyline length; see ArcLengthStop. */
+  arcLength?: ArcLengthStop;
   /** Start time. Default 0. */
   t0?: number;
   /** Adaptive only. Relative tolerance, default 1e-6. */
@@ -57,17 +86,29 @@ export type IntegrateOptions = {
   checkpoint?: () => void;
 };
 
-type Resolved = Required<Omit<IntegrateOptions, "box" | "checkpoint">> & { box?: Box; checkpoint?: () => void };
+type Resolved = Required<Omit<IntegrateOptions, "box" | "checkpoint" | "arcLength" | "maxPosition">> & {
+  box?: Box;
+  checkpoint?: () => void;
+  arcLength?: Required<ArcLengthStop>;
+  maxPosition: number;
+};
 
-function resolve(opts: IntegrateOptions | undefined, tSpan: number): Resolved {
+const isFiniteVec = (v: Vec2): boolean => Number.isFinite(v.x) && Number.isFinite(v.y);
+const euclid = (a: Vec2, b: Vec2): number => Math.hypot(a.x - b.x, a.y - b.y);
+
+function resolve(opts: IntegrateOptions | undefined, tSpan: number, start: Vec2): Resolved {
   if (!(Number.isFinite(tSpan) && tSpan > 0)) throw new RangeError("tSpan must be a positive finite number.");
+  if (!isFiniteVec(start)) throw new RangeError("start point must be finite.");
+  const box = opts?.box;
+  const boxExtent = box ? Math.max(Math.abs(box.x.min), Math.abs(box.x.max), Math.abs(box.y.min), Math.abs(box.y.max)) : 0;
   const r: Resolved = {
     h: opts?.h ?? 0.01,
     maxSteps: opts?.maxSteps ?? 20000,
     direction: opts?.direction ?? 1,
-    box: opts?.box,
+    box,
     equilibriumTol: opts?.equilibriumTol ?? 1e-8,
-    maxSpeed: opts?.maxSpeed ?? 1e6,
+    maxPosition: opts?.maxPosition ?? 1e6 * Math.max(1, Math.abs(start.x), Math.abs(start.y), boxExtent),
+    arcLength: opts?.arcLength ? { limit: opts.arcLength.limit, metric: opts.arcLength.metric ?? euclid } : undefined,
     t0: opts?.t0 ?? 0,
     rtol: opts?.rtol ?? 1e-6,
     atol: opts?.atol ?? 1e-9,
@@ -77,14 +118,14 @@ function resolve(opts: IntegrateOptions | undefined, tSpan: number): Resolved {
   if (!(Number.isInteger(r.maxSteps) && r.maxSteps >= 1)) throw new RangeError("maxSteps must be a positive integer.");
   if (r.direction !== 1 && r.direction !== -1) throw new RangeError("direction must be 1 or -1.");
   if (!(Number.isFinite(r.equilibriumTol) && r.equilibriumTol >= 0)) throw new RangeError("equilibriumTol must be a finite non-negative number.");
-  if (!(Number.isFinite(r.maxSpeed) && r.maxSpeed > 0)) throw new RangeError("maxSpeed must be a positive finite number.");
+  if (!(Number.isFinite(r.maxPosition) && r.maxPosition > 0)) throw new RangeError("maxPosition must be a positive finite number.");
+  if (r.arcLength && !(Number.isFinite(r.arcLength.limit) && r.arcLength.limit > 0)) throw new RangeError("arcLength.limit must be a positive finite number.");
   if (!Number.isFinite(r.t0)) throw new RangeError("t0 must be a finite number.");
   if (!(Number.isFinite(r.rtol) && r.rtol > 0)) throw new RangeError("rtol must be a positive finite number.");
   if (!(Number.isFinite(r.atol) && r.atol >= 0)) throw new RangeError("atol must be a finite non-negative number.");
   return r;
 }
 
-const isFiniteVec = (v: Vec2): boolean => Number.isFinite(v.x) && Number.isFinite(v.y);
 const inBox = (p: Vec2, box: Box): boolean =>
   p.x >= box.x.min && p.x <= box.x.max && p.y >= box.y.min && p.y <= box.y.max;
 const add = (p: Vec2, s: number, v: Vec2): Vec2 => ({ x: p.x + s * v.x, y: p.y + s * v.y });
@@ -95,6 +136,7 @@ class Run {
   readonly times: number[] = [];
   status: IntegrationStatus | undefined;
   steps = 0;
+  arc = 0;
 
   constructor(
     private readonly sys: CompiledSystem,
@@ -102,24 +144,30 @@ class Run {
     private readonly tEnd: number,
   ) {}
 
-  /** Evaluates the field, treating non-finite or absurdly fast values as blow-up (returns null). */
+  /** Evaluates the field; null when it is undefined or infinite there (a singular point). */
   rhs(p: Vec2, t: number): Vec2 | null {
     const v = this.sys.eval(p, t);
-    if (!isFiniteVec(v) || Math.hypot(v.x, v.y) > this.o.maxSpeed) return null;
-    return v;
+    return isFiniteVec(v) ? v : null;
+  }
+
+  private withinBound(p: Vec2): boolean {
+    return Math.abs(p.x) <= this.o.maxPosition && Math.abs(p.y) <= this.o.maxPosition;
   }
 
   start(p: Vec2, t: number): boolean {
-    if (!isFiniteVec(p)) throw new RangeError("start point must be finite.");
     this.points.push(p);
     this.times.push(t);
+    if (!this.withinBound(p)) {
+      this.status = "blew_up";
+      return false;
+    }
     if (this.o.box && !inBox(p, this.o.box)) {
       this.status = "left_box";
       return false;
     }
     const v = this.rhs(p, t);
     if (v === null) {
-      this.status = "blew_up";
+      this.status = "singular";
       return false;
     }
     if (Math.hypot(v.x, v.y) < this.o.equilibriumTol) {
@@ -131,18 +179,36 @@ class Run {
 
   /** Records an accepted step; returns false when integration must stop. */
   accept(p: Vec2, t: number): boolean {
-    if (!isFiniteVec(p)) {
+    if (!isFiniteVec(p) || !this.withinBound(p)) {
       this.status = "blew_up";
       return false;
     }
-    const v = this.rhs(p, t);
-    if (v === null) {
-      this.status = "blew_up";
-      return false;
+    if (this.o.arcLength) {
+      const prev = this.points[this.points.length - 1];
+      const tPrev = this.times[this.times.length - 1];
+      const seg = this.o.arcLength.metric(prev, p);
+      if (Number.isFinite(seg) && this.arc + seg >= this.o.arcLength.limit) {
+        // Cut the last segment exactly at the limit so the curve length does not depend on the
+        // step size (a straight, error-free field lets the controller take huge steps).
+        const f = seg > 0 ? (this.o.arcLength.limit - this.arc) / seg : 1;
+        const q = { x: prev.x + f * (p.x - prev.x), y: prev.y + f * (p.y - prev.y) };
+        this.points.push(q);
+        this.times.push(tPrev + f * (t - tPrev));
+        this.steps += 1;
+        this.arc = this.o.arcLength.limit;
+        this.status = "arc_length";
+        return false;
+      }
+      if (Number.isFinite(seg)) this.arc += seg;
     }
     this.points.push(p);
     this.times.push(t);
     this.steps += 1;
+    const v = this.rhs(p, t);
+    if (v === null) {
+      this.status = "singular";
+      return false;
+    }
     if (this.o.box && !inBox(p, this.o.box)) {
       this.status = "left_box";
       return false;
@@ -160,7 +226,7 @@ class Run {
   }
 
   finish(): Trajectory {
-    return { points: this.points, times: this.times, status: this.status ?? "completed", steps: this.steps };
+    return { points: this.points, times: this.times, status: this.status ?? "completed", steps: this.steps, arcLength: this.arc };
   }
 }
 
@@ -186,7 +252,7 @@ export function integrateRK4(
   tSpan: number,
   opts?: IntegrateOptions,
 ): Trajectory {
-  const o = resolve(opts, tSpan);
+  const o = resolve(opts, tSpan, start);
   const tEnd = o.t0 + o.direction * tSpan;
   const run = new Run(sys, o, tEnd);
   let t = o.t0;
@@ -201,7 +267,9 @@ export function integrateRK4(
     const dt = i === n - 1 ? remaining : Math.sign(remaining) * Math.min(o.h, Math.abs(remaining));
     const next = rk4Step(run, p, t, dt);
     if (next === null) {
-      run.status = "blew_up";
+      // A stage left the domain of the field (division by zero, overflow, domain error) although
+      // the current position is finite: the field is singular within one step of here.
+      run.status = "singular";
       break;
     }
     t = i === n - 1 ? tEnd : t + dt;
@@ -233,7 +301,7 @@ export function integrateAdaptive(
   tSpan: number,
   opts?: IntegrateOptions,
 ): Trajectory {
-  const o = resolve(opts, tSpan);
+  const o = resolve(opts, tSpan, start);
   const tEnd = o.t0 + o.direction * tSpan;
   const run = new Run(sys, o, tEnd);
   let t = o.t0;
@@ -254,9 +322,11 @@ export function integrateAdaptive(
       break;
     }
     if (h < hMin && shrunk) {
-      // The controller drove the step to nothing: the solution is leaving the finite world (or is
-      // far too stiff for us). A tiny user-supplied initial step is not an error by itself.
-      run.status = "blew_up";
+      // The controller drove the step to nothing while the position is still finite: the field is
+      // undefined, infinite or discontinuous right ahead. (A solution that really diverges is
+      // caught by the position bound before this can happen; a tiny user-supplied initial step is
+      // not an error by itself.)
+      run.status = "singular";
       break;
     }
     if (++attempts > maxAttempts) {
@@ -268,7 +338,7 @@ export function integrateAdaptive(
 
     // Stages
     const k: Vec2[] = [];
-    let blewUp = false;
+    let undefinedStage = false;
     for (let s = 0; s < 7; s++) {
       let q = p;
       for (let j = 0; j < s; j++) {
@@ -277,13 +347,13 @@ export function integrateAdaptive(
       }
       const v = run.rhs(q, t + C[s] * dt);
       if (v === null) {
-        blewUp = true;
+        undefinedStage = true;
         break;
       }
       k.push(v);
     }
-    if (blewUp) {
-      // Retry with a smaller step; if that also fails the hMin guard reports blow-up.
+    if (undefinedStage) {
+      // Retry with a smaller step; if that also fails the hMin guard reports the singularity.
       h /= 4;
       shrunk = true;
       continue;
