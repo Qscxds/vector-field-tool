@@ -10,7 +10,7 @@
 - **MCP 工具层**：`analyze_system`、`trace_trajectory`、`sample_field`、`analyze_first_order`（`expr` 或 `M`+`N`），加链路探针 `ping`。每个工具的 `locale` 参数（`zh` / `en`）**必填**，摘要文字全部来自双语文案表（英文为美式拼写）。每次调用有 2 秒预算，进程内有限流减速带。
 - **网页外壳** `/vector-field`：中英切换、三种输入（二维系统 / 显式一阶 / 微分形式）、十个预设、等比视口、滚轮缩放、拖动平移、双击复位、悬停预览解曲线（屏幕长度固定为两条对角线，与场速和缩放无关）、点击固定轨线（延伸到原始范围的 20 倍才停，不受视野裁剪）；结果列表上方注明它按哪个范围计算。
 - **widget**：Scene 里带着方程，widget 用同一份内核本地编译，缩放 / 平移 / 悬停 / 点击都在沙箱里算（S 阶段证实 mathjs 编译不需要 `unsafe-eval`）；编译被挡时退回静态图并说明。**Claude 实机验证 widget 交互待人工做**（版本号 e-2 → g-1，Claude 里必须断开重连连接器）。
-- 单测 309 个，期望值全部来自数学推导。
+- 单测 337 个，期望值全部来自数学推导。
 - **上线准备完成**（H1）：显式 `BASE_URL` 优先级最高并有启动自检；每次调用 2 秒预算 + 进程内限流 + 参数上界；首页有交互页面入口。**H2 数学优先拍板完成**（爆破判据、hover 弧长、轨线延伸、三档类型识别、Bernoulli 有理指数、恰当自检、连续解集几何判据、近重根 caveat、locale 必填、美式拼写）。未做：实际部署到 Vercel（见下文步骤）。
 
 文档：`docs/P0-handoff.md`（P0）、`docs/NIGHT-*.md`（夜跑 A–E）、`docs/FG-*.md`（S/F/G）、`docs/H-summary.md`（H 轮进度、验证清单、审查结果）、`docs/H-decisions.md`（所有偏离原计划的决定）、`docs/H-open-questions.md`（待拍板事项）。
@@ -96,7 +96,7 @@ docs/                      交接文档
 ```bash
 npm install
 npm run dev          # http://localhost:3000 ，网页外壳在 /vector-field
-npm test             # vitest，309 个测试
+npm test             # vitest，337 个测试
 npm run typecheck    # tsc --noEmit
 npm run build        # 生产构建
 npm run smoke        # 对已运行的服务器做 HTTP 冒烟（默认 http://localhost:3000/mcp）
@@ -206,6 +206,6 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 
 - ~~P1 计算内核~~、~~P2 MCP 工具~~、~~P3 widget 静态渲染~~、~~P4 网页外壳~~：2026-09-02 夜跑完成。
 - ~~S 沙箱探针~~、~~F 微分形式与类型识别~~、~~G 双语 / 等比视口 / 缩放平移 / hover / widget 本地计算~~：2026-09-03 完成。
-- ~~H1 上线准备~~、~~H2 数学优先拍板~~：2026-09-03 完成（tags `h1-deploy-ready`、`h2-math-done`）。
-- 下一步：部署 Vercel（绑域名后设 `BASE_URL`）；Claude 实机验证 widget 交互（版本 h-1，重连连接器）；看 `locale` 必填后模型是否按规则传参；`docs/H-open-questions.md` 里的拍板项。
+- ~~H1 上线准备~~、~~H2 数学优先拍板~~、~~H2 对抗式审查 14 条修复~~：2026-09-03 完成（tags `h1-deploy-ready`、`h2-math-done`、`h2-reviewed`）。
+- 下一步：部署 Vercel（绑域名后设 `BASE_URL`）；Claude 实机验证 widget 交互（版本 h-2，重连连接器）；看 `locale` 必填后模型是否按规则传参；`docs/H-open-questions.md` 里的拍板项。
 - P5：绑子域名，按 endpoint 限流（不要按 IP：MCP 请求全部来自 Anthropic 云端的少数几个 IP）。
