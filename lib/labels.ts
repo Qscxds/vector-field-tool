@@ -20,7 +20,7 @@ export type LabelTable = {
   classification: Record<Classification, string>;
   stability: Record<EquilibriumSolution["stability"], string>;
   status: Record<IntegrationStatus, string>;
-  warning: Record<"none_found" | "possible_continuum" | "hit_limit", string>;
+  warning: Record<"none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit", string>;
   caveat: Record<CaveatKey, string>;
   form: Record<OdeForm, string>;
   /** Tool summary fragments. `{name}` placeholders are filled by `fill`. */
@@ -75,13 +75,15 @@ export const LABELS: Record<Locale, LabelTable> = {
     },
     warning: {
       none_found: "在观察范围内没有找到平衡点。",
-      possible_continuum: "警告：找到的平衡点几乎都是非双曲的，而且排成一条线，这很可能是一个连续的平衡点集合（例如整条坐标轴），下面只列出其中一部分代表点。",
+      possible_continuum: "警告：找到的平衡点几乎都是非双曲的，而且排成一条线或一条曲线，这很可能是一个连续的平衡点集合（例如整条坐标轴或一个圆），下面只列出其中一部分代表点。",
+      multiple_non_hyperbolic: "注意：找到了多个非双曲平衡点，但它们并不排成一条线或曲线，看起来是彼此孤立的退化平衡点。线性化对其中每一个都无法判定稳定性，需要逐个做非线性分析。",
       hit_limit: "警告：平衡点数量超过了上限，下面只列出前几个。",
     },
     caveat: {
       center: "线性化给出一对纯虚特征值（实部在数值精度内为零）。仅凭线性化无法区分真正的中心与极缓慢的螺旋：两者的相图完全不同，判定需要守恒量（例如能量或 Hamilton 函数）或更高阶的非线性分析。",
       nonHyperbolic: "雅可比矩阵至少有一个特征值在数值精度内为零（行列式约等于零），这个平衡点是非双曲的。Hartman–Grobman 定理不适用，线性化不足以判定它的稳定性，需要中心流形或 Lyapunov 函数等非线性方法。",
       notFinite: "在这一点上雅可比矩阵无法求出有限值（向量场在附近奇异或未定义），因此无法给出任何分类。",
+      repeatedRoot: "两个特征值在数值精度内无法区分（判别式落在容差带内而不是精确为零）。它们可能是真正的重根，此时「星形结点 / 退化结点」的名字才严格成立；也可能是极其接近的两个相异实根，此时实际上是一个普通的结点。请把这里的分类当作「重根或近重根」，而不是确定的类型。",
     },
     form: {
       separable: "可分离变量方程",
@@ -199,13 +201,15 @@ export const LABELS: Record<Locale, LabelTable> = {
     },
     warning: {
       none_found: "No equilibrium points were found in the viewing box.",
-      possible_continuum: "Warning: almost all equilibria found are non-hyperbolic and lie on a line; this is most likely a continuum of equilibria (e.g. a whole axis). Only a few representative points are listed.",
+      possible_continuum: "Warning: almost all equilibria found are non-hyperbolic and lie on a line or a curve; this is most likely a continuum of equilibria (a whole axis, a circle). Only a few representative points are listed.",
+      multiple_non_hyperbolic: "Note: several non-hyperbolic equilibria were found, but they do not lie on a line or a curve; they look like isolated degenerate equilibria. Linearization cannot decide the stability of any of them; each needs a nonlinear analysis.",
       hit_limit: "Warning: more equilibria than the limit; only the first few are listed.",
     },
     caveat: {
       center: "The linearisation gives a purely imaginary pair of eigenvalues (real part zero to numerical precision). Linearisation alone cannot distinguish a true centre from an extremely slow spiral: their phase portraits are entirely different, and deciding requires a conserved quantity (such as an energy or Hamiltonian) or a higher-order nonlinear analysis.",
       nonHyperbolic: "At least one eigenvalue of the Jacobian is zero to numerical precision (determinant approximately zero), so this equilibrium is non-hyperbolic. The Hartman–Grobman theorem does not apply and linearisation cannot decide its stability; a nonlinear method such as a centre manifold or a Lyapunov function is needed.",
       notFinite: "The Jacobian cannot be evaluated to a finite value at this point (the vector field is singular or undefined nearby), so no classification can be given.",
+      repeatedRoot: "The two eigenvalues cannot be told apart at working precision (the discriminant lies inside the tolerance band rather than being exactly zero). They may be a genuine repeated root, in which case the name star node / degenerate node is strictly correct, or two distinct real roots extremely close together, in which case this is really an ordinary node. Read this classification as 'repeated or nearly repeated root', not as a definite type.",
     },
     form: {
       separable: "a separable equation",

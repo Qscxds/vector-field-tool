@@ -139,3 +139,46 @@ describe("classify: known physical systems", () => {
     expect(classify([[0, 1], [-1, 1]]).classification).toBe("unstable_spiral");
   });
 });
+
+describe("repeated roots inside the tolerance band carry a caveat (H2.8)", () => {
+  it("diag(1 + 1e-6, 1 - 1e-6): called a star node, but with the repeated-root caveat", () => {
+    // Eigenvalues 1 ± 1e-6 differ by 2e-6; disc = 4e-12 is inside the 1e-9 band, not zero.
+    const r = classify([[1 + 1e-6, 0], [0, 1 - 1e-6]]);
+    expect(r.classification).toBe("star_node");
+    expect(r.caveat).toBe("repeatedRoot");
+  });
+
+  it("a genuinely repeated root (discriminant exactly zero) needs no caveat", () => {
+    expect(classify([[2, 0], [0, 2]]).caveat).toBeUndefined();
+    expect(classify([[3, 1], [0, 3]]).caveat).toBeUndefined(); // Jordan block, degenerate node
+    expect(classify([[-1, 1], [0, -1]]).caveat).toBeUndefined();
+  });
+
+  it("a near-Jordan block is a degenerate node with the caveat", () => {
+    // disc = (a-d)² + 4bc = 4e-12 ≠ 0.
+    const r = classify([[3, 1], [1e-12, 3]]);
+    expect(r.classification).toBe("degenerate_node");
+    expect(r.caveat).toBe("repeatedRoot");
+  });
+
+  it("a slightly negative discriminant inside the band is also a near-repeated root", () => {
+    // disc = (a-d)² + 4bc = -4e-12: inside the 1e-9 band, not zero. (With b, c = ±1e-12 the
+    // product 1e-24 would vanish against 1 in double precision and the discriminant would be
+    // exactly zero: that matrix IS the identity at working precision.)
+    const r = classify([[1, -1e-6], [1e-6, 1]]);
+    expect(r.classification).toBe("star_node");
+    expect(r.caveat).toBe("repeatedRoot");
+    expect(classify([[1, -1e-12], [1e-12, 1]]).caveat).toBeUndefined();
+  });
+
+  it("a Jacobian that is tiny at the problem's own scale is zero, not a small star node", () => {
+    // Purely relative: 1e-12 x I is a star node like any other multiple of the identity.
+    expect(classify([[1e-12, 0], [0, 1e-12]]).classification).toBe("star_node");
+    // With the field scale of the problem given (say 1), 1e-12 is below 1e-9 x 1: it is zero.
+    const r = classify([[1e-12, 0], [0, 1e-12]], 1e-9, { fieldScale: 1 });
+    expect(r.classification).toBe("non_hyperbolic");
+    expect(r.caveat).toBe("nonHyperbolic");
+    // A genuinely slow but hyperbolic system keeps its type: entries 1e-6 against a field scale 1e-6.
+    expect(classify([[1e-6, 0], [0, -1e-6]], 1e-9, { fieldScale: 1e-6 }).classification).toBe("saddle");
+  });
+});

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findEquilibria } from "./equilibria";
+import { collinearity, curveLikeFraction, findEquilibria } from "./equilibria";
 import { compileSystem } from "./parse";
 
 const box = (a: number, b: number) => ({ x: { min: a, max: b }, y: { min: a, max: b } });
@@ -128,5 +128,53 @@ describe("findEquilibria", () => {
     const sys = compileSystem({ f: "x", g: "y" });
     expect(() => findEquilibria(sys, { x: { min: 1, max: 0 }, y: { min: 0, max: 1 } })).toThrow(RangeError);
     expect(() => findEquilibria(sys, box(-1, 1), { seedGrid: 0 })).toThrow(RangeError);
+  });
+});
+
+describe("continuum needs a geometric criterion, not just a count (H2.7)", () => {
+  it("collinearity: 0 for points on a line, ~1 for a square, in between for a scattered cloud", () => {
+    expect(collinearity([{ x: 0, y: 0 }, { x: 1, y: 2 }, { x: 2, y: 4 }, { x: -3, y: -6 }])).toBeLessThan(1e-30);
+    expect(collinearity([{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: -1, y: -1 }, { x: 1, y: -1 }])).toBeCloseTo(1, 12);
+    expect(collinearity([{ x: 0, y: 0 }, { x: 1, y: 0 }])).toBeNaN();
+  });
+
+  it("curveLikeFraction: 1 on a densely sampled circle, 0 for four isolated points", () => {
+    // 60 points on a unit circle: any 5 consecutive points span 24° -> covariance ratio ~ θ²/60 ≈ 0.003.
+    const circle = Array.from({ length: 60 }, (_, i) => ({ x: Math.cos((2 * Math.PI * i) / 60), y: Math.sin((2 * Math.PI * i) / 60) }));
+    expect(curveLikeFraction(circle)).toBe(1);
+    expect(curveLikeFraction([{ x: 1, y: 1 }, { x: -1, y: 1 }, { x: -1, y: -1 }, { x: 1, y: -1 }])).toBe(0);
+  });
+
+  it("f = 0, g = -y (the whole x-axis) is a continuum: many non-hyperbolic points AND collinear", () => {
+    const r = findEquilibria(compileSystem({ f: "0", g: "-y" }), box(-1, 1));
+    expect(r.warning).toBe("possible_continuum");
+    expect(r.geometry!.collinearity).toBeLessThan(1e-6);
+  });
+
+  it("a circle of equilibria, x' = x(1 - x² - y²), y' = y(1 - x² - y²), is a continuum by the curve test", () => {
+    // Every point of the unit circle is an equilibrium (the Jacobian there has a zero eigenvalue
+    // along the circle); the origin is an isolated unstable star node.
+    const r = findEquilibria(compileSystem({ f: "x*(1 - x^2 - y^2)", g: "y*(1 - x^2 - y^2)" }), box(-2, 2));
+    expect(r.warning).toBe("possible_continuum");
+    expect(r.geometry!.collinearity).toBeGreaterThan(0.1); // a circle is not a line
+    expect(r.geometry!.curveLike).toBeGreaterThanOrEqual(0.8);
+    const onCircle = r.points.filter((p) => Math.abs(Math.hypot(p.at.x, p.at.y) - 1) < 1e-6);
+    expect(onCircle.length).toBeGreaterThanOrEqual(6);
+    for (const p of onCircle) expect(p.classification).toBe("non_hyperbolic");
+  });
+
+  it("four isolated degenerate equilibria that are not collinear are NOT a continuum", () => {
+    // f = (x² - 1)², g = (y² - 1)²: zeros exactly at (±1, ±1), each with J = 0 (double roots in
+    // both variables), so all four are non-hyperbolic: the counting rule fires, the geometry does not.
+    const r = findEquilibria(compileSystem({ f: "(x^2 - 1)^2", g: "(y^2 - 1)^2" }), box(-2, 2));
+    expect(r.points).toHaveLength(4);
+    for (const p of r.points) {
+      expect(Math.abs(Math.abs(p.at.x) - 1)).toBeLessThan(1e-6);
+      expect(Math.abs(Math.abs(p.at.y) - 1)).toBeLessThan(1e-6);
+      expect(p.classification).toBe("non_hyperbolic");
+    }
+    expect(r.warning).toBe("multiple_non_hyperbolic");
+    expect(r.geometry!.collinearity).toBeGreaterThan(0.5);
+    expect(r.geometry!.curveLike).toBe(0);
   });
 });
