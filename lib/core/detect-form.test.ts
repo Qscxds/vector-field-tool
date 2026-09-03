@@ -116,6 +116,7 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
         expect(d.maxRelDeviation).not.toBeNull();
         expect(d.samples).toBeGreaterThanOrEqual(MIN_SAMPLES);
       }
+      expect(d.evidence).not.toMatch(/（|）/); // English evidence uses ASCII punctuation
       expect(d.evidence).toMatch(/threshold 1e-[68]/);
       expect(d.caveat.length).toBeGreaterThan(40);
     }
@@ -150,12 +151,13 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
   });
 
   it("linear in y: g = y + ε·y² is caught at large separations (a second difference at a tiny step would not see it)", () => {
-    // Interpolation between y₁ = 0.877 and y₃ = 2.638 at y₂ = 1.859: the quadratic term leaves
-    // ε(y₂ - y₁)(y₃ - y₂) = 0.765ε, divided by max|g| ≈ 2.64 -> 0.29ε.
+    // Interpolation between y₁ = 0.3 + 0.2618·2.7 = 1.00686 and y₃ = 0.3 + 0.8541·2.7 = 2.60607 at
+    // y₂ = 0.3 + 0.6545·2.7 = 2.06715: the quadratic term leaves ε(y₂ - y₁)(y₃ - y₂) = 0.57141ε,
+    // divided by max|g| = g(y₃) ≈ 2.60607 -> 0.21926ε.
     expect(one(explicit("y + 1e-12*y^2"), "linear_in_y").verdict).toBe("consistent");
     const mid = one(explicit("y + 1e-8*y^2"), "linear_in_y");
     expect(mid.verdict).toBe("borderline");
-    expect(mid.maxRelDeviation).toBeCloseTo(0.29e-8, 10);
+    expect(mid.maxRelDeviation).toBeCloseTo(0.21926e-8, 11);
     expect(one(explicit("y + 1e-3*y^2"), "linear_in_y").verdict).toBe("inconsistent");
   });
 
@@ -216,6 +218,43 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
     expect(d.dropped).toBe(0);
   });
 
+  it("sample points avoid y = x and y = -x on centred boxes: (x - y)/(x + y) is judged the same on every box (review C1)", () => {
+    // g = (x - y)/(x + y) is homogeneous of degree 0 (g(tx, ty) = g(x, y)) and NOT linear in y
+    // (a Möbius function of y). Poles on x + y = 0 must not corrupt the verdicts.
+    for (const a of [1.5, 2, 2.5, 3, 5, 6, 10]) {
+      const b = { x: { min: -a, max: a }, y: { min: -a, max: a } };
+      const ds = detectForms(explicit("(x - y)/(x + y)"), b, "en");
+      expect(ds.find((d) => d.form === "homogeneous")!.verdict, `homogeneous on ±${a}`).toBe("consistent");
+      expect(ds.find((d) => d.form === "linear_in_y")!.verdict, `linear on ±${a}`).toBe("inconsistent");
+    }
+    // (x² - y)/(x + y) is neither homogeneous nor linear
+    const ds2 = detectForms(explicit("(x^2 - y)/(x + y)"), { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } }, "en");
+    expect(ds2.find((d) => d.form === "homogeneous")!.verdict).toBe("inconsistent");
+    expect(ds2.find((d) => d.form === "linear_in_y")!.verdict).toBe("inconsistent");
+  });
+
+  it("derivative estimates do not alias a periodic field: sin(2πy) dx + 2πx cos(2πy) dy = 0 is exact on every box (review C2)", () => {
+    // ∂M/∂y = 2π cos(2πy) = ∂N/∂x. A difference step equal to the period would read ∂M/∂y = 0.
+    for (const b of [
+      { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } },
+      { x: { min: -10, max: 10 }, y: { min: -10, max: 10 } },
+      { x: { min: 0, max: 10 }, y: { min: 0, max: 10 } },
+      { x: { min: 0, max: 10 }, y: { min: 0, max: 20 } },
+      { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } },
+    ]) {
+      const d = one(diff("sin(2*pi*y)", "2*pi*x*cos(2*pi*y)"), "exact", b);
+      expect(d.verdict, JSON.stringify(b)).toBe("consistent");
+    }
+    // and y' = x cos(2πy) (M = -x cos 2πy, N = 1: ∂M/∂y = 2πx sin 2πy ≠ 0) is NOT exact on the same boxes
+    for (const b of [
+      { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } },
+      { x: { min: -10, max: 10 }, y: { min: -10, max: 10 } },
+    ]) {
+      const d = one(explicit("x*cos(2*pi*y)"), "exact", b);
+      expect(d.verdict, JSON.stringify(b)).toBe("inconsistent");
+    }
+  });
+
   it("thresholds are the documented constants", () => {
     expect(TOL_ALGEBRAIC).toBe(1e-8);
     expect(TOL_DERIVATIVE).toBe(1e-6);
@@ -272,6 +311,24 @@ describe("Bernoulli: exponent search and snapping to simple fractions (H2.5)", (
     expect(d.details?.n).toBe(0);
     expect(d.evidence).toMatch(/n = 0/);
     expect(d.evidence).toMatch(/linear/);
+    // the wording must not call a 1e-16 fit deviation 'clearly above the threshold'
+    expect(d.evidence).toMatch(/by definition/);
+    expect(d.evidence).not.toMatch(/clearly above/);
+  });
+
+  it("a box with no positive y makes the Bernoulli test untestable instead of sampling outside the box", () => {
+    const d = one(explicit("y + y^3"), "bernoulli", { x: { min: 0.3, max: 3 }, y: { min: -3, max: -0.3 } });
+    expect(d.verdict).toBe("untestable");
+    expect(d.evidence).toMatch(/no y > 0/);
+  });
+
+  it("an exponent estimate a few 1e-7 off still snaps (the re-verification decides, not the gate)", () => {
+    // y + y^3 * (1 + 1e-9 x) is not exactly Bernoulli; the estimate n ≈ 3 + O(1e-9) must snap to 3 iff the
+    // snapped identity holds within tolerance — here it does (deviation ~1e-9 < 1e-9? borderline!) so
+    // use a clean case: y + 1.0000001*y^3 has exact n = 3 with a different b; must snap to 3.
+    const d = one(explicit("y + 1.0000001*y^3"), "bernoulli");
+    expect(d.verdict).toBe("consistent");
+    expect(d.exponent).toBe("3");
   });
 });
 

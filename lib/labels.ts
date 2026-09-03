@@ -29,7 +29,8 @@ export type LabelTable = {
     | "trajectoryHeader" | "forward" | "backward" | "trajectoryLine" | "sampleFieldLine" | "widgetDraws"
     | "firstOrderHeader" | "differentialUndirected" | "directionSingular" | "truncated" | "constantSolution"
     | "noConstantAutonomous" | "noConstantGeneral" | "formsHeader" | "formLine" | "formBorderlineLine" | "formsCaveat"
-    | "formsInconsistentLine" | "formsUntestableLine" | "exactImplicit" | "exactPathCheckFailed" | "listSeparator",
+    | "formsInconsistentLine" | "formsUntestableLine" | "exactImplicit" | "exactPathCheckFailed" | "listSeparator"
+    | "parenOpen" | "parenClose",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -125,6 +126,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       exactImplicit: "方程恰当：已数值求出势函数 F(x, y)，图中紫色曲线是隐式解 F(x, y) = C（画了 {levels} 条等值线）。两条积分路径的相对偏差 {deviation}，这本身就是恰当性的独立验证。",
       exactPathCheckFailed: "恰当性判据通过，但势函数的数值积分没有通过路径无关性自检：两条积分路径的相对偏差为 {deviation}，超过了阈值 {tol}，因此不显示等值线。这本身有教学价值：数值方法有自己的失败模式（例如积分路径穿过奇点，或者方程只在局部恰当），而这个工具知道自己什么时候不可靠。",
       listSeparator: "、",
+      parenOpen: "（",
+      parenClose: "）",
     },
     ui: {
       title: "向量场 / 相图",
@@ -254,6 +257,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       exactImplicit: "The equation is exact: the potential F(x, y) was integrated numerically and the violet curves are the implicit solutions F(x, y) = C ({levels} level curves). The two integration paths differ by a relative {deviation}, which is itself an independent check of exactness.",
       exactPathCheckFailed: "The exactness criterion passed, but the numerical integration of the potential failed its path-independence self-check: the two integration paths differ by a relative {deviation}, above the threshold {tol}, so no level curves are shown. This is worth teaching: numerical methods have failure modes of their own (an integration path through a singular point, or an equation that is only locally exact), and this tool knows when it cannot be trusted.",
       listSeparator: ", ",
+      parenOpen: " (",
+      parenClose: ")",
     },
     ui: {
       title: "Vector field / phase portrait",

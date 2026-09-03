@@ -115,22 +115,25 @@ const TESTED: Record<Locale, Record<OdeForm, string>> = {
   },
 };
 
-const VERDICT_WORD: Record<Locale, Record<Verdict, string>> = {
+type VerdictWord = Verdict | "excluded";
+const VERDICT_WORD: Record<Locale, Record<VerdictWord, string>> = {
   zh: {
     consistent: "远小于阈值",
     borderline: "落在阈值附近一个数量级内，属于临界情况",
     inconsistent: "明显超出阈值",
     untestable: "有效采样点不足，无法检验",
+    excluded: "拟合本身成立，但按定义不属于该形式",
   },
   en: {
     consistent: "far below the threshold",
     borderline: "within an order of magnitude of the threshold: a borderline case",
     inconsistent: "clearly above the threshold",
     untestable: "too few usable sample points to test",
+    excluded: "the fit itself holds, but by definition this is not that form",
   },
 };
 
-function evidenceText(locale: Locale, form: OdeForm, r: { verdict: Verdict; samples: number; dropped: number; dev: number | null; tol: number }, extra?: string): string {
+function evidenceText(locale: Locale, form: OdeForm, r: { verdict: VerdictWord; samples: number; dropped: number; dev: number | null; tol: number }, extra?: string): string {
   const d = r.dev === null ? "—" : r.dev.toExponential(1);
   const tol = r.tol.toExponential(0);
   const droppedZh = r.dropped ? `，另有 ${r.dropped} 个采样点因值无定义或舍入误差过大未用` : "";
@@ -175,9 +178,17 @@ export const NO_FORM_NOTE: Record<Locale, string> = {
   en: "No standard elementary method was detected (separable, linear, homogeneous, Bernoulli, exact, integrating factor). That is not a failure: the slope field and the numerical solutions do not depend on a closed form and remain fully valid. Many important equations, such as the Riccati equation dy/dx = x² + y², have no elementary closed-form solution; numerical methods exist for exactly this case.",
 };
 
-// Irrational-looking fractions of the box for the 13 sample coordinates.
+// Irrational-looking fractions of the box for the 13 sample coordinates. No pair has FX = FY or
+// FX + FY = 1: on a box centred at the origin those would put the sample on y = x or y = -x, where
+// textbook equations such as (x - y)/(x + y) have zeros or poles (review C1).
 const FX = [0.2137, 0.3819, 0.5773, 0.7071, 0.866, 0.4472, 0.6281, 0.1618, 0.9271, 0.0729, 0.3183, 0.7853, 0.5236];
-const FY = [0.7071, 0.2137, 0.866, 0.3819, 0.4472, 0.5773, 0.1618, 0.6281, 0.0729, 0.9271, 0.5236, 0.3183, 0.7853];
+const FY = [0.6281, 0.1618, 0.9271, 0.4472, 0.3183, 0.7853, 0.2137, 0.866, 0.5773, 0.7071, 0.0729, 0.3819, 0.4472];
+/** y fractions for the linearity test; none equals an FX entry or 1 - an FX entry. */
+const LINEAR_YS = [0.2618, 0.6545, 0.8541];
+/** x fractions for the autonomy reference column and the integrating-factor grids. */
+const AUTONOMY_X0 = 0.618;
+const IF_XS = [0.2137, 0.5773, 0.866, 0.4472, 0.7071];
+const IF_YS = [0.1459, 0.3455, 0.6545, 0.9098];
 
 const EPS = 2.220446049250313e-16;
 const finite = (v: number) => Number.isFinite(v);
@@ -220,12 +231,18 @@ class Tally {
 
 type Estimate = { value: number; error: number };
 
+/** Step multipliers for the derivative estimate: non-round, so no two are commensurate with a round period. */
+const STEP_MULTIPLIERS = [1, 4.3, 18.7, 81, 350];
+
 /**
  * Partial derivative by a 4th-order central difference at two step sizes, combined by Richardson
  * extrapolation, with an error estimate from their disagreement plus the rounding floor.
- * Tried at h, 10h and 100h (capped at hMax): where the function is huge compared with its
- * derivative (exp(10x) + y), rounding dominates and a larger step is the better estimate; the
- * candidate with the smallest estimated error wins.
+ * Tried at several step sizes (capped at hMax): where the function is huge compared with its
+ * derivative (exp(10x) + y), rounding dominates and a larger step is the better estimate.
+ * A larger step is only trusted when it AGREES with the smallest-step estimate within their
+ * combined error bounds: two stencils that agree with each other are not proof of accuracy when
+ * both alias a periodic function (sin(2πy) sampled at multiples of its period gives 0 twice;
+ * review C2), whereas the smallest step is the least likely to alias.
  */
 function partial(f: (p: Vec2) => number, p: Vec2, axis: "x" | "y", h: number, hMax: number): Estimate | null {
   const at = (d: number) => f(axis === "x" ? { x: p.x + d, y: p.y } : { x: p.x, y: p.y + d });
@@ -234,17 +251,31 @@ function partial(f: (p: Vec2) => number, p: Vec2, axis: "x" | "y", h: number, hM
     if (![f1, fm1, f2, fm2].every(finite)) return null;
     return { d: (-f2 + 8 * f1 - 8 * fm1 + fm2) / (12 * s), mag: (Math.abs(f2) + 8 * Math.abs(f1) + 8 * Math.abs(fm1) + Math.abs(fm2)) / (12 * s) };
   };
-  let best: Estimate | null = null;
-  for (const step of [h, 10 * h, 100 * h]) {
-    if (step > hMax) break;
+  // Three stencils (s, s/2, s/4) give two Richardson extrapolations of order 6; their difference
+  // bounds the error of the coarser one and is a safe estimate for the finer, which is returned.
+  const estimate = (step: number): Estimate | null => {
     const a = d4(step);
     const b = d4(step / 2);
-    if (!a || !b) continue;
-    const value = (16 * b.d - a.d) / 15;
-    const truncation = Math.abs(a.d - b.d) / 15;
-    const rounding = 8 * EPS * b.mag;
-    const est = { value, error: truncation + rounding };
-    if (!best || est.error < best.error) best = est;
+    const c = d4(step / 4);
+    if (!a || !b || !c) return null;
+    const e1 = (16 * b.d - a.d) / 15;
+    const e2 = (16 * c.d - b.d) / 15;
+    return { value: e2, error: Math.abs(e1 - e2) + 8 * EPS * c.mag };
+  };
+  let base: Estimate | null = null;
+  let best: Estimate | null = null;
+  for (const m of STEP_MULTIPLIERS) {
+    const step = m * h;
+    if (step > hMax) break;
+    const est = estimate(step);
+    if (!est) continue;
+    if (!base) {
+      base = est;
+      best = est;
+      continue;
+    }
+    const agrees = Math.abs(est.value - base.value) <= 3 * (est.error + base.error);
+    if (agrees && best && est.error < best.error) best = est;
   }
   return best;
 }
@@ -262,6 +293,13 @@ function compareEstimates(a: Estimate, b: Estimate, tol: number): number | null 
   // The estimates cannot resolve the threshold (rounding or truncation too large): no verdict here.
   if (u > (tol / 10) * scale) return null;
   return Math.abs(a.value - b.value) / scale;
+}
+
+/** Value at a quantile of a list (0..1); 0 for an empty list. */
+function percentile(values: number[], q: number): number {
+  if (values.length === 0) return 0;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor(q * (sorted.length - 1) + 0.5))];
 }
 
 function gcd(a: number, b: number): number {
@@ -304,17 +342,19 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
   const h = box.y.max - box.y.min;
   const points: Vec2[] = FX.map((fx, i) => ({ x: box.x.min + fx * w, y: box.y.min + FY[i] * h }));
   const valid = points.filter((p) => finite(g(p)));
-  const gMax = valid.reduce((m, p) => Math.max(m, Math.abs(g(p))), 0);
+  // Typical magnitude of g: the 75th percentile of |g| over the samples, so that one sample next
+  // to a pole (|g| ~ 1e16 from rounding noise in a denominator) does not set the scale.
+  const gTypical = percentile(valid.map((p) => Math.abs(g(p))), 0.75);
   // Below this, a value of g is zero to working precision.
-  const gFloor = 1e3 * EPS * gMax;
+  const gFloor = 1e3 * EPS * gTypical;
 
   const out: FormDetection[] = [];
-  const emit = (form: OdeForm, t: Tally, extra?: string, details?: Record<string, number>, exponent?: string, verdictOverride?: Verdict) => {
+  const emit = (form: OdeForm, t: Tally, extra?: string, details?: Record<string, number>, exponent?: string, verdictOverride?: Verdict, word?: VerdictWord) => {
     const r = { ...t.result(), ...(verdictOverride ? { verdict: verdictOverride } : {}) };
     out.push({
       form,
       verdict: r.verdict,
-      evidence: evidenceText(locale, form, r, extra),
+      evidence: evidenceText(locale, form, { ...r, verdict: word ?? r.verdict }, extra),
       caveat: caveatText(locale, form, r.verdict, r.samples, r.dev, r.tol),
       maxRelDeviation: r.dev,
       threshold: r.tol,
@@ -346,7 +386,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
   // ---- autonomous: g independent of x -----------------------------------------------------------
   {
     const t = new Tally(tolA);
-    const x0 = box.x.min + 0.5773 * w;
+    const x0 = box.x.min + AUTONOMY_X0 * w;
     for (const p of points) {
       const ref = g({ x: x0, y: p.y });
       const v = g(p);
@@ -359,7 +399,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
   // ---- linear in y: g is collinear across three well-separated y values ------------------------
   {
     const t = new Tally(tolA);
-    const ys = [0.2137, 0.5773, 0.866].map((f) => box.y.min + f * h);
+    const ys = LINEAR_YS.map((f) => box.y.min + f * h);
     for (const p of points) {
       const [g1, g2, g3] = ys.map((y) => g({ x: p.x, y }));
       if (![g1, g2, g3].every(finite)) { t.drop(); continue; }
@@ -392,7 +432,9 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
   {
     const t = new Tally(tolA);
     const ysRel = [0.137, 0.331, 0.577, 0.819, 0.963];
-    const ys = ysRel.map((s) => (box.y.max > 0 ? Math.max(1e-3, box.y.min) + s * (box.y.max - Math.max(1e-3, box.y.min)) : 0.3 + s));
+    // y^n needs y > 0: sample the positive part of the box. A box with no positive y is untestable.
+    const yLo = Math.max(1e-3 * Math.max(1, Math.abs(box.y.max)), box.y.min);
+    const ys = box.y.max > yLo ? ysRel.map((s) => yLo + s * (box.y.max - yLo)) : [];
     const xs = [0.2137, 0.5773, 0.866].map((s) => box.x.min + s * w);
     const uMax = Math.max(...xs.flatMap((x) => ys.map((y) => Math.abs(g({ x, y }) / y))).filter(finite), 0);
     const uFloor = 1e3 * EPS * uMax;
@@ -425,21 +467,25 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
       for (let i = 2; i < ys.length; i++) local = Math.max(local, relDev(u[i], a + b * ys[i] ** m, uFloor));
       return local;
     };
-    const columns = xs.map((x) => ys.map((y) => g({ x, y }) / y)).filter((u) => u.every(finite));
+    const columns = ys.length ? xs.map((x) => ys.map((y) => g({ x, y }) / y)).filter((u) => u.every(finite)) : [];
     let n: number | undefined;
-    let ok = columns.length === xs.length && ys.every((y) => y > 0);
+    const exponents: number[] = [];
+    let ok = ys.length > 0 && columns.length === xs.length;
     if (ok) {
       for (const u of columns) {
         const m = solveM(u);
         if (m === undefined) { ok = false; break; }
-        const nHere = m + 1;
-        if (n === undefined) n = nHere;
-        else if (Math.abs(nHere - n) > 1e-6) { ok = false; break; }
+        exponents.push(m + 1);
+      }
+      if (ok) {
+        n = exponents[0];
+        if (Math.max(...exponents) - Math.min(...exponents) > 1e-6) ok = false;
       }
     }
     if (ok && n !== undefined && Math.abs(n - 1) > 1e-3 && Math.abs(n) > 1e-3) {
-      // Snap to a simple fraction when that keeps the identity within tolerance (H2.5).
-      const snapped = snapToRational(n);
+      // Snap to a simple fraction when that keeps the identity within tolerance (H2.5). The gate
+      // is loose (1e-4): the re-verification below is what decides.
+      const snapped = snapToRational(n, 1e-4);
       let used = n;
       let exponent: string | undefined;
       if (snapped) {
@@ -467,29 +513,37 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
     } else {
       // No single exponent fits (or the exponent is 1, i.e. linear): inconsistent with a Bernoulli
       // form; when the fit could not even be attempted, untestable.
-      if (columns.length >= 1 && ys.every((y) => y > 0)) {
-        if (n !== undefined && (Math.abs(n - 1) <= 1e-3 || Math.abs(n) <= 1e-3)) {
-          // dy/dx = P y + Q y^0 and dy/dx = P y + Q y^1 are linear equations: Bernoulli proper needs n ≠ 0, 1.
-          const nText = Math.abs(n) <= 1e-3 ? "0" : "1";
-          columns.forEach((u) => { const d = fitDev(u, Math.round(n!) - 1); u.forEach((_, i) => t.add(i < 2 || d === null ? 0 : d)); });
-          emit("bernoulli", t, locale === "zh" ? `拟合出的指数 n = ${nText}，这是线性方程；按课本定义 Bernoulli 方程要求 n ≠ 0, 1` : `the fitted exponent is n = ${nText}, i.e. a linear equation; a Bernoulli equation proper needs n ≠ 0, 1`, { n: Number(nText) }, undefined, "inconsistent");
-        } else {
-          columns.forEach((u) => u.forEach(() => t.add(1)));
-          emit("bernoulli", t, locale === "zh" ? "没有一个统一的指数 n 能在所有 x 处拟合 g/y" : "no single exponent n fits g/y at every x");
-        }
+      if (ys.length === 0) {
+        // No positive y in the box: y^n cannot be sampled.
+        ysRel.forEach(() => t.drop());
+        emit("bernoulli", t, locale === "zh" ? "观察范围内没有 y > 0 的部分，y^n 无法采样" : "the box has no y > 0, so y^n cannot be sampled");
+      } else if (columns.length === xs.length && n !== undefined && (Math.abs(n - 1) <= 1e-3 || Math.abs(n) <= 1e-3) && exponents.length === xs.length && Math.max(...exponents) - Math.min(...exponents) <= 1e-6) {
+        // dy/dx = P y + Q y^0 and dy/dx = P y + Q y^1 are linear equations: Bernoulli proper needs n ≠ 0, 1.
+        const nText = Math.abs(n) <= 1e-3 ? "0" : "1";
+        columns.forEach((u) => { const d = fitDev(u, Math.round(n!) - 1); u.forEach((_, i) => t.add(i < 2 || d === null ? 0 : d)); });
+        emit("bernoulli", t, locale === "zh" ? `拟合出的指数 n = ${nText}，这是线性方程；按课本定义 Bernoulli 方程要求 n ≠ 0, 1` : `the fitted exponent is n = ${nText}, i.e. a linear equation; a Bernoulli equation proper needs n ≠ 0, 1`, { n: Number(nText) }, undefined, "inconsistent", "excluded");
+      } else if (columns.length === xs.length && exponents.length === xs.length) {
+        // Every column fits some exponent, but not the same one: the spread of n across x is the deviation.
+        const spread = (Math.max(...exponents) - Math.min(...exponents)) / Math.max(1, Math.abs(exponents[0]));
+        columns.forEach((u) => u.forEach(() => t.add(spread)));
+        emit("bernoulli", t, locale === "zh" ? `各 x 处拟合出的指数不一致（n 在 ${Math.min(...exponents).toFixed(3)} 到 ${Math.max(...exponents).toFixed(3)} 之间变化）` : `the fitted exponent differs between x values (n ranges from ${Math.min(...exponents).toFixed(3)} to ${Math.max(...exponents).toFixed(3)})`);
       } else {
-        ys.forEach(() => t.drop());
-        emit("bernoulli", t);
+        // At some x no exponent fits at all (g/y is not of the form a + b y^m there): structurally excluded.
+        columns.forEach((u) => u.forEach(() => t.add(1)));
+        emit("bernoulli", t, locale === "zh" ? "在某些 x 处 g/y 无法写成 a + b·y^(n−1)，不存在统一的指数" : "at some x, g/y cannot be written as a + b·y^(n−1): no exponent exists", undefined, undefined, undefined, "excluded");
       }
     }
   }
 
   // ---- exact and integrating factors (differential form) ---------------------------------------
   {
-    const hx = 1e-3 * w;
-    const hy = 1e-3 * h;
-    const My = (p: Vec2) => partial(M, p, "y", hy, 0.15 * h);
-    const Nx = (p: Vec2) => partial(N, p, "x", hx, 0.15 * w);
+    // Base step 1e-4 of the box side (accurate for smooth fields); multipliers up to 350x for fields
+    // whose magnitude swamps the derivative. Largest step 0.0731 of the side: a non-round fraction,
+    // so a whole-box period cannot alias.
+    const hx = 1e-4 * w;
+    const hy = 1e-4 * h;
+    const My = (p: Vec2) => partial(M, p, "y", hy, 0.0731 * h);
+    const Nx = (p: Vec2) => partial(N, p, "x", hx, 0.0731 * w);
     const tE = new Tally(tolD);
     const perPoint: Array<{ p: Vec2; my: Estimate; nx: Estimate } | null> = points.map((p) => {
       const my = My(p), nx = Nx(p);
@@ -511,8 +565,8 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
       }
     } else {
       // μ(x): r = (M_y - N_x) / N must not depend on y. Compare across y at fixed x.
-      const xs = [0.2137, 0.5773, 0.866, 0.4472, 0.7071].map((s) => box.x.min + s * w);
-      const ysL = [0.1618, 0.3819, 0.7071, 0.866].map((s) => box.y.min + s * h);
+      const xs = IF_XS.map((s) => box.x.min + s * w);
+      const ysL = IF_YS.map((s) => box.y.min + s * h);
       const ratio = (p: Vec2, num: (a: Estimate, b: Estimate) => Estimate, den: (p: Vec2) => number): Estimate | null => {
         const my = My(p), nx = Nx(p);
         const d = den(p);

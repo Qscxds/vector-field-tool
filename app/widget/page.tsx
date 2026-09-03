@@ -224,7 +224,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
     }
     const rejected = all.filter((f) => f.verdict === "inconsistent");
     if (rejected.length) {
-      items.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}（${f.maxRelDeviation === null || !Number.isFinite(f.maxRelDeviation) ? "—" : f.maxRelDeviation.toExponential(1)}）`).join(L.tool.listSeparator) }));
+      items.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${f.maxRelDeviation === null || !Number.isFinite(f.maxRelDeviation) ? "—" : f.maxRelDeviation.toExponential(1)}${L.tool.parenClose}`).join(L.tool.listSeparator) }));
     }
     const untestable = all.filter((f) => f.verdict === "untestable");
     if (untestable.length) items.push(fill(L.tool.formsUntestableLine, { list: untestable.map((f) => L.form[f.form]).join(L.tool.listSeparator) }));

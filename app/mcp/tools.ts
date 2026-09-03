@@ -164,7 +164,7 @@ function describeEquilibria(scene: Scene, locale: Locale): string {
   return lines.join("\n");
 }
 
-const formatDeviation = (d: number) => (Number.isFinite(d) ? d.toExponential(1) : "∞");
+const formatDeviation = (d: number) => (Number.isFinite(d) ? d.toExponential(1) : "—");
 
 /**
  * Lines about the detected forms: consistent ones as "behaves like", borderline ones flagged as
@@ -189,7 +189,7 @@ export function describeForms(forms: FormDetection[], locale: Locale): string[] 
   }
   const rejected = forms.filter((f) => f.verdict === "inconsistent");
   if (rejected.length) {
-    lines.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}（${formatDeviation(f.maxRelDeviation ?? NaN)}）`).join(L.tool.listSeparator) }));
+    lines.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${formatDeviation(f.maxRelDeviation ?? NaN)}${L.tool.parenClose}`).join(L.tool.listSeparator) }));
   }
   const untestable = forms.filter((f) => f.verdict === "untestable");
   if (untestable.length) {

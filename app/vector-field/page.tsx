@@ -379,7 +379,7 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
       )}
       {rejected.length ? (
         <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>
-          {fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}（${dev(f.maxRelDeviation)}）`).join(L.tool.listSeparator) })}
+          {fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${dev(f.maxRelDeviation)}${L.tool.parenClose}`).join(L.tool.listSeparator) })}
         </p>
       ) : null}
       {untestable.length ? (
