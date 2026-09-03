@@ -325,6 +325,8 @@ export type DetectOptions = {
   tolAlgebraic?: number;
   /** Override the derivative threshold (tests). */
   tolDerivative?: number;
+  /** Called between form tests and per sample point of the derivative tests (wall-clock budgets). */
+  checkpoint?: () => void;
 };
 
 /** Every form with its verdict, in ALL_FORMS order. */
@@ -365,8 +367,11 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
     });
   };
 
+  const checkpoint = opts.checkpoint;
+
   // ---- separable: g(x,y) g(x0,y0) = g(x,y0) g(x0,y) ------------------------------------------
   {
+    checkpoint?.();
     const t = new Tally(tolA);
     const base = valid.reduce((best, p) => (Math.abs(g(p)) > Math.abs(g(best)) ? p : best), valid[0]);
     if (base && Math.abs(g(base)) > 0) {
@@ -385,6 +390,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
 
   // ---- autonomous: g independent of x -----------------------------------------------------------
   {
+    checkpoint?.();
     const t = new Tally(tolA);
     const x0 = box.x.min + AUTONOMY_X0 * w;
     for (const p of points) {
@@ -398,6 +404,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
 
   // ---- linear in y: g is collinear across three well-separated y values ------------------------
   {
+    checkpoint?.();
     const t = new Tally(tolA);
     const ys = LINEAR_YS.map((f) => box.y.min + f * h);
     for (const p of points) {
@@ -412,6 +419,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
 
   // ---- homogeneous of degree 0: g(tx, ty) = g(x, y) -------------------------------------------
   {
+    checkpoint?.();
     const t = new Tally(tolA);
     for (const p of points) {
       const v = g(p);
@@ -430,6 +438,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
 
   // ---- Bernoulli: g(x, y) / y = a(x) + b(x) y^(n-1) with n independent of x ---------------------
   {
+    checkpoint?.();
     const t = new Tally(tolA);
     const ysRel = [0.137, 0.331, 0.577, 0.819, 0.963];
     // y^n needs y > 0: sample the positive part of the box. A box with no positive y is untestable.
@@ -546,6 +555,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
     const Nx = (p: Vec2) => partial(N, p, "x", hx, 0.0731 * w);
     const tE = new Tally(tolD);
     const perPoint: Array<{ p: Vec2; my: Estimate; nx: Estimate } | null> = points.map((p) => {
+      checkpoint?.();
       const my = My(p), nx = Nx(p);
       if (!my || !nx || !finite(M(p)) || !finite(N(p))) { tE.drop(); return null; }
       const d = compareEstimates(my, nx, tolD);
@@ -578,6 +588,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
 
       const tX = new Tally(tolD);
       for (const x of xs) {
+        checkpoint?.();
         const vals = ysL.map((y) => ratio({ x, y }, diff, N));
         if (vals.some((v) => v === null)) { ysL.slice(1).forEach(() => tX.drop()); continue; }
         const ref = vals[0]!;
@@ -591,6 +602,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
       // μ(y): s = (N_x - M_y) / M must not depend on x. Compare across x at fixed y.
       const tY = new Tally(tolD);
       for (const y of ysL) {
+        checkpoint?.();
         const vals = xs.map((x) => ratio({ x, y }, (my, nx) => diff(nx, my), M));
         if (vals.some((v) => v === null)) { xs.slice(1).forEach(() => tY.drop()); continue; }
         const ref = vals[0]!;

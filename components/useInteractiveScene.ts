@@ -105,6 +105,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       locale,
       system: spec,
       box: viewport.box,
+      featuresBox: effectiveFeatureBox ?? undefined,
       field,
       fieldStyle,
       equilibria: features.equilibria,
@@ -113,7 +114,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       trajectories,
       start,
     };
-  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start]);
+  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox]);
 
   // Refs so the handlers stay referentially stable (the canvas binds its wheel listener once).
   const viewportRef = useRef(viewport);
@@ -127,11 +128,19 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const localeRef = useRef(locale);
   localeRef.current = locale;
 
+  const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
+  const lastHoverScreen = useRef<Vec2 | null>(null);
+  const rafRef = useRef<number | null>(null);
+
   const onWheelZoom = useCallback((screen: Vec2, factor: number) => {
     const cur = viewportRef.current;
     const home = homeBoxRef.current;
     if (!cur || !home) return;
     setView(zoomAt(cur, screen, factor, { original: home }));
+    // The preview under the cursor belongs to the old view; drop it and let the next move recompute.
+    lastHoverScreen.current = null;
+    setOverlay([]);
+    setHint(null);
   }, []);
 
   const onPan = useCallback((dx: number, dy: number) => {
@@ -150,9 +159,6 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     setTrajectories((prev) => [...prev, ...traceFixed(s, p, home)]);
   }, []);
 
-  const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
-  const lastHoverScreen = useRef<Vec2 | null>(null);
-  const rafRef = useRef<number | null>(null);
   const onHoverWorld = useCallback((world: Vec2 | null, screen: Vec2 | null) => {
     if (!world || !screen) {
       hoverRef.current = null;

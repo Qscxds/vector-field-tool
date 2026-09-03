@@ -7,15 +7,37 @@ import type { Box, Vec2 } from "../core/types";
 
 export type Segment = [Vec2, Vec2];
 
-export function contourSegments(f: (p: Vec2) => number, box: Box, level: number, nx = 60, ny = 60): Segment[] {
+/** Scalar field sampled on a regular grid: values[j][i] = f(x_i, y_j). */
+export type ScalarGrid = { box: Box; nx: number; ny: number; values: number[][] };
+
+/**
+ * Samples f once on an (nx+1) x (ny+1) grid. Level curves for any number of levels are then read
+ * from these values: the potential of an exact equation costs ~130 evaluations per point, and
+ * sampling it once instead of once per level is what keeps textbook exact equations inside the
+ * per-call budget (review C9). `checkpoint` is called per row.
+ */
+export function sampleGrid(f: (p: Vec2) => number, box: Box, nx = 60, ny = 60, checkpoint?: () => void): ScalarGrid {
   const dx = (box.x.max - box.x.min) / nx;
   const dy = (box.y.max - box.y.min) / ny;
   const values: number[][] = [];
   for (let j = 0; j <= ny; j++) {
+    checkpoint?.();
     const row: number[] = [];
-    for (let i = 0; i <= nx; i++) row.push(f({ x: box.x.min + i * dx, y: box.y.min + j * dy }) - level);
+    for (let i = 0; i <= nx; i++) row.push(f({ x: box.x.min + i * dx, y: box.y.min + j * dy }));
     values.push(row);
   }
+  return { box, nx, ny, values };
+}
+
+export function contourSegments(f: (p: Vec2) => number, box: Box, level: number, nx = 60, ny = 60): Segment[] {
+  return contourSegmentsFromGrid(sampleGrid(f, box, nx, ny), level);
+}
+
+export function contourSegmentsFromGrid(grid: ScalarGrid, level: number): Segment[] {
+  const { box, nx, ny } = grid;
+  const dx = (box.x.max - box.x.min) / nx;
+  const dy = (box.y.max - box.y.min) / ny;
+  const values = grid.values.map((row) => row.map((v) => v - level));
   const segments: Segment[] = [];
   // interpolate the zero crossing on an edge between two corners
   const cross = (x1: number, y1: number, v1: number, x2: number, y2: number, v2: number): Vec2 => {

@@ -49,6 +49,16 @@ describe("label tables", () => {
   });
 });
 
+describe("formatNumber", () => {
+  it("keeps the exponent of very large numbers instead of stripping its zeros", async () => {
+    const { formatNumber } = await import("./labels");
+    expect(formatNumber(1e30)).toBe("1e+30");
+    expect(formatNumber(2.5)).toBe("2.5");
+    expect(formatNumber(-0.00001)).toBe("0");
+    expect(formatNumber(1e21 * 3)).toBe("3e+21");
+  });
+});
+
 describe("fill and locale detection", () => {
   it("fills placeholders and leaves unknown ones visible", () => {
     expect(fill("a {x} b {y}", { x: 1, y: "two" })).toBe("a 1 b two");

@@ -67,6 +67,8 @@ export type Scene = {
   /** Normalised system that produced the scene (x' = f, y' = g). */
   system?: SystemSpec;
   box?: Box;
+  /** The box the equilibria / first-order features were computed for, when it differs from `box` (interactive shells recompute after a pause). */
+  featuresBox?: Box;
   field?: FieldGrid;
   fieldStyle?: FieldStyle;
   trajectories?: TrajectoryView[];

@@ -24,7 +24,7 @@ export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
  * list (with this URI) per connection: after a bump the connector must be disconnected and
  * reconnected, otherwise it reads the old URI, gets "Resource not found" and shows a blank widget.
  */
-const WIDGET_VERSION = "h-1";
+const WIDGET_VERSION = "h-2";
 export const WIDGET_URI = `ui://vector-field-tool/widget.html?v=${WIDGET_VERSION}`;
 /** Next.js page that becomes the widget HTML (app/widget/page.tsx). */
 const WIDGET_PATH = "/widget";

@@ -74,6 +74,8 @@ export default function WidgetPage() {
   const [fallbackText, setFallbackText] = useState<string>("");
   const [isError, setIsError] = useState(false);
   const [browserLocale, setBrowserLocale] = useState<Locale>("en");
+  // Counts tool results so a new result with the same equation still resets trajectories and previews.
+  const [resultSeq, setResultSeq] = useState(0);
   const { ref, width } = useContainerWidth<HTMLDivElement>(640);
 
   useEffect(() => {
@@ -93,6 +95,7 @@ export default function WidgetPage() {
           .filter((c): c is { type: "text"; text: string } => c.type === "text")
           .map((c) => c.text);
         setFallbackText(texts.join("\n") || JSON.stringify(result.structuredContent ?? result, null, 2));
+        setResultSeq((n) => n + 1);
         setPhase("result");
       };
     },
@@ -114,7 +117,7 @@ export default function WidgetPage() {
     locale,
     kind,
     fieldStyle: scene?.fieldStyle ?? "arrows",
-    systemKey: scene ? `${scene.kind}|${scene.system?.f ?? ""}|${scene.system?.g ?? ""}|${JSON.stringify(scene.start ?? null)}|${JSON.stringify(scene.system?.params ?? null)}` : "",
+    systemKey: scene ? `${resultSeq}|${scene.kind}|${scene.system?.f ?? ""}|${scene.system?.g ?? ""}|${JSON.stringify(scene.start ?? null)}|${JSON.stringify(scene.system?.params ?? null)}` : "",
     initialTrajectories: scene?.trajectories,
     start: scene?.start,
     withFeatures: kind === "analyze_system" || kind === "analyze_first_order",
@@ -186,12 +189,13 @@ function SceneSummary({ scene }: { scene: Scene }) {
   const L = labels(scene.locale ?? "en");
   const items: string[] = [];
   if (scene.box && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order")) {
+    const fb = scene.featuresBox ?? scene.box;
     items.push(
       fill(L.ui.featuresBox, {
-        xMin: formatNumber(scene.box.x.min, 3),
-        xMax: formatNumber(scene.box.x.max, 3),
-        yMin: formatNumber(scene.box.y.min, 3),
-        yMax: formatNumber(scene.box.y.max, 3),
+        xMin: formatNumber(fb.x.min, 3),
+        xMax: formatNumber(fb.x.max, 3),
+        yMin: formatNumber(fb.y.min, 3),
+        yMax: formatNumber(fb.y.max, 3),
       }),
     );
   }

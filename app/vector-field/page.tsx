@@ -267,10 +267,10 @@ export default function VectorFieldPage() {
           {scene?.box ? (
             <p style={{ margin: "12px 0 0", color: "#52606d", fontSize: 12 }} data-features-box>
               {fill(L.ui.featuresBox, {
-                xMin: formatNumber(scene.box.x.min, 3),
-                xMax: formatNumber(scene.box.x.max, 3),
-                yMin: formatNumber(scene.box.y.min, 3),
-                yMax: formatNumber(scene.box.y.max, 3),
+                xMin: formatNumber((scene.featuresBox ?? scene.box).x.min, 3),
+                xMax: formatNumber((scene.featuresBox ?? scene.box).x.max, 3),
+                yMin: formatNumber((scene.featuresBox ?? scene.box).y.min, 3),
+                yMax: formatNumber((scene.featuresBox ?? scene.box).y.max, 3),
               })}
             </p>
           ) : null}

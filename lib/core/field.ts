@@ -38,7 +38,7 @@ export function linspace(r: Range, n: number): number[] {
   return Array.from({ length: n }, (_, i) => r.min + i * step);
 }
 
-export function sampleField(sys: CompiledSystem, box: Box, nx: number, ny: number, t = 0): FieldGrid {
+export function sampleField(sys: CompiledSystem, box: Box, nx: number, ny: number, t = 0, checkpoint?: () => void): FieldGrid {
   assertBox(box);
   const xs = linspace(box.x, nx);
   const ys = linspace(box.y, ny);
@@ -46,6 +46,7 @@ export function sampleField(sys: CompiledSystem, box: Box, nx: number, ny: numbe
   let maxMag = 0;
   let singularCount = 0;
   for (const y of ys) {
+    checkpoint?.();
     for (const x of xs) {
       const at = { x, y };
       const v = sys.eval(at, t);

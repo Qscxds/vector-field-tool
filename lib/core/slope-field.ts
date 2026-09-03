@@ -56,9 +56,9 @@ export type SingularPoints = {
  * so the Newton search is reused; the classification it computes is meaningless for a direction
  * field and is dropped. The explicit form (N = 1) never has any.
  */
-export function firstOrderSingularities(spec: FirstOrderSpec, box: Box, opts: { seedGrid?: number; maxPoints?: number } = {}): SingularPoints {
+export function firstOrderSingularities(spec: FirstOrderSpec, box: Box, opts: { seedGrid?: number; maxPoints?: number; checkpoint?: () => void } = {}): SingularPoints {
   if (spec.kind === "explicit") return { points: [] };
-  const eq = findEquilibria(compileSystem(toSystem(spec)), box, { seedGrid: opts.seedGrid, maxPoints: opts.maxPoints ?? 20 });
+  const eq = findEquilibria(compileSystem(toSystem(spec)), box, { seedGrid: opts.seedGrid, maxPoints: opts.maxPoints ?? 20, checkpoint: opts.checkpoint });
   const out: SingularPoints = { points: eq.points.map((p) => p.at) };
   if (eq.warning === "possible_continuum" || eq.warning === "hit_limit") out.warning = eq.warning;
   return out;
@@ -84,6 +84,8 @@ export type FirstOrderEquilibria = {
 };
 
 export type FirstOrderEquilibriaOptions = {
+  /** Called per probe column and per candidate (wall-clock budgets). */
+  checkpoint?: () => void;
   /** Scan resolution in y. Default 400. */
   samples?: number;
   /** x interval used for the "for all x" checks; defaults to a fixed spread around the origin. */
@@ -134,7 +136,10 @@ export function firstOrderEquilibria(
   };
 
   // Reference column for the scan: the probe x with the most finite M values.
-  const table = xProbe.map((x) => ys.map((y) => M({ x, y })));
+  const table = xProbe.map((x) => {
+    opts.checkpoint?.();
+    return ys.map((y) => M({ x, y }));
+  });
   const finiteCounts = table.map((col) => col.filter(Number.isFinite).length);
   const refIndex = finiteCounts.indexOf(Math.max(...finiteCounts));
   const ref = table[refIndex];
@@ -230,6 +235,7 @@ export function firstOrderEquilibria(
   const probe = Math.max(1e-6 * span, 1e-9);
   const solutions: EquilibriumSolution[] = [];
   for (const c of candidates.sort((u, v) => u - v)) {
+    opts.checkpoint?.();
     let ok = true;
     const goodX: number[] = [];
     for (const x of xProbe) {

@@ -123,6 +123,25 @@ describe("cost controls", () => {
     }
   });
 
+  it("a transcendental textbook exact equation (Zill §2.4 Ex. 3) finishes inside the budget at default parameters (review C9)", async () => {
+    // (e^{2y} - y cos xy) dx + (2x e^{2y} - x cos xy + 2y) dy = 0: ∂M/∂y = 2e^{2y} - cos xy + xy sin xy = ∂N/∂x.
+    const t0 = performance.now();
+    const r = await call("analyze_first_order", { M: "exp(2*y) - y*cos(x*y)", N: "2*x*exp(2*y) - x*cos(x*y) + 2*y", locale: "en" });
+    const elapsed = performance.now() - t0;
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.firstOrder!.forms!.find((f) => f.form === "exact")!.verdict).toBe("consistent");
+    expect(r.scene.firstOrder?.implicit).toBeTruthy();
+    expect(elapsed).toBeLessThan(2000);
+  });
+
+  it("a parse error in N is attributed to N even when N's text contains M's text", async () => {
+    const r = await call("analyze_first_order", { M: "x", N: "x +", locale: "en" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/Cannot parse N/);
+    const m = await call("analyze_first_order", { M: "y +", N: "y + 1", locale: "en" });
+    expect(m.text).toMatch(/Cannot parse M/);
+  });
+
   it("the most expensive legal call (exact equation with level curves) finishes well inside the budget", async () => {
     const t0 = performance.now();
     const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", density: 60, xMin: -50, xMax: 50, yMin: -50, yMax: 50, locale: "en" });

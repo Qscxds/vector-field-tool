@@ -13,12 +13,12 @@
  */
 import { detectForms, NO_FORM_NOTE, reportedForms } from "./core/detect-form";
 import { findEquilibria } from "./core/equilibria";
-import { exactPotential, potentialLevels } from "./core/exact";
+import { exactPotential, potentialLevelsFromValues } from "./core/exact";
 import { integrateAdaptive } from "./core/integrate";
 import type { CompiledSystem } from "./core/parse";
 import { firstOrderEquilibria, firstOrderSingularities, type FirstOrderSpec } from "./core/slope-field";
 import type { Box, Locale, Vec2 } from "./core/types";
-import { contourSegments } from "./render/contours";
+import { contourSegmentsFromGrid, sampleGrid } from "./render/contours";
 import { worldToScreen, type Viewport } from "./render/viewport";
 import type { FirstOrderView, Scene, TrajectoryView } from "./scene";
 
@@ -66,11 +66,12 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
     const reported = reportedForms(forms);
     let implicit: FirstOrderView["implicit"];
     let implicitCheck: FirstOrderView["implicitCheck"];
-    if (reported.some((f) => f.form === "exact")) {
+    if (reported.some((f) => f.form === "exact" && f.verdict === "consistent")) {
       const pot = exactPotential(spec, box);
       implicitCheck = { pathDeviation: pot.pathDeviation, tol: EXACT_PATH_TOL, passed: pot.consistent };
       if (pot.consistent) {
-        const levels = potentialLevels(pot.F, box, 8).map((level) => ({ level, segments: contourSegments(pot.F, box, level, 60, 60) }));
+        const grid = sampleGrid(pot.F, box, 60, 60);
+        const levels = potentialLevelsFromValues(grid.values, 8).map((level) => ({ level, segments: contourSegmentsFromGrid(grid, level) }));
         implicit = { levels, pathDeviation: pot.pathDeviation };
       }
     }

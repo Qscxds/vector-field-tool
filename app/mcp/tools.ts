@@ -11,10 +11,11 @@ import { findEquilibria } from "@/lib/core/equilibria";
 import { sampleField } from "@/lib/core/field";
 import { integrateAdaptive, integrateRK4, type IntegrateOptions } from "@/lib/core/integrate";
 import { compileSystem, ParseError } from "@/lib/core/parse";
-import { contourSegments } from "@/lib/render/contours";
+import { contourSegmentsFromGrid, sampleGrid } from "@/lib/render/contours";
 import { detectForms, NO_FORM_NOTE, reportedForms, type FormDetection } from "@/lib/core/detect-form";
-import { exactPotential, potentialLevels } from "@/lib/core/exact";
+import { exactPotential, potentialLevelsFromValues } from "@/lib/core/exact";
 import {
+  compileDifferential,
   firstOrderEquilibria,
   firstOrderSingularities,
   toSystem,
@@ -117,16 +118,18 @@ function compileOrExplain(spec: SystemSpec) {
 }
 
 function compileOrExplainFirstOrder(spec: FirstOrderSpec, systemSpec: SystemSpec) {
+  // Compile M and N separately first so a parse error is attributed to the field that has it
+  // (the system form wraps M as -(M), and N's text may contain M's).
   try {
-    return compileSystem(systemSpec);
+    compileDifferential(spec);
   } catch (error) {
     if (error instanceof ParseError) {
-      const which =
-        spec.kind === "explicit" ? "g (the right-hand side of dy/dx)" : error.expr.includes(spec.N) && !error.expr.includes(spec.M) ? "N" : "M";
+      const which = spec.kind === "explicit" ? "g (the right-hand side of dy/dx)" : error.expr === spec.N ? "N" : "M";
       throw new ToolInputError(`Cannot parse ${which}: ${error.message}`);
     }
     throw error;
   }
+  return compileSystem(systemSpec);
 }
 
 /** Uniformly thins a polyline to at most `max` points, always keeping the last one. */
@@ -224,8 +227,9 @@ function guarded(deps: ResolvedDeps, run: (checkpoint: () => void) => CallToolRe
   } catch (error) {
     if (error instanceof BudgetExceeded) {
       return fail(
-        `The computation exceeded its ${deps.budgetMs / 1000} s budget: the viewing box or time span is too large, ` +
-          "or the expression is too expensive to evaluate. Reduce tSpan, density or the box and try again.",
+        `The computation exceeded its ${deps.budgetMs / 1000} s budget. The expression may be expensive to evaluate ` +
+          "(many transcendental functions), the time span or step count large, or the level curves of an exact " +
+          "equation costly; try a simpler expression, a smaller tSpan, or a smaller box.",
       );
     }
     if (error instanceof ToolInputError || error instanceof RangeError || error instanceof ParseError) {
@@ -281,7 +285,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
         const eq = findEquilibria(sys, box, { checkpoint });
-        const field = sampleField(sys, box, input.density, input.density);
+        const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
         const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: eq.points, warning: eq.warning };
         const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
         const singular = field.singularCount ? " " + fill(L.tool.singularSamples, { count: field.singularCount }) : "";
@@ -388,7 +392,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
-        const field = sampleField(sys, box, input.density, input.density);
+        const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
         const scene: Scene = { kind: "sample_field", locale: input.locale, system: spec, box, field };
         const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
         return ok(`${line} ${L.tool.widgetDraws}`, scene);
@@ -456,22 +460,24 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
 
         const systemSpec = toSystem(spec);
         const sys = compileOrExplainFirstOrder(spec, systemSpec);
-        const field = sampleField(sys, box, input.density, input.density);
-        const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x });
-        const singular = firstOrderSingularities(spec, box);
-        const forms = detectForms(spec, box, locale);
+        const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
+        const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x, checkpoint });
+        const singular = firstOrderSingularities(spec, box, { checkpoint });
+        const forms = detectForms(spec, box, locale, { checkpoint });
         const reported = reportedForms(forms);
 
         let implicit: NonNullable<Scene["firstOrder"]>["implicit"];
         let implicitCheck: NonNullable<Scene["firstOrder"]>["implicitCheck"];
-        if (reported.some((f) => f.form === "exact")) {
+        // Only a CONSISTENT exactness verdict earns a potential: a borderline one must not produce
+        // the sentence 'the equation is exact' and a picture of level curves.
+        if (reported.some((f) => f.form === "exact" && f.verdict === "consistent")) {
           const pot = exactPotential(spec, box, { checkpoint, tol: EXACT_PATH_TOL });
           implicitCheck = { pathDeviation: pot.pathDeviation, tol: EXACT_PATH_TOL, passed: pot.consistent };
           if (pot.consistent) {
-            const levels = potentialLevels(pot.F, box, 8).map((level) => {
-              checkpoint();
-              return { level, segments: contourSegments(pot.F, box, level, 60, 60) };
-            });
+            // The potential costs ~130 evaluations per point: sample it ONCE on the contour grid and
+            // read every level from those values (review C9).
+            const grid = sampleGrid(pot.F, box, 60, 60, checkpoint);
+            const levels = potentialLevelsFromValues(grid.values, 8).map((level) => ({ level, segments: contourSegmentsFromGrid(grid, level) }));
             implicit = { levels, pathDeviation: pot.pathDeviation };
           }
         }

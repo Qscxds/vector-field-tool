@@ -81,14 +81,26 @@ export function exactPotential(spec: FirstOrderSpec, box: Box, opts: ExactPotent
 
 /** Evenly spaced levels strictly inside the range of F over a grid (for drawing level curves). */
 export function potentialLevels(F: (p: Vec2) => number, box: Box, count = 8, grid = 24): number[] {
-  let lo = Infinity, hi = -Infinity;
+  const values: number[] = [];
   for (let i = 0; i <= grid; i++) {
     for (let j = 0; j <= grid; j++) {
-      const v = F({ x: box.x.min + (i / grid) * (box.x.max - box.x.min), y: box.y.min + (j / grid) * (box.y.max - box.y.min) });
-      if (!Number.isFinite(v)) continue;
-      lo = Math.min(lo, v);
-      hi = Math.max(hi, v);
+      values.push(F({ x: box.x.min + (i / grid) * (box.x.max - box.x.min), y: box.y.min + (j / grid) * (box.y.max - box.y.min) }));
     }
+  }
+  return levelsFromValues(values, count);
+}
+
+/** Same, from values already sampled (e.g. the grid the contours are drawn from). */
+export function potentialLevelsFromValues(values: number[][], count = 8): number[] {
+  return levelsFromValues(values.flat(), count);
+}
+
+function levelsFromValues(values: number[], count: number): number[] {
+  let lo = Infinity, hi = -Infinity;
+  for (const v of values) {
+    if (!Number.isFinite(v)) continue;
+    lo = Math.min(lo, v);
+    hi = Math.max(hi, v);
   }
   if (!(hi > lo) || count < 1) return [];
   return Array.from({ length: count }, (_, k) => lo + ((k + 1) / (count + 1)) * (hi - lo));

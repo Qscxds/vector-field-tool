@@ -328,7 +328,10 @@ export function localeFromLanguageTag(tag: string | undefined | null): Locale {
 
 export function formatNumber(v: number, digits = 4): string {
   if (!Number.isFinite(v)) return String(v);
-  const s = v.toFixed(digits).replace(/\.?0+$/, "");
+  const fixed = v.toFixed(digits);
+  // toFixed switches to exponential notation at 1e21; stripping "zeros" there would eat the exponent.
+  if (/e/i.test(fixed)) return fixed;
+  const s = fixed.replace(/\.?0+$/, "");
   return s === "" || s === "-0" || s === "-" ? "0" : s;
 }
 
