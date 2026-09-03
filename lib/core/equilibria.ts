@@ -30,6 +30,8 @@ export type FindEquilibriaOptions = {
   maxPoints?: number;
   /** Newton iterations per seed. Default 60. */
   maxIterations?: number;
+  /** Called before every seed; a caller enforcing a wall-clock budget throws from it. */
+  checkpoint?: () => void;
 };
 
 const norm = (v: Vec2) => Math.hypot(v.x, v.y);
@@ -142,6 +144,7 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   const margin = 1e-6 * scale;
   const dedupe = 1e-6 * scale;
   for (const seed of seeds) {
+    opts.checkpoint?.();
     const p = newton(sys, seed, box, scale, fTol, maxIterations);
     if (p === null) continue;
     if (p.x < box.x.min - margin || p.x > box.x.max + margin || p.y < box.y.min - margin || p.y > box.y.max + margin) {

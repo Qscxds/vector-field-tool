@@ -50,9 +50,14 @@ export type IntegrateOptions = {
   rtol?: number;
   /** Adaptive only. Absolute tolerance, default 1e-9. */
   atol?: number;
+  /**
+   * Called once per attempted step. A caller enforcing a wall-clock budget throws from it; the
+   * integrator itself never looks at the clock (it stays deterministic and pure).
+   */
+  checkpoint?: () => void;
 };
 
-type Resolved = Required<Omit<IntegrateOptions, "box">> & { box?: Box };
+type Resolved = Required<Omit<IntegrateOptions, "box" | "checkpoint">> & { box?: Box; checkpoint?: () => void };
 
 function resolve(opts: IntegrateOptions | undefined, tSpan: number): Resolved {
   if (!(Number.isFinite(tSpan) && tSpan > 0)) throw new RangeError("tSpan must be a positive finite number.");
@@ -66,6 +71,7 @@ function resolve(opts: IntegrateOptions | undefined, tSpan: number): Resolved {
     t0: opts?.t0 ?? 0,
     rtol: opts?.rtol ?? 1e-6,
     atol: opts?.atol ?? 1e-9,
+    checkpoint: opts?.checkpoint,
   };
   if (!(Number.isFinite(r.h) && r.h > 0)) throw new RangeError("h must be a positive finite number.");
   if (!(Number.isInteger(r.maxSteps) && r.maxSteps >= 1)) throw new RangeError("maxSteps must be a positive integer.");
@@ -190,6 +196,7 @@ export function integrateRK4(
   // Fixed steps of h, with the final step shortened so we land exactly on tEnd.
   const n = Math.max(1, Math.ceil(tSpan / o.h - 1e-9));
   for (let i = 0; i < n; i++) {
+    o.checkpoint?.();
     const remaining = tEnd - t;
     const dt = i === n - 1 ? remaining : Math.sign(remaining) * Math.min(o.h, Math.abs(remaining));
     const next = rk4Step(run, p, t, dt);
@@ -241,6 +248,7 @@ export function integrateAdaptive(
   let shrunk = false; // has the controller ever had to reduce the step?
 
   while (true) {
+    o.checkpoint?.();
     const remaining = tEnd - t;
     if (Math.abs(remaining) <= hMin) {
       break;

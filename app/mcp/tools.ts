@@ -23,6 +23,8 @@ import {
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
+import { BudgetExceeded, makeCheckpoint } from "./budget";
+import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
 
 // ---------- prompt fragments shared by every description ----------
 
@@ -76,6 +78,18 @@ type BoxInput = { xMin: number; xMax: number; yMin: number; yMax: number };
 // ---------- helpers ----------
 
 class ToolInputError extends Error {}
+
+/** Cost controls for the public endpoint; injectable so tests can use a tiny budget or limiter. */
+export type ToolDeps = {
+  /** Per-process speed bump (rate-limit.ts). */
+  limiter?: SlidingWindowLimiter;
+  /** Wall-clock budget per tool call in milliseconds. Default 2000. */
+  budgetMs?: number;
+  /** Clock in milliseconds, injectable for tests. */
+  now?: () => number;
+};
+type ResolvedDeps = Required<ToolDeps>;
+export const DEFAULT_BUDGET_MS = 2000;
 
 function resolveBox(b: BoxInput): Box {
   if (!(b.xMin < b.xMax)) throw new ToolInputError(`xMin (${b.xMin}) must be smaller than xMax (${b.xMax}).`);
@@ -155,11 +169,28 @@ function fail(message: string): CallToolResult {
   return { isError: true, content: [{ type: "text", text: message }] };
 }
 
-/** Runs a handler and converts expected failures into MCP error results (never HTTP 500). */
-function guarded(run: () => CallToolResult): CallToolResult {
+/**
+ * Runs a handler under the cost controls and converts expected failures into MCP error results
+ * (never HTTP 500): the limiter answers first, then the handler runs with a checkpoint that throws
+ * once the wall-clock budget is spent.
+ */
+function guarded(deps: ResolvedDeps, run: (checkpoint: () => void) => CallToolResult): CallToolResult {
+  const gate = deps.limiter.tryAcquire(deps.now());
+  if (!gate.ok) {
+    return fail(
+      `Too many requests on this server instance right now (limit ${deps.limiter.limit} tool calls per ` +
+        `${deps.limiter.windowMs / 1000} s). Try again in ${Math.max(1, Math.ceil(gate.retryAfterMs / 1000))} s.`,
+    );
+  }
   try {
-    return run();
+    return run(makeCheckpoint(deps.budgetMs, deps.now));
   } catch (error) {
+    if (error instanceof BudgetExceeded) {
+      return fail(
+        `The computation exceeded its ${deps.budgetMs / 1000} s budget: the viewing box or time span is too large, ` +
+          "or the expression is too expensive to evaluate. Reduce tSpan, density or the box and try again.",
+      );
+    }
     if (error instanceof ToolInputError || error instanceof RangeError || error instanceof ParseError) {
       return fail(`Invalid input: ${error.message}`);
     }
@@ -173,8 +204,13 @@ function guarded(run: () => CallToolResult): CallToolResult {
  * Registers the four analysis tools. Every tool is linked to the widget resource (`widgetUri`)
  * so MCP Apps hosts render its Scene; text-only hosts just read the summary.
  */
-export function registerTools(server: McpServer, widgetUri: string): void {
+export function registerTools(server: McpServer, widgetUri: string, deps: ToolDeps = {}): void {
   const ui = { ui: { resourceUri: widgetUri } };
+  const d: ResolvedDeps = {
+    limiter: deps.limiter ?? defaultLimiter,
+    budgetMs: deps.budgetMs ?? DEFAULT_BUDGET_MS,
+    now: deps.now ?? (() => performance.now()),
+  };
 
   registerAppTool(
     server,
@@ -202,12 +238,12 @@ export function registerTools(server: McpServer, widgetUri: string): void {
       _meta: ui,
     },
     (input) =>
-      guarded(() => {
+      guarded(d, (checkpoint) => {
         const L = labels(input.locale);
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
-        const eq = findEquilibria(sys, box);
+        const eq = findEquilibria(sys, box, { checkpoint });
         const field = sampleField(sys, box, input.density, input.density);
         const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: eq.points, warning: eq.warning };
         const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
@@ -246,7 +282,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
       _meta: ui,
     },
     (input) =>
-      guarded(() => {
+      guarded(d, (checkpoint) => {
         const L = labels(input.locale);
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
@@ -255,7 +291,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
         const integrate = input.method === "rk4" ? integrateRK4 : integrateAdaptive;
         const directions: Array<1 | -1> = input.direction === "both" ? [1, -1] : input.direction === "forward" ? [1] : [-1];
         const trajectories: TrajectoryView[] = directions.map((dir) => {
-          const opts: IntegrateOptions = { direction: dir, box, h: input.method === "rk4" ? 0.01 : 0.05 };
+          const opts: IntegrateOptions = { direction: dir, box, h: input.method === "rk4" ? 0.01 : 0.05, checkpoint };
           const tr = integrate(sys, start, input.tSpan, opts);
           return {
             direction: dir === 1 ? "forward" : "backward",
@@ -305,7 +341,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
       _meta: ui,
     },
     (input) =>
-      guarded(() => {
+      guarded(d, (checkpoint) => {
         const L = labels(input.locale);
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
@@ -355,7 +391,7 @@ export function registerTools(server: McpServer, widgetUri: string): void {
       _meta: ui,
     },
     (input) =>
-      guarded(() => {
+      guarded(d, (checkpoint) => {
         const locale = input.locale;
         const L = labels(locale);
         const box = resolveBox(input);
@@ -385,9 +421,12 @@ export function registerTools(server: McpServer, widgetUri: string): void {
 
         let implicit: NonNullable<Scene["firstOrder"]>["implicit"];
         if (forms.some((f) => f.form === "exact")) {
-          const pot = exactPotential(spec, box);
+          const pot = exactPotential(spec, box, { checkpoint });
           if (pot.consistent) {
-            const levels = potentialLevels(pot.F, box, 8).map((level) => ({ level, segments: contourSegments(pot.F, box, level, 60, 60) }));
+            const levels = potentialLevels(pot.F, box, 8).map((level) => {
+              checkpoint();
+              return { level, segments: contourSegments(pot.F, box, level, 60, 60) };
+            });
             implicit = { levels, pathDeviation: pot.pathDeviation };
           }
         }

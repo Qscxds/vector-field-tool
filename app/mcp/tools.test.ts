@@ -9,21 +9,23 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { NO_FORM_NOTE } from "@/lib/core/detect-form";
 import { labels } from "@/lib/labels";
 import type { Scene } from "@/lib/scene";
+import { SlidingWindowLimiter } from "./rate-limit";
 import { createMcpServer } from "./server";
+import type { ToolDeps } from "./tools";
 
 let client: Client;
 
-async function connect(): Promise<Client> {
+async function connect(deps?: ToolDeps): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const server = createMcpServer("http://localhost:3000");
+  const server = createMcpServer("http://localhost:3000", deps);
   await server.connect(serverTransport);
   const c = new Client({ name: "tools-test", version: "0" });
   await c.connect(clientTransport);
   return c;
 }
 
-async function call(name: string, args: Record<string, unknown>): Promise<CallToolResult & { scene: Scene; text: string }> {
-  const result = (await client.callTool({ name, arguments: args })) as CallToolResult;
+async function call(name: string, args: Record<string, unknown>, via: Client = client): Promise<CallToolResult & { scene: Scene; text: string }> {
+  const result = (await via.callTool({ name, arguments: args })) as CallToolResult;
   const text = result.content
     .filter((c): c is { type: "text"; text: string } => c.type === "text")
     .map((c) => c.text)
@@ -69,6 +71,61 @@ describe("tools/list", () => {
       const meta = t._meta as { ui?: { resourceUri?: string } } | undefined;
       expect(meta?.ui?.resourceUri, `${t.name} must reference the widget`).toBe(widget!.uri);
     }
+  });
+});
+
+describe("cost controls", () => {
+  it("a tool call that outruns its wall-clock budget returns a readable isError result", async () => {
+    // A clock that jumps 10 s at every reading: the first checkpoint already sees the budget spent.
+    let t = 0;
+    const c = await connect({ budgetMs: 2000, now: () => (t += 10_000), limiter: new SlidingWindowLimiter(1000, 60_000) });
+    for (const [name, args] of [
+      ["analyze_system", { f: "x", g: "-y" }],
+      ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0 }],
+      ["analyze_first_order", { M: "2*x*y", N: "x^2 + y^2" }],
+    ] as const) {
+      const r = await call(name, { ...args, locale: "en" }, c);
+      expect(r.isError, name).toBe(true);
+      expect(r.text, name).toMatch(/exceeded its 2 s budget/);
+    }
+  });
+
+  it("the in-process limiter turns excess calls into isError results and recovers after the window", async () => {
+    let now = 0;
+    const c = await connect({ limiter: new SlidingWindowLimiter(2, 1000), now: () => now });
+    const args = { f: "x", g: "y", density: 5, locale: "en" };
+    expect((await call("sample_field", args, c)).isError).toBeFalsy();
+    expect((await call("sample_field", args, c)).isError).toBeFalsy();
+    const third = await call("sample_field", args, c);
+    expect(third.isError).toBe(true);
+    expect(third.text).toMatch(/Too many requests/);
+    expect(third.text).toMatch(/limit 2 tool calls per 1 s/);
+    now = 1001;
+    expect((await call("sample_field", args, c)).isError).toBeFalsy();
+  });
+
+  it("the expression length cap applies to M and N as well as to f, g and expr", async () => {
+    const long = "x+".repeat(101) + "1"; // 203 characters
+    for (const [name, args, field] of [
+      ["analyze_first_order", { M: long, N: "y" }, "M"],
+      ["analyze_first_order", { M: "x", N: long }, "N"],
+      ["analyze_first_order", { expr: long }, "expr"],
+      ["analyze_system", { f: long, g: "y" }, "f"],
+      ["analyze_system", { f: "x", g: long }, "g"],
+    ] as const) {
+      const r = await call(name, { ...args, locale: "en" });
+      expect(r.isError, field).toBe(true);
+      expect(r.text, field).toContain(field);
+    }
+  });
+
+  it("the most expensive legal call (exact equation with level curves) finishes well inside the budget", async () => {
+    const t0 = performance.now();
+    const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", density: 60, xMin: -50, xMax: 50, yMin: -50, yMax: 50, locale: "en" });
+    const elapsed = performance.now() - t0;
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.firstOrder?.implicit).toBeTruthy();
+    expect(elapsed).toBeLessThan(2000);
   });
 });
 

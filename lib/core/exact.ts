@@ -27,6 +27,8 @@ export type ExactPotentialOptions = {
   panels?: number;
   /** Relative tolerance for path independence. Default 1e-6. */
   tol?: number;
+  /** Called before every path-check point; a caller enforcing a wall-clock budget throws from it. */
+  checkpoint?: () => void;
 };
 
 /** Composite Simpson rule on [a, b]. Exact for cubics. */
@@ -56,6 +58,7 @@ export function exactPotential(spec: FirstOrderSpec, box: Box, opts: ExactPotent
   const pairs: Array<[number, number]> = [];
   for (const fx of fr) {
     for (const fy of fr) {
+      opts.checkpoint?.();
       const p = { x: box.x.min + fx * (box.x.max - box.x.min), y: box.y.min + fy * (box.y.max - box.y.min) };
       const a = viaHorizontalFirst(p);
       const b = viaVerticalFirst(p);

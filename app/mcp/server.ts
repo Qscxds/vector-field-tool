@@ -15,7 +15,7 @@ import {
   registerAppTool,
 } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
-import { registerTools } from "./tools";
+import { registerTools, type ToolDeps } from "./tools";
 
 export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
 
@@ -65,8 +65,8 @@ export function rewriteForSandbox(html: string, baseUrl: string): string {
   return html.replace(/<head([^>]*)>/i, `<head$1><base href="${baseUrl}/">`);
 }
 
-/** One McpServer per request: no sessions, no shared state. */
-export function createMcpServer(baseUrl: string): McpServer {
+/** One McpServer per request: no sessions, no shared state (the limiter in `deps` is per process). */
+export function createMcpServer(baseUrl: string, deps: ToolDeps = {}): McpServer {
   const server = new McpServer(SERVER_INFO);
 
   registerAppResource(
@@ -124,7 +124,7 @@ export function createMcpServer(baseUrl: string): McpServer {
     }),
   );
 
-  registerTools(server, WIDGET_URI);
+  registerTools(server, WIDGET_URI, deps);
 
   return server;
 }
