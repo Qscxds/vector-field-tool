@@ -264,6 +264,16 @@ export default function VectorFieldPage() {
             <p style={{ margin: "8px 0 0", color: "#92400e" }}>{fill(L.ui.singularNote, { count: scene.field.singularCount })}</p>
           ) : null}
 
+          {scene?.box ? (
+            <p style={{ margin: "12px 0 0", color: "#52606d", fontSize: 12 }} data-features-box>
+              {fill(L.ui.featuresBox, {
+                xMin: formatNumber(scene.box.x.min, 3),
+                xMax: formatNumber(scene.box.x.max, 3),
+                yMin: formatNumber(scene.box.y.min, 3),
+                yMax: formatNumber(scene.box.y.max, 3),
+              })}
+            </p>
+          ) : null}
           {scene?.kind === "analyze_system" ? <EquilibriaList scene={scene} L={L} /> : null}
           {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
           {lastPair.length ? (

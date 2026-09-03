@@ -57,16 +57,16 @@ const calls = [
   ["analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 }, (r) => r.structuredContent?.firstOrder?.solutions?.length === 2],
 ];
 for (const [name, args, verify] of calls) {
-  const r = await rpc("tools/call", { name, arguments: args });
+  const r = await rpc("tools/call", { name, arguments: name === "ping" ? args : { locale: "en", ...args } });
   const result = r.msg?.result;
   check(`tools/call ${name}`, r.status === 200 && result && !result.isError && verify(result), JSON.stringify(r.msg).slice(0, 300));
 }
 
-const bad = await rpc("tools/call", { name: "analyze_system", arguments: { f: "xy", g: "y" } });
+const bad = await rpc("tools/call", { name: "analyze_system", arguments: { f: "xy", g: "y", locale: "en" } });
 check("tools/call invalid expression -> isError result", bad.msg?.result?.isError === true && /x\*y/.test(bad.msg.result.content[0].text), JSON.stringify(bad.msg).slice(0, 300));
 // Schema violations: the SDK reports them either as JSON-RPC -32602 or as an isError result whose
 // text names the field (SDK 1.30 does the latter). Both are spec-compliant; HTTP 500 is not.
-const outOfRange = await rpc("tools/call", { name: "sample_field", arguments: { f: "x", g: "y", density: 999 } });
+const outOfRange = await rpc("tools/call", { name: "sample_field", arguments: { f: "x", g: "y", density: 999, locale: "en" } });
 const oorMsg = outOfRange.msg ?? {};
 const oorOk =
   outOfRange.status === 200 &&

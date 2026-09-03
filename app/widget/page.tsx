@@ -185,6 +185,16 @@ export default function WidgetPage() {
 function SceneSummary({ scene }: { scene: Scene }) {
   const L = labels(scene.locale ?? "en");
   const items: string[] = [];
+  if (scene.box && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order")) {
+    items.push(
+      fill(L.ui.featuresBox, {
+        xMin: formatNumber(scene.box.x.min, 3),
+        xMax: formatNumber(scene.box.x.max, 3),
+        yMin: formatNumber(scene.box.y.min, 3),
+        yMax: formatNumber(scene.box.y.max, 3),
+      }),
+    );
+  }
   if (scene.system) {
     items.push(scene.kind === "analyze_first_order" && scene.firstOrder ? scene.firstOrder.expr : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
   }

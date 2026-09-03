@@ -21,7 +21,7 @@ export default function HomePage() {
       <h2 style={{ fontSize: 18, marginTop: 28 }}>For AI clients (MCP)</h2>
       <p style={{ color: "#52606d", marginTop: 4 }}>
         The same kernel is exposed as MCP tools so Claude can answer questions with computed results instead of guesses. Add{" "}
-        <code>&lt;this origin&gt;/mcp</code> as a custom connector (Streamable HTTP, stateless, no auth) and ask it to analyse a
+        <code>&lt;this origin&gt;/mcp</code> as a custom connector (Streamable HTTP, stateless, no auth) and ask it to analyze a
         system; results render as an interactive widget.
       </p>
       <ul style={{ color: "#52606d" }}>

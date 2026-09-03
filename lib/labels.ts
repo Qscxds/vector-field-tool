@@ -40,7 +40,8 @@ export type LabelTable = {
     | "fixErrorHint" | "singularNote" | "equilibriaHeading" | "constantSolutionsHeading" | "singularHeading"
     | "formsHeading" | "implicitHeading" | "lastTrajectory" | "toward" | "language" | "shownRange"
     | "interactionHint" | "hoverUndefined" | "connectedWaiting" | "computing" | "connected" | "notConnected"
-    | "notRenderedByHost" | "localComputeUnavailable" | "rangeError" | "xRangeError" | "yRangeError" | "exprError",
+    | "notRenderedByHost" | "localComputeUnavailable" | "rangeError" | "xRangeError" | "yRangeError" | "exprError"
+    | "featuresBox",
     string
   >;
 };
@@ -170,6 +171,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       xRangeError: "x 范围无效：左端 {min} 必须小于右端 {max}。",
       yRangeError: "y 范围无效：下端 {min} 必须小于上端 {max}。",
       exprError: "表达式「{expr}」有问题：{message}",
+      featuresBox: "以下结果按当前可见范围 x∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}] 计算；缩放或平移后会重新计算，结论依赖于所考察的范围。",
     },
   },
   en: {
@@ -181,8 +183,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable_spiral: "unstable spiral (unstable focus)",
       star_node: "star node",
       degenerate_node: "degenerate node",
-      center_or_weak_spiral: "centre or weak spiral (linearisation cannot tell)",
-      non_hyperbolic: "non-hyperbolic equilibrium (linearisation is inconclusive)",
+      center_or_weak_spiral: "center or weak spiral (linearization cannot tell)",
+      non_hyperbolic: "non-hyperbolic equilibrium (linearization is inconclusive)",
     },
     stability: {
       stable: "stable (solutions approach it from both sides)",
@@ -206,8 +208,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       hit_limit: "Warning: more equilibria than the limit; only the first few are listed.",
     },
     caveat: {
-      center: "The linearisation gives a purely imaginary pair of eigenvalues (real part zero to numerical precision). Linearisation alone cannot distinguish a true centre from an extremely slow spiral: their phase portraits are entirely different, and deciding requires a conserved quantity (such as an energy or Hamiltonian) or a higher-order nonlinear analysis.",
-      nonHyperbolic: "At least one eigenvalue of the Jacobian is zero to numerical precision (determinant approximately zero), so this equilibrium is non-hyperbolic. The Hartman–Grobman theorem does not apply and linearisation cannot decide its stability; a nonlinear method such as a centre manifold or a Lyapunov function is needed.",
+      center: "The linearization gives a purely imaginary pair of eigenvalues (real part zero to numerical precision). Linearization alone cannot distinguish a true center from an extremely slow spiral: their phase portraits are entirely different, and deciding requires a conserved quantity (such as an energy or Hamiltonian) or a higher-order nonlinear analysis.",
+      nonHyperbolic: "At least one eigenvalue of the Jacobian is zero to numerical precision (determinant approximately zero), so this equilibrium is non-hyperbolic. The Hartman–Grobman theorem does not apply and linearization cannot decide its stability; a nonlinear method such as a center manifold or a Lyapunov function is needed.",
       notFinite: "The Jacobian cannot be evaluated to a finite value at this point (the vector field is singular or undefined nearby), so no classification can be given.",
       repeatedRoot: "The two eigenvalues cannot be told apart at working precision (the discriminant lies inside the tolerance band rather than being exactly zero). They may be a genuine repeated root, in which case the name star node / degenerate node is strictly correct, or two distinct real roots extremely close together, in which case this is really an ordinary node. Read this classification as 'repeated or nearly repeated root', not as a definite type.",
     },
@@ -269,12 +271,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       yMax: "y max",
       density: "Grid density",
       arrowLength: "Arrow length",
-      arrowUnit: "Uniform (colour encodes magnitude)",
+      arrowUnit: "Uniform (color encodes magnitude)",
       arrowScaled: "Scaled by magnitude",
       clearTrajectories: "Clear trajectories ({count})",
       syntaxHint: "Syntax: write multiplication explicitly (x*y, not xy), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
       fixErrorHint: "Fix the error above to redraw",
-      singularNote: "The vector field is undefined or infinite at {count} sample points (drawn as grey rings).",
+      singularNote: "The vector field is undefined or infinite at {count} sample points (drawn as gray rings).",
       equilibriaHeading: "Equilibria",
       constantSolutionsHeading: "Constant solutions",
       singularHeading: "Singular points of the direction field (M = N = 0)",
@@ -296,6 +298,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       xRangeError: "Invalid x range: the left end {min} must be smaller than the right end {max}.",
       yRangeError: "Invalid y range: the lower end {min} must be smaller than the upper end {max}.",
       exprError: "Problem in the expression “{expr}”: {message}",
+      featuresBox: "The results below are computed for the visible range x ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]; they are recomputed after zooming or panning, because conclusions depend on the range examined.",
     },
   },
 };

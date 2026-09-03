@@ -24,7 +24,7 @@ export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
  * list (with this URI) per connection: after a bump the connector must be disconnected and
  * reconnected, otherwise it reads the old URI, gets "Resource not found" and shows a blank widget.
  */
-const WIDGET_VERSION = "g-1";
+const WIDGET_VERSION = "h-1";
 export const WIDGET_URI = `ui://vector-field-tool/widget.html?v=${WIDGET_VERSION}`;
 /** Next.js page that becomes the widget HTML (app/widget/page.tsx). */
 const WIDGET_PATH = "/widget";
@@ -52,7 +52,7 @@ export async function fetchWidgetHtml(baseUrl: string): Promise<string> {
 
 /**
  * The host renders our HTML on its own sandbox origin, so relative URLs would point at the host.
- * We pin <base href> to our public origin; hosts honour it only when the resource declares
+ * We pin <base href> to our public origin; hosts honor it only when the resource declares
  * csp.baseUriDomains (the MCP Apps default CSP is base-uri 'self'), which createMcpServer does.
  *
  * Asset URLs are deliberately NOT rewritten here. Next's Turbopack runtime identifies chunks by

@@ -25,7 +25,7 @@ const sys = (id: string, name: Record<Locale, string>, f: string, g: string, box
 export const PRESETS: Preset[] = [
   sys("harmonic", { zh: "简谐振子", en: "Harmonic oscillator" }, "y", "-x", { xMin: -3, xMax: 3, yMin: -3, yMax: 3 }, {
     zh: "原点是中心（线性化只能说到「中心或弱螺旋」），轨线是圆。",
-    en: "The origin is a centre (linearisation can only say 'centre or weak spiral'); orbits are circles.",
+    en: "The origin is a center (linearization can only say 'center or weak spiral'); orbits are circles.",
   }),
   sys("damped", { zh: "阻尼振子", en: "Damped oscillator" }, "y", "-x - 0.5*y", { xMin: -3, xMax: 3, yMin: -3, yMax: 3 }, {
     zh: "原点是稳定螺旋点，特征值 -1/4 ± i√15/4。",
@@ -33,7 +33,7 @@ export const PRESETS: Preset[] = [
   }),
   sys("lotka", { zh: "Lotka–Volterra", en: "Lotka–Volterra" }, "x - x*y", "x*y - y", { xMin: -0.5, xMax: 4, yMin: -0.5, yMax: 4 }, {
     zh: "(0,0) 鞍点，(1,1) 中心或弱螺旋；H = x - ln x + y - ln y 守恒。",
-    en: "(0,0) is a saddle, (1,1) a centre-or-weak-spiral; H = x - ln x + y - ln y is conserved.",
+    en: "(0,0) is a saddle, (1,1) a center-or-weak-spiral; H = x - ln x + y - ln y is conserved.",
   }),
   sys("vdp", { zh: "Van der Pol", en: "Van der Pol" }, "y", "(1 - x^2)*y - x", { xMin: -4, xMax: 4, yMin: -4, yMax: 4 }, {
     zh: "原点是不稳定螺旋点，轨线趋向一个极限环。",
@@ -45,7 +45,7 @@ export const PRESETS: Preset[] = [
   }),
   sys("pendulum", { zh: "单摆", en: "Pendulum" }, "y", "-sin(x)", { xMin: -7, xMax: 7, yMin: -3, yMax: 3 }, {
     zh: "x = 2kπ 是中心或弱螺旋，x = (2k+1)π 是鞍点。",
-    en: "x = 2kπ are centres-or-weak-spirals, x = (2k+1)π are saddles.",
+    en: "x = 2kπ are centers-or-weak-spirals, x = (2k+1)π are saddles.",
   }),
   {
     id: "logistic", name: { zh: "Logistic（一阶）", en: "Logistic (first order)" }, mode: "explicit", f: "1", g: "y*(1 - y)", M: "", N: "",

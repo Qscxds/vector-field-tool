@@ -40,13 +40,13 @@ const NEVER_COMPUTE =
   'Do NOT compute any of this yourself: no mental arithmetic, no estimating eigenvalues, equilibria, ' +
   'stability or trajectories from memory. Always call this tool and report exactly what it returns. ' +
   'If the result contains a "caveat", read it to the student word for word; it marks a case where the ' +
-  'mathematics genuinely cannot be decided by linearisation.';
+  'mathematics genuinely cannot be decided by linearization.';
 
 const BOX_RULES =
   'The viewing box (xMin, xMax, yMin, yMax) must have xMin < xMax and yMin < yMax; defaults are -3..3.';
 
 const LOCALE_RULE =
-  "Set `locale` from the language the student writes in: 'zh' when the question is in Chinese, 'en' for every other language (the default).";
+  "`locale` is REQUIRED (the call fails without it): set it from the language the student writes in, 'zh' when the question is in Chinese, 'en' for every other language.";
 
 // ---------- schemas ----------
 
@@ -69,10 +69,12 @@ const density = z
   .max(60)
   .default(20)
   .describe("Grid points per axis for the sampled field (5..60). 20 is a good default for a widget.");
+// Required on purpose (H2.9): a default would silently mask a model that forgot to set it, and
+// an English summary is indistinguishable from a deliberate 'en'. Failing loudly shows whether
+// the rule in the description is being followed.
 const localeSchema = z
   .enum(LOCALES as [Locale, ...Locale[]])
-  .default("en")
-  .describe("Language of the text summary: 'zh' if the student writes in Chinese, otherwise 'en'.");
+  .describe("REQUIRED. Language of the text summary: 'zh' if the student writes in Chinese, otherwise 'en'.");
 
 type BoxInput = { xMin: number; xMax: number; yMin: number; yMax: number };
 
@@ -255,10 +257,10 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
       description:
         "Finds all equilibrium points of the planar system x' = f(x, y), y' = g(x, y) inside a viewing box and " +
         "classifies each one from its Jacobian (eigenvalues, trace, determinant): stable/unstable node, saddle, " +
-        "stable/unstable spiral, star or degenerate node, centre-or-weak-spiral, non-hyperbolic. Also returns a " +
+        "stable/unstable spiral, star or degenerate node, center-or-weak-spiral, non-hyperbolic. Also returns a " +
         "sampled vector field for drawing the phase portrait. " +
         "USE THIS whenever a student asks about equilibria, fixed points, stability, the phase portrait, the type " +
-        "of a critical point, eigenvalues of the linearisation, or long-term behaviour of a 2D autonomous system. " +
+        "of a critical point, eigenvalues of the linearization, or long-term behavior of a 2D autonomous system. " +
         "For a single first-order equation dy/dx = g(x, y) use analyze_first_order instead. " +
         EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {

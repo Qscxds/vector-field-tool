@@ -24,8 +24,10 @@ async function connect(deps?: ToolDeps): Promise<Client> {
   return c;
 }
 
+/** Calls a tool; `locale` is required by every math tool, so the helper supplies 'en' unless the test sets it. */
 async function call(name: string, args: Record<string, unknown>, via: Client = client): Promise<CallToolResult & { scene: Scene; text: string }> {
-  const result = (await via.callTool({ name, arguments: args })) as CallToolResult;
+  const withLocale = name === "ping" || "locale" in args ? args : { ...args, locale: "en" };
+  const result = (await via.callTool({ name, arguments: withLocale })) as CallToolResult;
   const text = result.content
     .filter((c): c is { type: "text"; text: string } => c.type === "text")
     .map((c) => c.text)
@@ -56,9 +58,11 @@ describe("tools/list", () => {
       expect(t.description).toMatch(/x\*y/);
       expect(t.description).toMatch(/caveat/);
       expect(t.description).toMatch(/'zh' when the question is in Chinese/);
+      expect(t.description).toMatch(/REQUIRED/);
       const props = t.inputSchema.properties as Record<string, { enum?: string[]; default?: string }>;
       expect(props.locale?.enum).toEqual(["zh", "en"]);
-      expect(props.locale?.default).toBe("en");
+      expect(props.locale?.default).toBeUndefined();
+      expect(t.inputSchema.required).toContain("locale");
     }
   });
 
@@ -139,11 +143,25 @@ describe("ping", () => {
 });
 
 describe("locale", () => {
-  it("defaults to English and stamps the scene", async () => {
-    const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3 });
+  it("is required: a call without it fails naming the field, for every math tool", async () => {
+    for (const [name, args] of [
+      ["analyze_system", { f: "x", g: "y" }],
+      ["trace_trajectory", { f: "x", g: "y", x0: 1, y0: 0 }],
+      ["sample_field", { f: "x", g: "y" }],
+      ["analyze_first_order", { expr: "y" }],
+    ] as const) {
+      const r = (await client.callTool({ name, arguments: { ...args } })) as CallToolResult;
+      expect(r.isError, name).toBe(true);
+      const text = r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
+      expect(text, name).toMatch(/locale/);
+    }
+  });
+
+  it("English when asked for English, and the scene is stamped", async () => {
+    const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "en" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.locale).toBe("en");
-    expect(r.text).toContain("Equilibrium (1, 1): centre or weak spiral");
+    expect(r.text).toContain("Equilibrium (1, 1): center or weak spiral");
     expect(r.text).toContain(labels("en").caveat.center.slice(0, 40));
     expect(r.text).not.toMatch(/[一-鿿]/);
   });
@@ -175,7 +193,7 @@ describe("locale", () => {
 });
 
 describe("analyze_system", () => {
-  it("Lotka-Volterra: (0,0) saddle and (1,1) centre-or-weak-spiral with the caveat in the text", async () => {
+  it("Lotka-Volterra: (0,0) saddle and (1,1) center-or-weak-spiral with the caveat in the text", async () => {
     const r = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.kind).toBe("analyze_system");
