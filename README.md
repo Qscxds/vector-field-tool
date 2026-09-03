@@ -4,16 +4,16 @@
 
 微分方程课的向量场教学工具。目标不只是画图，而是让 AI 通过工具调用回答学生关于微分方程的问题：AI 把自然语言翻译成参数、把数值结果翻译成解释，**所有数学计算由确定性代码完成**，AI 一个数字都不许自己算。
 
-当前状态（2026-09-03，S/F/G 轮之后）：
+当前状态（2026-09-03，H 轮之后）：
 
-- **计算内核**（`lib/core/`）：表达式解析、场采样、RK4 与自适应 Dormand–Prince 积分、雅可比、平衡点分类（带诚实的 caveat）、数值求平衡点；一阶方程以微分形式 `M dx + N dy = 0` 为底层（`dy/dx = g` 是特例），常数解沿整条直线检验、方向场奇点、七种标准形式的数值识别（只说「在数值上表现得像」，永远带 caveat）、恰当方程的势函数与隐式解等值线。
-- **MCP 工具层**：`analyze_system`、`trace_trajectory`、`sample_field`、`analyze_first_order`（`expr` 或 `M`+`N`），加链路探针 `ping`。每个工具有 `locale` 参数（`zh` / `en`，默认 `en`），摘要文字全部来自双语文案表。
-- **网页外壳** `/vector-field`：中英切换、三种输入（二维系统 / 显式一阶 / 微分形式）、十个预设、等比视口、滚轮缩放、拖动平移、双击复位、悬停预览解曲线、点击固定轨线。
+- **计算内核**（`lib/core/`）：表达式解析、场采样、RK4 与自适应 Dormand–Prince 积分（爆破只看位置、不看速度；状态 completed / left_box / reached_equilibrium / blew_up / singular / arc_length / max_steps）、雅可比、平衡点分类（带诚实的 caveat：中心或弱螺旋、非双曲、近重根；按问题尺度判零）、数值求平衡点（连续解集需要计数与几何两条判据）；一阶方程以微分形式 `M dx + N dy = 0` 为底层（`dy/dx = g` 是特例），常数解沿整条直线检验、方向场奇点、八种标准形式的数值识别（每种都返回三档判定 + 实测偏差 + 阈值，Bernoulli 指数贴合到简单分数）、恰当方程的势函数与隐式解等值线（路径自检失败会明说）。
+- **MCP 工具层**：`analyze_system`、`trace_trajectory`、`sample_field`、`analyze_first_order`（`expr` 或 `M`+`N`），加链路探针 `ping`。每个工具的 `locale` 参数（`zh` / `en`）**必填**，摘要文字全部来自双语文案表（英文为美式拼写）。每次调用有 2 秒预算，进程内有限流减速带。
+- **网页外壳** `/vector-field`：中英切换、三种输入（二维系统 / 显式一阶 / 微分形式）、十个预设、等比视口、滚轮缩放、拖动平移、双击复位、悬停预览解曲线（屏幕长度固定为两条对角线，与场速和缩放无关）、点击固定轨线（延伸到原始范围的 20 倍才停，不受视野裁剪）；结果列表上方注明它按哪个范围计算。
 - **widget**：Scene 里带着方程，widget 用同一份内核本地编译，缩放 / 平移 / 悬停 / 点击都在沙箱里算（S 阶段证实 mathjs 编译不需要 `unsafe-eval`）；编译被挡时退回静态图并说明。**Claude 实机验证 widget 交互待人工做**（版本号 e-2 → g-1，Claude 里必须断开重连连接器）。
-- 单测 252 个，期望值全部来自数学推导。
-- **上线准备完成**（H1）：显式 `BASE_URL` 优先级最高并有启动自检；每次调用 2 秒预算 + 进程内限流 + 参数上界；首页有交互页面入口。未做：实际部署到 Vercel（见下文步骤）。
+- 单测 309 个，期望值全部来自数学推导。
+- **上线准备完成**（H1）：显式 `BASE_URL` 优先级最高并有启动自检；每次调用 2 秒预算 + 进程内限流 + 参数上界；首页有交互页面入口。**H2 数学优先拍板完成**（爆破判据、hover 弧长、轨线延伸、三档类型识别、Bernoulli 有理指数、恰当自检、连续解集几何判据、近重根 caveat、locale 必填、美式拼写）。未做：实际部署到 Vercel（见下文步骤）。
 
-文档：`docs/P0-handoff.md`（P0）、`docs/NIGHT-*.md`（夜跑 A–E）、`docs/FG-summary.md`（S/F/G 进度与验证清单）、`docs/FG-decisions.md`（所有偏离原计划的决定）、`docs/FG-open-questions.md`（待拍板事项）。
+文档：`docs/P0-handoff.md`（P0）、`docs/NIGHT-*.md`（夜跑 A–E）、`docs/FG-*.md`（S/F/G）、`docs/H-summary.md`（H 轮进度、验证清单、审查结果）、`docs/H-decisions.md`（所有偏离原计划的决定）、`docs/H-open-questions.md`（待拍板事项）。
 
 ## 架构（长期有效）
 
@@ -72,21 +72,22 @@ docs/                      交接文档
 | `analyze_system(f, g, xMin.., density, locale)` | 观察范围内全部平衡点，各带雅可比、特征值、分类、caveat，附一份场采样 | 学生问平衡点、稳定性、相图、临界点类型、长期行为 |
 | `trace_trajectory(f, g, x0, y0, tSpan, direction, method, locale)` | 从初值正向 / 逆向积分，返回点列和终止原因 | 学生问某个初值出发会怎样、轨线去哪、是否趋向平衡点或极限环 |
 | `sample_field(f, g, xMin.., density, locale)` | 规则网格上的向量场 | 只想看方向场 / 相平面箭头 |
-| `analyze_first_order(expr 或 M+N, xMin.., density, locale)` | 斜率场 / 方向场（微分形式画无向线段）、常数解与稳定性、方向场奇点、「在数值上表现得像」哪些标准形式（可分离、自治、对 y 线性、齐次、Bernoulli、恰当、积分因子）、恰当时的隐式解等值线 | 单个一阶方程：Logistic、牛顿冷却、可分离、线性、恰当方程、斜率场、「这题用什么方法」 |
+| `analyze_first_order(expr 或 M+N, xMin.., density, locale)` | 斜率场 / 方向场（微分形式画无向线段）、常数解与稳定性、方向场奇点、八种标准形式各自的判定（consistent / borderline / inconsistent / untestable）与实测偏差（可分离、自治、对 y 线性、齐次、Bernoulli 含贴合的有理指数、恰当、积分因子）、恰当时的隐式解等值线或路径自检失败的说明 | 单个一阶方程：Logistic、牛顿冷却、可分离、线性、恰当方程、斜率场、「这题用什么方法」 |
 | `ping(message)` | 原样返回 | 链路探针，判断是传输层挂了还是只有渲染挂了 |
 
-`locale`：学生用中文提问传 `zh`，其他一律 `en`（默认）。摘要、caveat、类型证据都按这个语言生成；错误信息（参数越界、表达式解析失败）始终是英文，那是给模型看的。
+`locale`：**必填**。学生用中文提问传 `zh`，其他一律 `en`；漏传直接报错（有意为之：默认值会掩盖模型没按规则传参）。摘要、caveat、类型证据都按这个语言生成；错误信息（参数越界、表达式解析失败、超预算、限流）始终是英文，那是给模型看的。
 
 表达式写法：变量 `x`、`y`（`t` 为时间），乘号必须写出来（`x*y`，不是 `xy`），幂用 `^`，函数 `sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round`，常数 `pi`、`e`，其他常数放 `params`，分段可用 `x > 0 ? 1 : -1`。解析走 mathjs AST 白名单，赋值、属性访问、非白名单函数一律拒绝并点名。
 
-诚实性规则：纯虚特征值只报 `center_or_weak_spiral` 并附 caveat（线性化分不清中心和弱螺旋）；行列式约等于零报 `non_hyperbolic` 并附 caveat（Hartman–Grobman 不适用）；方程类型只说「在数值上表现得像 X」并附 caveat（采样点上的恒等式检验不是证明），一个都不匹配时给正面说明（斜率场和数值解照样有效）。caveat 是给学生念的完整句子，中英各一份。
+诚实性规则：纯虚特征值只报 `center_or_weak_spiral` 并附 caveat（线性化分不清中心和弱螺旋）；行列式约等于零报 `non_hyperbolic` 并附 caveat（Hartman–Grobman 不适用）；重根判定落在容差带内（判别式不精确为零）附 `repeatedRoot` caveat；多个非双曲平衡点只有在共线或落在一条曲线上时才报连续解集，否则报「多个孤立的退化平衡点」；方程类型给三档判定和实测偏差，通过的说「在数值上表现得像 X」并附 caveat，临界的明说是临界，不通过的列出偏差，检验不了的说检验不了；恰当方程的势函数路径自检失败时明说并报偏差。爆破判据只看位置：`x' = -1e7 x` 是有界衰减，绝不叫 blew_up。caveat 是给学生念的完整句子，中英各一份。
 
 ## 交互（网页外壳与 widget 相同）
 
 - 视口等比：输入的范围放进画布时保持 x、y 像素比例相同，短的一边对称扩大，图下一行小字给出实际显示范围。
 - 滚轮缩放（光标下的点不动，相对输入范围限制 1/50..50 倍），拖动平移，双击回到输入范围。
-- 悬停预览经过该点的解曲线（`requestAnimationFrame` 节流，正逆各 ≤ 400 步），点击固定（正向蓝色、逆向橙色）。靠近方向场奇点时不画预览，改为提示「方向无定义」。
-- 视图变化时场立即重采样；平衡点、常数解、奇点、类型、等值线在停止操作 250 毫秒后按可见范围重算。
+- 悬停预览经过该点的解曲线：按**屏幕弧长**积分，正逆各画两条画布对角线的长度就停（与场的快慢、与缩放无关，最后一段精确切在限长处），步数只作兜底；`requestAnimationFrame` 节流。靠近方向场奇点时不画预览，改为提示「方向无定义」。
+- 点击固定的轨线按解自身的性质延伸：停止盒是输入范围的 20 倍，视野只负责裁剪，缩小视野不会露出断头。
+- 视图变化时场立即重采样；平衡点、常数解、奇点、类型、等值线在停止操作 250 毫秒后按可见范围重算，列表上方注明所用范围。
 
 ## 本地运行
 
@@ -95,7 +96,7 @@ docs/                      交接文档
 ```bash
 npm install
 npm run dev          # http://localhost:3000 ，网页外壳在 /vector-field
-npm test             # vitest，252 个测试
+npm test             # vitest，309 个测试
 npm run typecheck    # tsc --noEmit
 npm run build        # 生产构建
 npm run smoke        # 对已运行的服务器做 HTTP 冒烟（默认 http://localhost:3000/mcp）
@@ -191,7 +192,7 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 - **resources/read 报 `widget fetch failed for <url>`**：服务器推算出的公网地址它自己访问不到。检查隧道、`x-forwarded-host`、`BASE_URL`。
 - **日志里出现 400**：Claude 有些请求带 `mcp-protocol-version: 2026-07-28`，路由会降级为 SDK 支持的版本再处理。每个 POST 打一行 `[mcp] <method> ...` 日志。
 - **连接器无法连接**：URL 带 `/mcp`、是 https、cloudflared 还活着。Claude 出口 IP 段见 <https://platform.claude.com/docs/en/api/ip-addresses>。
-- **工具返回 isError**：文字里点名了哪个参数或哪个表达式有问题（例如 `xy` 会提示写成 `x*y`）。参数越界由 zod 校验，同样以 isError 结果返回，不会 500。
+- **工具返回 isError**：文字里点名了哪个参数或哪个表达式有问题（例如 `xy` 会提示写成 `x*y`，漏传 `locale` 会点名 locale）。参数越界由 zod 校验，同样以 isError 结果返回，不会 500。
 - **isError 说超出 2 秒预算或 Too many requests**：前者是单次调用太贵（缩小范围 / tSpan / density），后者是这个实例一分钟内已处理 240 次调用，几秒后再试。
 
 ## 决策记录
@@ -205,5 +206,6 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 
 - ~~P1 计算内核~~、~~P2 MCP 工具~~、~~P3 widget 静态渲染~~、~~P4 网页外壳~~：2026-09-02 夜跑完成。
 - ~~S 沙箱探针~~、~~F 微分形式与类型识别~~、~~G 双语 / 等比视口 / 缩放平移 / hover / widget 本地计算~~：2026-09-03 完成。
-- 下一步：Claude 实机验证 widget 交互；工具 description 按实际对话反复调（尤其 `locale` 是否被正确传入）；部署 Vercel。
+- ~~H1 上线准备~~、~~H2 数学优先拍板~~：2026-09-03 完成（tags `h1-deploy-ready`、`h2-math-done`）。
+- 下一步：部署 Vercel（绑域名后设 `BASE_URL`）；Claude 实机验证 widget 交互（版本 h-1，重连连接器）；看 `locale` 必填后模型是否按规则传参；`docs/H-open-questions.md` 里的拍板项。
 - P5：绑子域名，按 endpoint 限流（不要按 IP：MCP 请求全部来自 Anthropic 云端的少数几个 IP）。
