@@ -18,6 +18,7 @@ import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type Locale } from "@/lib/labels";
+import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
 const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order"]);
@@ -211,9 +212,8 @@ function SceneSummary({ scene }: { scene: Scene }) {
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
   if (scene.warning) items.push(L.warning[scene.warning]);
-  for (const t of scene.trajectories ?? []) {
-    items.push(`${t.direction === "forward" ? L.tool.forward : L.tool.backward}: ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status: t.status === "left_box" && t.stop === "far" ? L.ui.leftFarBox : L.status[t.status] })}`);
-  }
+  // Mode-aware (planar / explicit first order / differential form): see lib/labels-trajectory.
+  for (const group of groupTrajectories(scene.trajectories ?? [])) items.push(...trajectoryLines(scene, group, L));
   const fo = scene.firstOrder;
   if (fo) {
     if (fo.solutions.length === 0) items.push(fo.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);

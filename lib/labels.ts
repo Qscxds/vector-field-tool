@@ -45,7 +45,7 @@ export type LabelTable = {
     | "featuresBox" | "leftFarBox"
     | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression"
     | "equalScale" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled"
-    | "lhsInExpressionSystem",
+    | "lhsInExpressionSystem" | "towardT" | "trajectorySides",
     string
   >;
 };
@@ -190,6 +190,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       shownRangeEqual: "实际显示范围（等比缩放后）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
       shownRangeFilled: "实际显示范围（填满输入范围）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
       lhsInExpressionSystem: "只需输入方程的右端，「x' =」「y' =」这一部分是默认的。",
+      towardT: "到 t = {t}，{status}",
+      trajectorySides: "一侧：{first}；另一侧：{second}",
     },
   },
   en: {
@@ -331,6 +333,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       shownRangeEqual: "Displayed range (equal scale): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
       shownRangeFilled: "Displayed range (filled to the entered range): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
       lhsInExpressionSystem: "Enter only the right-hand side of each equation; the “x' =” / “y' =” part is implied.",
+      towardT: "to t = {t}, {status}",
+      trajectorySides: "one side: {first}; other side: {second}",
     },
   },
 };

@@ -13,6 +13,7 @@ import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSyste
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type LabelTable, type Locale } from "@/lib/labels";
+import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
 import { PRESETS, type Preset, type PresetMode } from "./presets";
@@ -155,7 +156,8 @@ export default function VectorFieldPage() {
   };
 
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : undefined;
-  const lastPair = trajectories.slice(-2);
+  const groups = groupTrajectories(trajectories);
+  const lastGroup = groups.length ? groups[groups.length - 1] : null;
   const hv = horizontalName(form.mode);
 
   return (
@@ -319,12 +321,9 @@ export default function VectorFieldPage() {
           ) : null}
           {scene?.kind === "analyze_system" ? <EquilibriaList scene={scene} L={L} /> : null}
           {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
-          {lastPair.length ? (
-            <p style={{ margin: "8px 0 0", color: "#52606d" }}>
-              {L.ui.lastTrajectory}{" "}
-              {lastPair
-                .map((t) => `${t.direction === "forward" ? L.tool.forward : L.tool.backward} ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status: t.status === "left_box" && t.stop === "far" ? L.ui.leftFarBox : L.status[t.status] })}`)
-                .join("; ")}
+          {scene && lastGroup ? (
+            <p style={{ margin: "8px 0 0", color: "#52606d" }} data-last-trajectory>
+              {L.ui.lastTrajectory} {trajectoryLines(scene, lastGroup, L).join("; ")}
             </p>
           ) : null}
         </div>
