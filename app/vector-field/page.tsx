@@ -110,6 +110,8 @@ export default function VectorFieldPage() {
 
   const [form, setForm] = useState<Form>(() => fromPreset(PRESETS[0], 20, "unit"));
   const [presetId, setPresetId] = useState<string | null>(PRESETS[0].id);
+  // View option, not part of the equation: toggling it keeps the selected preset.
+  const [equalScale, setEqualScale] = useState(true);
   const compiled = useMemo(() => compile(form, L), [form, L]);
 
   const interactive = useInteractiveScene({
@@ -125,6 +127,7 @@ export default function VectorFieldPage() {
     fieldStyle: form.mode === "differential" ? "segments" : "arrows",
     systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}`,
     withFeatures: true,
+    equalScale,
   });
   const { scene, viewport, overlay, hint, trajectories, clearTrajectories, handlers } = interactive;
 
@@ -235,6 +238,10 @@ export default function VectorFieldPage() {
               <option value="scaled">{L.ui.arrowScaled}</option>
             </select>
           </label>
+          <label style={{ display: "flex", gap: 6, alignItems: "flex-start", color: "#1f2933" }}>
+            <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" style={{ marginTop: 3 }} />
+            <span>{fill(L.ui.equalScale, { hv })}</span>
+          </label>
           <button type="button" onClick={clearTrajectories} style={buttonStyle} disabled={trajectories.length === 0}>
             {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
           </button>
@@ -260,8 +267,14 @@ export default function VectorFieldPage() {
                 overlayHint={hint}
                 {...handlers}
               />
+              {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
+              {!equalScale ? (
+                <p role="status" data-scale-warning style={{ margin: "6px 0 0", color: "#92400e" }}>
+                  {L.ui.equalScaleWarning}
+                </p>
+              ) : null}
               <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
-                {fill(L.ui.shownRange, {
+                {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
                   hv,
                   xMin: formatNumber(viewport.box.x.min, 3),
                   xMax: formatNumber(viewport.box.x.max, 3),

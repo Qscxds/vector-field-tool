@@ -43,7 +43,8 @@ export type LabelTable = {
     | "interactionHint" | "hoverUndefined" | "connectedWaiting" | "computing" | "connected" | "notConnected"
     | "notRenderedByHost" | "localComputeUnavailable" | "rangeError" | "xRangeError" | "yRangeError" | "exprError"
     | "featuresBox" | "leftFarBox"
-    | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression",
+    | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression"
+    | "equalScale" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled",
     string
   >;
 };
@@ -183,6 +184,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       syntaxHintFirstOrder: "语法：变量只有 t（自变量）和 y，写 x 会被拒绝；只输入方程右端，不要写「dy/dt =」。乘号要写出来（t*y，不是 ty），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
       xInFirstOrder: "一阶方程的自变量是 t（dy/dt = g(t, y)），请把 x 写成 t。",
       lhsInExpression: "只需输入方程的右端，「dy/dt =」这一部分是默认的。",
+      equalScale: "等比（{hv} 与 y 每单位像素相同，斜率可从图上读出）",
+      equalScaleWarning: "横纵比例不同，图上的角度不代表真实斜率。",
+      shownRangeEqual: "实际显示范围（等比缩放后）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
+      shownRangeFilled: "实际显示范围（填满输入范围）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
     },
   },
   en: {
@@ -319,6 +324,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       syntaxHintFirstOrder: "Syntax: the only variables are t (independent) and y; x is rejected. Enter only the right-hand side, not “dy/dt =”. Write multiplication explicitly (t*y, not ty), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
       xInFirstOrder: "In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.",
       lhsInExpression: "Enter only the right-hand side of the equation; the “dy/dt =” part is implied.",
+      equalScale: "Equal scale (same pixels per unit for {hv} and y; slopes can be read from the picture)",
+      equalScaleWarning: "Axes are not to the same scale: angles in the picture do not represent true slopes.",
+      shownRangeEqual: "Displayed range (equal scale): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
+      shownRangeFilled: "Displayed range (filled to the entered range): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
     },
   },
 };
