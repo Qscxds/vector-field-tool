@@ -128,8 +128,109 @@ describe("panBy", () => {
   });
 });
 
+describe("fitViewport (equalScale: false)", () => {
+  it("returns exactly the entered box (a copy) and lets the two pixel scales differ", () => {
+    // 6 x 4 box on a square canvas: no widening; 600/6 = 100 px/unit in x, 600/4 = 150 px/unit in y.
+    const v = fitViewport(box, 600, 600, { equalScale: false });
+    expect(v.box).toEqual(box);
+    expect(v.box).not.toBe(box);
+    expect(v.box.x).not.toBe(box.x);
+    expect(v.width).toBe(600);
+    expect(v.height).toBe(600);
+    expect(pixelScale(v)).toEqual({ x: 100, y: 150 });
+    // the shells' 720 x 520 canvas: 720/6 = 120, 520/4 = 130
+    const shell = fitViewport(box, 720, 520, { equalScale: false });
+    expect(shell.box).toEqual(box);
+    expect(pixelScale(shell)).toEqual({ x: 120, y: 130 });
+  });
+
+  it("the default and { equalScale: true } are today's equal-scale fit; a box that already fits is unchanged in both modes", () => {
+    expect(fitViewport(box, 600, 600, { equalScale: true })).toEqual(fitViewport(box, 600, 600));
+    expect(fitViewport(box, 600, 600, {})).toEqual(fitViewport(box, 600, 600));
+    expect(fitViewport(box, 600, 600).box.y).toEqual({ min: -3, max: 3 }); // still widened
+    // 6 x 4 on 600 x 400 is already equal-scale, so both modes return the box itself
+    expect(fitViewport(box, 600, 400, { equalScale: false })).toEqual(fitViewport(box, 600, 400));
+  });
+
+  it("still rejects degenerate input", () => {
+    expect(() => fitViewport({ x: { min: 1, max: 1 }, y: box.y }, 10, 10, { equalScale: false })).toThrow(RangeError);
+    expect(() => fitViewport(box, 0, 10, { equalScale: false })).toThrow(RangeError);
+  });
+
+  describe("zoomAt under unequal scales", () => {
+    const v: Viewport = fitViewport(box, 600, 600, { equalScale: false }); // 100 x 150 px/unit
+
+    it("keeps the world point under the cursor fixed", () => {
+      for (const sp of [{ x: 0, y: 0 }, { x: 300, y: 300 }, { x: 587, y: 13 }, { x: 120.5, y: 333.3 }]) {
+        for (const f of [2, 0.5, 1.1, 10]) {
+          const before = screenToWorld(v, sp);
+          const after = screenToWorld(zoomAt(v, sp, f), sp);
+          expect(after.x).toBeCloseTo(before.x, 10);
+          expect(after.y).toBeCloseTo(before.y, 10);
+        }
+      }
+    });
+
+    it("scales both axes by the factor, preserving the ratio of the pixel scales", () => {
+      // anchor = screenToWorld(v, (100, 100)) = (-3 + 100/100, 2 - 100/150) = (-2, 4/3)
+      // new size 3 x 2 -> 200 x 300 px/unit; xMin = -2 - 100/200 = -2.5; yMax = 4/3 + 100/300 = 5/3
+      const z = zoomAt(v, { x: 100, y: 100 }, 2);
+      expect(pixelScale(z).x).toBeCloseTo(200, 10);
+      expect(pixelScale(z).y).toBeCloseTo(300, 10);
+      expect(pixelScale(z).y / pixelScale(z).x).toBeCloseTo(1.5, 10);
+      expect(z.box.x.min).toBeCloseTo(-2.5, 10);
+      expect(z.box.x.max).toBeCloseTo(0.5, 10);
+      expect(z.box.y.min).toBeCloseTo(-1 / 3, 10);
+      expect(z.box.y.max).toBeCloseTo(5 / 3, 10);
+      expect(worldToScreen(z, { x: -2, y: 4 / 3 }).x).toBeCloseTo(100, 10);
+      expect(worldToScreen(z, { x: -2, y: 4 / 3 }).y).toBeCloseTo(100, 10);
+    });
+
+    it("zooming in then out restores the viewport", () => {
+      const z = zoomAt(zoomAt(v, { x: 77, y: 311 }, 3), { x: 77, y: 311 }, 1 / 3);
+      expect(z.box.x.min).toBeCloseTo(v.box.x.min, 10);
+      expect(z.box.x.max).toBeCloseTo(v.box.x.max, 10);
+      expect(z.box.y.min).toBeCloseTo(v.box.y.min, 10);
+      expect(z.box.y.max).toBeCloseTo(v.box.y.max, 10);
+    });
+
+    it("the zoom clamp keeps the ratio: 20 doublings end at 6/50 x 4/50", () => {
+      // h/w = 2/3 throughout, so the two clamp factors coincide and the single factor is exact.
+      let z = v;
+      for (let i = 0; i < 20; i++) z = zoomAt(z, { x: 300, y: 300 }, 2, { original: box });
+      expect(z.box.x.max - z.box.x.min).toBeCloseTo(0.12, 10);
+      expect(z.box.y.max - z.box.y.min).toBeCloseTo(0.08, 10);
+      expect(pixelScale(z).x).toBeCloseTo(5000, 6);
+      expect(pixelScale(z).y).toBeCloseTo(7500, 6);
+    });
+  });
+
+  it("panBy under unequal scales moves by dx/sx horizontally and dy/sy vertically", () => {
+    const v = fitViewport(box, 600, 600, { equalScale: false }); // 100 x 150 px/unit
+    // dx = -40/100 = -0.4; dy = -25/150 = -1/6
+    const p = panBy(v, 40, -25);
+    expect(p.box.x.min).toBeCloseTo(-3.4, 12);
+    expect(p.box.x.max).toBeCloseTo(2.6, 12);
+    expect(p.box.y.min).toBeCloseTo(-13 / 6, 12);
+    expect(p.box.y.max).toBeCloseTo(11 / 6, 12);
+    expect(pixelScale(p)).toEqual(pixelScale(v));
+    // the world point under (200, 150) is (-1, 1); after the pan it sits at (200 + 40, 150 - 25)
+    const world = screenToWorld(v, { x: 200, y: 150 });
+    expect(world.x).toBeCloseTo(-1, 12);
+    expect(world.y).toBeCloseTo(1, 12);
+    const moved = worldToScreen(p, world);
+    expect(moved.x).toBeCloseTo(240, 10);
+    expect(moved.y).toBeCloseTo(125, 10);
+  });
+});
+
 describe("resetViewport", () => {
   it("is fitViewport of the original box", () => {
     expect(resetViewport(box, 600, 600)).toEqual(fitViewport(box, 600, 600));
+  });
+
+  it("passes the equal-scale option through", () => {
+    expect(resetViewport(box, 600, 600, { equalScale: false })).toEqual(fitViewport(box, 600, 600, { equalScale: false }));
+    expect(resetViewport(box, 600, 600, { equalScale: false }).box).toEqual(box);
   });
 });

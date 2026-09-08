@@ -113,6 +113,33 @@ describe("hover preview length is measured on screen (H2.2)", () => {
     expect(worldLen(close)).toBeCloseTo(limit / 400, 6);
   });
 
+  it("the screen metric is anisotropic: under unequal pixel scales a unit step measures sx px horizontally and sy px vertically", () => {
+    // sx = 600/300 = 2 px/unit, sy = 300/300 = 1 px/unit
+    const m = screenMetric({ box: { x: { min: 0, max: 300 }, y: { min: 0, max: 300 } }, width: 600, height: 300 });
+    expect(m({ x: 10, y: 10 }, { x: 11, y: 10 })).toBeCloseTo(2, 12);
+    expect(m({ x: 10, y: 10 }, { x: 10, y: 11 })).toBeCloseTo(1, 12);
+    expect(m({ x: 10, y: 10 }, { x: 11, y: 11 })).toBeCloseTo(Math.sqrt(5), 12);
+  });
+
+  it("under unequal scales the preview keeps its on-screen length and the stop box still does not cut it", () => {
+    // Filled 720 x 520 canvas over the 4 x 4 box: sx = 180, sy = 130 px/unit; limit = 2 diagonals.
+    const filled = fitViewport(box, 720, 520, { equalScale: false });
+    const lim = HOVER_DIAGONALS * Math.hypot(720, 520);
+    const m = screenMetric(filled);
+    // vertical field from the top edge: the stop box is 4 box heights = 16 units away; the preview
+    // needs lim / 130 = 13.67 units, so it is cut by length
+    const up = tracePreview(compileSystem({ f: "0", g: "1" }), { x: 0, y: 2 }, filled)[0];
+    expect(up.direction).toBe("forward");
+    expect(up.status).toBe("arc_length");
+    expect(screenLength(up, m)).toBeCloseTo(lim, 6);
+    expect(up.points[up.points.length - 1].y - 2).toBeCloseTo(lim / 130, 6);
+    // horizontal field: the same pixels are fewer world units along x (180 px/unit)
+    const right = tracePreview(compileSystem({ f: "1", g: "0" }), { x: 0, y: 0 }, filled)[0];
+    expect(right.status).toBe("arc_length");
+    expect(screenLength(right, m)).toBeCloseTo(lim, 6);
+    expect(right.points[right.points.length - 1].x).toBeCloseTo(lim / 180, 6);
+  });
+
   it("a preview that reaches an equilibrium or leaves the stop box is shorter, and says why", () => {
     const t = tracePreview(compileSystem({ f: "-x", g: "-y" }), { x: 1, y: 1 }, viewport);
     expect(t[0].status).toBe("reached_equilibrium");

@@ -4,7 +4,7 @@
 import type { FieldGrid } from "../core/field";
 import type { Vec2 } from "../core/types";
 import { magnitudeColor } from "./color";
-import { worldToScreen, type Viewport } from "./viewport";
+import { pixelScale, worldToScreen, type Viewport } from "./viewport";
 
 /**
  * Arrow-head triangle for an arrow from `from` to `to`: [tip, left wing, right wing] in screen
@@ -48,7 +48,9 @@ export function scaleArrows(grid: FieldGrid, v: Viewport, mode: ArrowMode = "uni
   const cellX = grid.nx > 1 ? v.width / (grid.nx - 1) : v.width;
   const cellY = grid.ny > 1 ? v.height / (grid.ny - 1) : v.height;
   const maxLen = 0.85 * Math.min(cellX, cellY);
-  const ps = { x: v.width / (grid.box.x.max - grid.box.x.min), y: v.height / (grid.box.y.max - grid.box.y.min) };
+  // Pixels per unit of the VIEWPORT's map, not of the grid's box: the two coincide when the field
+  // was sampled on the view box, but not when an equal-scale fit widened one side of a requested box.
+  const ps = pixelScale(v);
 
   return grid.samples.map((s) => {
     const centre = worldToScreen(v, s.at);
@@ -56,7 +58,9 @@ export function scaleArrows(grid: FieldGrid, v: Viewport, mode: ArrowMode = "uni
     if (singular || s.mag === 0) {
       return { from: centre, to: centre, color: magnitudeColor(s.mag, grid.maxMag), mag: s.mag, singular };
     }
-    // Direction in screen space (y flipped), accounting for anisotropic pixel scales.
+    // Screen image of the world direction under the viewport's affine map diag(sx, -sy):
+    // (vx*sx, -vy*sy), normalized. This is the tangent of the drawn solution curve whatever the
+    // ratio sx/sy (equal-scale or filled viewports); the pixel length is chosen separately.
     const dx = s.v.x * ps.x;
     const dy = -s.v.y * ps.y;
     const screenLen = Math.hypot(dx, dy);

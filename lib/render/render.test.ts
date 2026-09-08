@@ -4,7 +4,7 @@ import { compileSystem } from "../core/parse";
 import { arrowPolygon, scaleArrows } from "./arrows";
 import { magnitudeColor, NEUTRAL_COLOR } from "./color";
 import { chooseTicks, niceStep } from "./ticks";
-import { pixelScale, screenToWorld, worldToScreen, type Viewport } from "./viewport";
+import { fitViewport, pixelScale, screenToWorld, worldToScreen, type Viewport } from "./viewport";
 
 const vp: Viewport = { box: { x: { min: -3, max: 3 }, y: { min: -2, max: 2 } }, width: 600, height: 400 };
 
@@ -151,6 +151,49 @@ describe("scaleArrows", () => {
     for (const a of arrows) {
       expect(Number.isFinite(a.from.x) && Number.isFinite(a.from.y) && Number.isFinite(a.to.x) && Number.isFinite(a.to.y)).toBe(true);
     }
+  });
+
+  it("under unequal pixel scales the arrow follows the screen image of the world direction", () => {
+    // sx = 600/300 = 2 px/unit, sy = 300/300 = 1 px/unit. World step (1, 1) maps to the screen step
+    // (2, -1), so the unit screen direction is (2, -1)/sqrt(5) - the tangent of the drawn curve.
+    const aniso: Viewport = { box: { x: { min: 0, max: 300 }, y: { min: 0, max: 300 } }, width: 600, height: 300 };
+    expect(pixelScale(aniso)).toEqual({ x: 2, y: 1 });
+    const single: FieldGrid = { samples: [{ at: { x: 150, y: 150 }, v: { x: 1, y: 1 }, mag: Math.SQRT2 }], maxMag: Math.SQRT2, singularCount: 0, nx: 1, ny: 1, box: aniso.box };
+    const [a] = scaleArrows(single, aniso, "unit");
+    // maxLen = 0.85 * min(600, 300) = 255; centre = (300, 150)
+    const dx = a.to.x - a.from.x, dy = a.to.y - a.from.y;
+    expect(dx).toBeCloseTo(510 / Math.sqrt(5), 9);
+    expect(dy).toBeCloseTo(-255 / Math.sqrt(5), 9);
+    expect(Math.hypot(dx, dy)).toBeCloseTo(255, 9);
+    expect((a.from.x + a.to.x) / 2).toBeCloseTo(300, 9);
+    expect((a.from.y + a.to.y) / 2).toBeCloseTo(150, 9);
+    // tangency: the screen images of (150, 150) and (151, 151) differ by (2, -1), parallel to the arrow
+    const p = worldToScreen(aniso, { x: 150, y: 150 }), q = worldToScreen(aniso, { x: 151, y: 151 });
+    expect(q.x - p.x).toBeCloseTo(2, 12);
+    expect(q.y - p.y).toBeCloseTo(-1, 12);
+    expect((q.x - p.x) * dy - (q.y - p.y) * dx).toBeCloseTo(0, 9);
+  });
+
+  it("uses the viewport's pixel scale, not the grid box's, when an equal-scale fit widened the box", () => {
+    // Field sampled on the 6 x 4 box, drawn on a square canvas: fitViewport widens y to [-3, 3] and
+    // both scales are 100 px/unit, so (1, 1) must be drawn at 45 degrees with |dx| = |dy| = 510/sqrt(2).
+    const fitted = fitViewport(vp.box, 600, 600);
+    expect(pixelScale(fitted)).toEqual({ x: 100, y: 100 });
+    const single: FieldGrid = { samples: [{ at: { x: 0, y: 0 }, v: { x: 1, y: 1 }, mag: Math.SQRT2 }], maxMag: Math.SQRT2, singularCount: 0, nx: 1, ny: 1, box: vp.box };
+    const [a] = scaleArrows(single, fitted, "unit");
+    const dx = a.to.x - a.from.x, dy = a.to.y - a.from.y;
+    expect(dx).toBeCloseTo(510 / Math.SQRT2, 9);
+    expect(dy).toBeCloseTo(-510 / Math.SQRT2, 9);
+    expect(Math.abs(dx)).toBeCloseTo(Math.abs(dy), 9);
+  });
+
+  it("equal scales: the old direction and length hold exactly", () => {
+    // 600 x 400 over the 6 x 4 box (100 px/unit both ways); v = (3, 4): maxLen = 0.85 * 400 = 340,
+    // unit direction (3, -4)/5 -> (204, -272).
+    const single: FieldGrid = { samples: [{ at: { x: 0, y: 0 }, v: { x: 3, y: 4 }, mag: 5 }], maxMag: 5, singularCount: 0, nx: 1, ny: 1, box: vp.box };
+    const [a] = scaleArrows(single, vp, "unit");
+    expect(a.to.x - a.from.x).toBeCloseTo(204, 9);
+    expect(a.to.y - a.from.y).toBeCloseTo(-272, 9);
   });
 
   it("handles a zero field (maxMag = 0) and an empty grid", () => {
