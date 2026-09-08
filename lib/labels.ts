@@ -39,7 +39,7 @@ export type LabelTable = {
     | "formsInconsistentLine" | "formsUntestableLine" | "exactImplicit" | "exactPathCheckFailed" | "listSeparator"
     | "parenOpen" | "parenClose"
     | "nonUniqueTrajectory"
-    | "timeDependent" | "timeDependentTrajectory",
+    | "timeDependent" | "timeDependentTrajectory" | "secondOrderReduced",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -155,6 +155,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
       timeDependent: "这是非自治系统：向量场随 t 变化（在观察范围内取 5 个时刻采样，向量场的最大相对变化为 {deviation}），下面的采样场是 t = {t} 时刻的快照；平衡点与线性化稳定性分析在此不适用（它们只对自治系统有定义），因此没有给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
       timeDependentTrajectory: "这是非自治系统（向量场随 t 变化，最大相对变化为 {deviation}）：轨线从 t = 0 出发，逆向部分是 t < 0 时的解；从同一点在另一个时刻出发会得到不同的曲线。",
+      secondOrderReduced: "二阶方程 {equation}：令 y = x'，降阶为系统 x' = y，y' = {g}。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -315,6 +316,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
       timeDependent: "This is a non-autonomous system: the vector field changes with t (sampled at 5 times inside the viewing box, its largest relative change is {deviation}), so the sampled field below is a snapshot at t = {t}. Equilibrium points and linearized stability analysis do not apply here (they are only defined for autonomous systems), so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
       timeDependentTrajectory: "This is a non-autonomous system (the vector field changes with t; its largest relative change is {deviation}): the trajectory starts at t = 0, and the backward part is the solution for t < 0. Starting from the same point at another time would give a different curve.",
+      secondOrderReduced: "Second-order equation {equation}: with y = x' it becomes the system x' = y, y' = {g}.",
     },
     ui: {
       title: "Vector field / phase portrait",

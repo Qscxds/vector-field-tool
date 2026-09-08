@@ -7,7 +7,7 @@
 当前状态（2026-09-03，H 轮之后）：
 
 - **计算内核**（`lib/core/`）：表达式解析、场采样、RK4 与自适应 Dormand–Prince 积分（爆破只看位置、不看速度；状态 completed / left_box / reached_equilibrium / blew_up / singular / arc_length / max_steps）、雅可比、平衡点分类（带诚实的 caveat：中心或弱螺旋、非双曲、近重根；按问题尺度判零）、数值求平衡点（连续解集需要计数与几何两条判据）；一阶方程以微分形式 `M(t, y) dt + N(t, y) dy = 0` 为底层（`dy/dt = g(t, y)` 是特例；学生面对的自变量是 t，表达式里写 x 会被拒绝并提示改成 t），常数解沿整条直线检验、方向场奇点、八种标准形式的数值识别（每种都返回三档判定 + 实测偏差 + 阈值，Bernoulli 指数贴合到简单分数）、恰当方程的势函数与隐式解等值线（路径自检失败会明说）。
-- **MCP 工具层**：`analyze_system`、`trace_trajectory`、`sample_field`、`analyze_first_order`（`expr` 或 `M`+`N`），加链路探针 `ping`。每个工具的 `locale` 参数（`zh` / `en`）**必填**，摘要文字全部来自双语文案表（英文为美式拼写）。每次调用有 2 秒预算，进程内有限流减速带。
+- **MCP 工具层**：`analyze_system`、`trace_trajectory`、`sample_field`、`analyze_first_order`（`expr` 或 `M`+`N`）、`analyze_second_order`（`equation`，降阶后复用 `analyze_system` 的分析体 `analyzePlanar`），加链路探针 `ping`。每个工具的 `locale` 参数（`zh` / `en`）**必填**，摘要文字全部来自双语文案表（英文为美式拼写）。每次调用有 2 秒预算，进程内有限流减速带。
 - **网页外壳** `/vector-field`：中英切换、三种输入（二维系统 / 显式一阶 `dy/dt = g(t, y)` / 微分形式 `M dt + N dy = 0`，一阶模式下范围输入叫 t 最小 / t 最大）、十个预设、等比视口（默认等比；「等比」复选框关掉后输入范围填满画布，范围行写「填满输入范围」，画布下方常驻一行「横纵比例不同，图上的角度不代表真实斜率。」；widget 始终等比）、画布上标出坐标轴名（一阶方程为 t、y，二维系统为 x、y）、滚轮缩放、拖动平移、双击复位、悬停预览解曲线（屏幕长度固定为两条对角线，与场速和缩放无关）、点击固定轨线（延伸到原始范围的 20 倍才停，不受视野裁剪；「最近一条轨线」按类型措辞：显式一阶方程给出终点的 t 坐标，微分形式只列两侧的终止原因）；结果列表上方注明它按哪个范围计算（复位时是输入范围，缩放或平移后是可见范围）。
 - **widget**：Scene 里带着方程，widget 用同一份内核本地编译，缩放 / 平移 / 悬停 / 点击都在沙箱里算（S 阶段证实 mathjs 编译不需要 `unsafe-eval`）；编译被挡时退回静态图并说明。**Claude 实机验证 widget 交互待人工做**（版本号 e-2 → g-1，Claude 里必须断开重连连接器）。
 - 单测 409 个，期望值全部来自数学推导。
@@ -47,7 +47,7 @@
 ```
 app/mcp/route.ts           MCP 端点 /mcp（Streamable HTTP，无状态，无鉴权；GET/DELETE 回 405）
 app/mcp/server.ts          每请求新建 McpServer；widget 资源（版本号在这里）；ping
-app/mcp/tools.ts           四个分析工具：zod 参数校验、给 AI 看的 description、按 locale 查表的摘要
+app/mcp/tools.ts           五个分析工具：zod 参数校验、给 AI 看的 description、按 locale 查表的摘要
 app/widget/page.tsx        widget 页面：接收工具结果的 Scene，本地编译方程，交互式绘制
 app/vector-field/page.tsx  网页外壳：表单 + 预设 + 语言切换 + 交互画布 + 结果列表
 app/vector-field/presets.ts 预设例子（双语）
@@ -72,6 +72,7 @@ docs/                      交接文档
 | `analyze_system(f, g, xMin.., density, locale)` | 观察范围内全部平衡点，各带雅可比、特征值、分类、caveat，附一份场采样 | 学生问平衡点、稳定性、相图、临界点类型、长期行为 |
 | `trace_trajectory(f, g, x0, y0, tSpan, direction, method, locale)` | 从初值正向 / 逆向积分，返回点列和终止原因 | 学生问某个初值出发会怎样、轨线去哪、是否趋向平衡点或极限环 |
 | `sample_field(f, g, xMin.., density, locale)` | 规则网格上的向量场 | 只想看方向场 / 相平面箭头 |
+| `analyze_second_order(equation, params, xMin.., density, locale)` | 单个二阶方程 `x'' = F(x, x')`（写成完整方程 `x'' + 0.5*x' + x = 0`，或只写右端 F；未知函数是 x，导数写 `x'`、`x''`，t 是时间）：令 y = x' 降阶为 `x' = y, y' = F(x, y)`，摘要第一句就是这一步降阶，然后与 `analyze_system` 完全相同（平衡点、特征值、分类、caveat、场采样）；x'' 必须线性出现，`x''^2`、`sin(x'')` 会被拒绝并说明 | 学生给一个二阶方程：谐振子、阻尼振子、单摆、Van der Pol、Duffing，问相平面、平衡点、稳定性 |
 | `analyze_first_order(expr 或 M+N, xMin.., density, locale)` | 一阶方程 `dy/dt = g(t, y)` 或 `M(t, y) dt + N(t, y) dy = 0`（自变量是 t；`xMin`/`xMax` 是 t 的范围，参数名不变）：斜率场 / 方向场（微分形式画无向线段）、常数解与稳定性、方向场奇点、八种标准形式各自的判定（consistent / borderline / inconsistent / untestable）与实测偏差（可分离、自治、对 y 线性、齐次、Bernoulli 含贴合的有理指数、恰当、积分因子）、恰当时的隐式解等值线或路径自检失败的说明 | 单个一阶方程：Logistic、牛顿冷却、可分离、线性、恰当方程、斜率场、「这题用什么方法」 |
 | `ping(message)` | 原样返回 | 链路探针，判断是传输层挂了还是只有渲染挂了 |
 
@@ -103,7 +104,7 @@ npm run build        # 生产构建
 npm run smoke        # 对已运行的服务器做 HTTP 冒烟（默认 http://localhost:3000/mcp）
 ```
 
-冒烟脚本检查 initialize、五个工具的 tools/list 与调用、非法输入的错误形式、widget 资源的 HTML 与 CSP、GET 405。要先在另一个终端起服务器（`npm run dev` 或 `npm run build && npm start`）。本地构建没设 `BASE_URL` 时 widget 的资源地址本来就是相对的 `/_next/...`，「widget asset URLs are absolute」这一项会显示 SKIP 并计为通过；`<base href>` 是其他源时仍是真正的 FAIL。
+冒烟脚本检查 initialize、六个工具的 tools/list 与调用、非法输入的错误形式、widget 资源的 HTML 与 CSP、GET 405。要先在另一个终端起服务器（`npm run dev` 或 `npm run build && npm start`）。本地构建没设 `BASE_URL` 时 widget 的资源地址本来就是相对的 `/_next/...`，「widget asset URLs are absolute」这一项会显示 SKIP 并计为通过；`<base href>` 是其他源时仍是真正的 FAIL。
 
 手动验证一个工具调用：
 

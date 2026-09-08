@@ -40,10 +40,10 @@ beforeAll(async () => {
 });
 
 describe("tools/list", () => {
-  it("exposes ping plus the four analysis tools with valid schemas", async () => {
+  it("exposes ping plus the five analysis tools with valid schemas", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["analyze_first_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]);
+    expect(names).toEqual(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description && t.description.length).toBeGreaterThan(40);
@@ -55,8 +55,9 @@ describe("tools/list", () => {
     for (const t of tools.filter((t) => t.name !== "ping")) {
       expect(t.description).toMatch(/USE THIS/);
       expect(t.description).toMatch(/Do NOT compute/);
-      // the planar tools write x*y; the first-order tool has no x at all and writes t*y
-      expect(t.description).toMatch(t.name === "analyze_first_order" ? /t\*y/ : /x\*y/);
+      // the planar tools write x*y; the first-order tool has no x at all and writes t*y; the
+      // second-order tool's variables are x and x'
+      expect(t.description).toMatch(t.name === "analyze_first_order" ? /t\*y/ : t.name === "analyze_second_order" ? /x\*x'/ : /x\*y/);
       expect(t.description).toMatch(/caveat/);
       expect(t.description).toMatch(/'zh' when the question is in Chinese/);
       expect(t.description).toMatch(/REQUIRED/);
@@ -86,9 +87,9 @@ describe("tools/list", () => {
     expect(planar.description).not.toMatch(/dy\/dx/);
   });
 
-  it("analyze_system and sample_field take a snapshot time t (default 0) for non-autonomous systems; trace_trajectory does not", async () => {
+  it("analyze_system, analyze_second_order and sample_field take a snapshot time t (default 0) for non-autonomous systems; trace_trajectory does not", async () => {
     const { tools } = await client.listTools();
-    for (const name of ["analyze_system", "sample_field"]) {
+    for (const name of ["analyze_system", "analyze_second_order", "sample_field"]) {
       const t = tools.find((t) => t.name === name)!;
       const props = t.inputSchema.properties as Record<string, { default?: number; description?: string }>;
       expect(props.t?.default, name).toBe(0);
@@ -121,6 +122,7 @@ describe("cost controls", () => {
       ["analyze_system", { f: "x", g: "-y" }],
       ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0 }],
       ["analyze_first_order", { M: "2*t*y", N: "t^2 + y^2" }],
+      ["analyze_second_order", { equation: "x'' + x = 0" }],
     ] as const) {
       const r = await call(name, { ...args, locale: "en" }, c);
       expect(r.isError, name).toBe(true);
@@ -202,6 +204,7 @@ describe("locale", () => {
       ["trace_trajectory", { f: "x", g: "y", x0: 1, y0: 0 }],
       ["sample_field", { f: "x", g: "y" }],
       ["analyze_first_order", { expr: "y" }],
+      ["analyze_second_order", { equation: "x'' + x = 0" }],
     ] as const) {
       const r = (await client.callTool({ name, arguments: { ...args } })) as CallToolResult;
       expect(r.isError, name).toBe(true);
@@ -345,6 +348,122 @@ describe("analyze_system", () => {
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/Invalid arguments/);
     expect(r.text).toMatch(/params/);
+  });
+});
+
+describe("analyze_second_order", () => {
+  /** |v - expected| relative to the eigenvalue's own modulus (never to an absolute 1). */
+  const relClose = (v: number, expected: number, modulus: number, tol = 1e-7) => Math.abs(v - expected) <= tol * modulus;
+
+  it("x'' + x = 0: the reduction line comes first, one equilibrium (0, 0) center-or-weak-spiral with eigenvalues ±i", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' + x = 0", locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.kind).toBe("analyze_system");
+    expect(r.scene.system?.f).toBe("y");
+    expect(r.scene.system?.variables).toBeUndefined();
+    expect(r.scene.secondOrder).toEqual({ equation: "x'' + x = 0", reduced: { f: "y", g: r.scene.system!.g } });
+    expect(r.text.startsWith(`Second-order equation x'' + x = 0: with y = x' it becomes the system x' = y, y' = ${r.scene.system!.g}.`)).toBe(true);
+    expect(r.text.split("\n")[1]).toMatch(/^System x' = y, y' = /);
+    expect(r.scene.equilibria).toHaveLength(1);
+    const [origin] = r.scene.equilibria!;
+    expect(Math.hypot(origin.at.x, origin.at.y)).toBeLessThan(1e-9);
+    expect(origin.classification).toBe("center_or_weak_spiral");
+    expect(origin.caveat).toBe("center");
+    // λ = ±i: the Jacobian of a linear F by central differences is exact up to rounding.
+    const ims = origin.eigenvalues.map((e) => e.im).sort((a, b) => a - b);
+    expect(relClose(ims[0], -1, 1)).toBe(true);
+    expect(relClose(ims[1], 1, 1)).toBe(true);
+    for (const e of origin.eigenvalues) expect(Math.abs(e.re) <= 1e-7 * Math.hypot(e.re, e.im)).toBe(true);
+    expect(r.scene.field?.samples).toHaveLength(400);
+  });
+
+  it("x'' + 0.5*x' + x = 0: stable spiral with λ = -1/4 ± i sqrt(15)/4 (from λ^2 + λ/2 + 1 = 0)", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' + 0.5*x' + x = 0", locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.equilibria).toHaveLength(1);
+    const [origin] = r.scene.equilibria!;
+    expect(origin.classification).toBe("stable_spiral");
+    const modulus = 1; // |λ|^2 = det = 1
+    const im = Math.sqrt(15) / 4; // 0.9682458365518543
+    for (const e of origin.eigenvalues) {
+      expect(relClose(e.re, -0.25, modulus)).toBe(true);
+      expect(relClose(Math.abs(e.im), im, modulus)).toBe(true);
+    }
+  });
+
+  it("the same equation with params c and k gives the same spiral and keeps the params in the scene", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' + c*x' + k*x = 0", params: { c: 0.5, k: 1 }, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.system?.params).toEqual({ c: 0.5, k: 1 });
+    expect(r.scene.equilibria![0].classification).toBe("stable_spiral");
+    expect(relClose(r.scene.equilibria![0].eigenvalues[0].re, -0.25, 1)).toBe(true);
+  });
+
+  it("Van der Pol x'' - (1 - x^2)*x' + x = 0: unstable spiral at the origin, λ = 1/2 ± i sqrt(3)/2", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' - (1 - x^2)*x' + x = 0", xMin: -4, xMax: 4, yMin: -4, yMax: 4, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.equilibria).toHaveLength(1);
+    const [origin] = r.scene.equilibria!;
+    expect(Math.hypot(origin.at.x, origin.at.y)).toBeLessThan(1e-8);
+    expect(origin.classification).toBe("unstable_spiral");
+    for (const e of origin.eigenvalues) {
+      expect(relClose(e.re, 0.5, 1)).toBe(true);
+      expect(relClose(Math.abs(e.im), Math.sqrt(3) / 2, 1)).toBe(true);
+    }
+  });
+
+  it("pendulum x'' = -sin(x) on [-4, 4] x [-3, 3]: (0, 0) center-or-weak-spiral, (±π, 0) saddles", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' = -sin(x)", xMin: -4, xMax: 4, yMin: -3, yMax: 3, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.secondOrder?.equation).toBe("x'' = -sin(x)");
+    const eq = r.scene.equilibria!;
+    expect(eq).toHaveLength(3);
+    const at = (x: number) => eq.find((e) => Math.abs(e.at.x - x) < 1e-6 && Math.abs(e.at.y) < 1e-6);
+    expect(at(0)?.classification).toBe("center_or_weak_spiral");
+    expect(at(Math.PI)?.classification).toBe("saddle");
+    expect(at(-Math.PI)?.classification).toBe("saddle");
+  });
+
+  it("zh: the reduction sentence is Chinese and shows the reduced g", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' + x = 0", locale: "zh" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.locale).toBe("zh");
+    expect(r.text.startsWith(`二阶方程 x'' + x = 0：令 y = x'，降阶为系统 x' = y，y' = ${r.scene.secondOrder!.reduced.g}。`)).toBe(true);
+    expect(r.text).toContain("中心或弱螺旋");
+  });
+
+  it("refuses x''^2 = x and x'' + y = 0 with readable isError results", async () => {
+    const nonlinear = await call("analyze_second_order", { equation: "x''^2 = x", locale: "en" });
+    expect(nonlinear.isError).toBe(true);
+    expect(nonlinear.text).toMatch(/x'' must appear linearly/);
+    const y = await call("analyze_second_order", { equation: "x'' + y = 0", locale: "en" });
+    expect(y.isError).toBe(true);
+    expect(y.text).toMatch(/Unknown symbol "y"/);
+    expect(y.text).toMatch(/unknown function is x/);
+    const noEquals = await call("analyze_second_order", { equation: "x'' + x", locale: "en" });
+    expect(noEquals.isError).toBe(true);
+    expect(noEquals.text).toMatch(/right-hand side F of x'' = F/);
+  });
+
+  it("the equation length cap is 200 characters", async () => {
+    const long = "x'' + " + "x+".repeat(100) + "1 = 0";
+    const r = await call("analyze_second_order", { equation: long, locale: "en" });
+    expect(r.isError).toBe(true);
+    expect(r.text).toMatch(/equation/);
+  });
+
+  it("describes itself: when to use it, the notation, and that it shows the reduction", async () => {
+    const { tools } = await client.listTools();
+    const t = tools.find((t) => t.name === "analyze_second_order")!;
+    expect(t.description).toMatch(/x'' = F\(x, x'\)/);
+    expect(t.description).toMatch(/x'' \+ 0\.5\*x' \+ x = 0/);
+    expect(t.description).toMatch(/Van der Pol/);
+    expect(t.description).toMatch(/pendulum/);
+    expect(t.description).toMatch(/straight apostrophes/);
+    expect(t.description).toMatch(/reduction/);
+    const props = t.inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "t", "xMin", "xMax", "yMin", "yMax"].sort());
+    expect(t.inputSchema.required).toContain("equation");
   });
 });
 

@@ -49,7 +49,7 @@ check("initialize", init.status === 200 && init.msg?.result?.serverInfo?.name ==
 
 const list = await rpc("tools/list");
 const names = (list.msg?.result?.tools ?? []).map((t) => t.name).sort();
-check("tools/list has 5 tools", JSON.stringify(names) === JSON.stringify(["analyze_first_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]), names.join(","));
+check("tools/list has 6 tools", JSON.stringify(names) === JSON.stringify(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]), names.join(","));
 const toolsList = list.msg?.result?.tools ?? [];
 check(
   "every tool carries _meta.ui.resourceUri",
@@ -68,6 +68,16 @@ const calls = [
     "analyze_first_order",
     { expr: "y*(1-y)", yMin: -1, yMax: 2 },
     (r) => r.structuredContent?.firstOrder?.solutions?.length === 2 && r.structuredContent.system?.variables === "ty" && /^dy\/dt = /.test(r.structuredContent.firstOrder.expr ?? ""),
+  ],
+  [
+    "analyze_second_order",
+    { equation: "x'' + 0.5*x' + x = 0" },
+    (r) =>
+      r.structuredContent?.secondOrder?.reduced?.f === "y" &&
+      r.structuredContent.system?.f === "y" &&
+      r.structuredContent.equilibria?.length === 1 &&
+      r.structuredContent.equilibria[0].classification === "stable_spiral" &&
+      /^Second-order equation x'' \+ 0\.5\*x' \+ x = 0: with y = x' it becomes the system x' = y, y' = /.test(r.content?.[0]?.text ?? ""),
   ],
 ];
 for (const [name, args, verify] of calls) {

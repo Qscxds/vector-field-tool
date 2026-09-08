@@ -11,6 +11,7 @@ import { findEquilibria } from "@/lib/core/equilibria";
 import { sampleField } from "@/lib/core/field";
 import { integrateAdaptive, integrateRK4, type IntegrateOptions } from "@/lib/core/integrate";
 import { compileSystem, ParseError } from "@/lib/core/parse";
+import { reduceSecondOrder } from "@/lib/core/second-order";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import { contourSegmentsFromGrid, sampleGrid } from "@/lib/render/contours";
 import { detectForms, NO_FORM_NOTE, reportedForms, type FormDetection } from "@/lib/core/detect-form";
@@ -182,7 +183,7 @@ function boxValues(box: Box): Record<string, string> {
   return { xMin: fmt(box.x.min), xMax: fmt(box.x.max), yMin: fmt(box.y.min), yMax: fmt(box.y.max) };
 }
 
-function describeEquilibria(scene: Scene, locale: Locale): string {
+function describeEquilibria(scene: Scene, locale: Locale): string[] {
   const L = labels(locale);
   const lines: string[] = [];
   const eq = scene.equilibria ?? [];
@@ -203,7 +204,7 @@ function describeEquilibria(scene: Scene, locale: Locale): string {
     const uniqueness = uniquenessSentence(L, p.uniqueness, { point: p.at });
     if (uniqueness) lines.push(uniqueness);
   });
-  return lines.join("\n");
+  return lines;
 }
 
 const formatDeviation = (d: number) => (Number.isFinite(d) ? d.toExponential(1) : "—");
@@ -278,10 +279,56 @@ function guarded(deps: ResolvedDeps, run: (checkpoint: () => void) => CallToolRe
   }
 }
 
+// ---------- shared analysis ----------
+
+/**
+ * The body of analyze_system, shared with analyze_second_order (which feeds it the reduced system
+ * x' = y, y' = F): compiles the system, finds and classifies the equilibria in the box, samples the
+ * field, and returns the Scene plus the summary lines (header with the singular-sample note, then
+ * one line per equilibrium). The handler shells stay thin. Checks that concern the planar system
+ * itself (time dependence, uniqueness lines) belong here so both tools get them.
+ */
+export function analyzePlanar(
+  spec: SystemSpec,
+  box: Box,
+  density: number,
+  locale: Locale,
+  snapshotT: number,
+  checkpoint: () => void,
+): { scene: Scene; lines: string[] } {
+  const L = labels(locale);
+  const sys = compileOrExplain(spec);
+  const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
+  const singularNote = (count: number) => (count ? " " + fill(L.tool.singularSamples, { count }) : "");
+  // Non-autonomous (f or g changes with t): equilibria, eigenvalues and stability classes do
+  // not exist for it. Return only the field, as a snapshot at the requested time, and say so.
+  const td = detectTimeDependence(sys, box, { checkpoint });
+  if (td.dependsOnT) {
+    const field = sampleField(sys, box, density, density, snapshotT, checkpoint);
+    const scene: Scene = { kind: "analyze_system", locale, system: spec, box, field, timeDependent: { snapshotT, maxRelDeviation: td.maxRelDeviation } };
+    const note = fill(L.tool.timeDependent, { t: fmt(snapshotT), deviation: formatDeviation(td.maxRelDeviation) });
+    const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
+    return { scene, lines: [`${header}${singularNote(field.singularCount)}`, note, line] };
+  }
+  const eq = findEquilibria(sys, box, { checkpoint });
+  const field = sampleField(sys, box, density, density, 0, checkpoint);
+  const scene: Scene = {
+    kind: "analyze_system",
+    locale,
+    system: spec,
+    box,
+    field,
+    equilibria: withUniqueness(sys, eq.points, box, checkpoint),
+    warning: eq.warning,
+    truncated: eq.truncated,
+  };
+  return { scene, lines: [`${header}${singularNote(field.singularCount)}`, ...describeEquilibria(scene, locale)] };
+}
+
 // ---------- tools ----------
 
 /**
- * Registers the four analysis tools. Every tool is linked to the widget resource (`widgetUri`)
+ * Registers the six analysis tools. Every tool is linked to the widget resource (`widgetUri`)
  * so MCP Apps hosts render its Scene; text-only hosts just read the summary.
  */
 export function registerTools(server: McpServer, widgetUri: string, deps: ToolDeps = {}): void {
@@ -321,28 +368,63 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     },
     (input) =>
       guarded(d, (checkpoint) => {
-        const L = labels(input.locale);
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
-        const sys = compileOrExplain(spec);
-        // Non-autonomous (f or g changes with t): equilibria, eigenvalues and stability classes do
-        // not exist for it. Return only the field, as a snapshot at the requested time, and say so.
-        const td = detectTimeDependence(sys, box, { checkpoint });
-        if (td.dependsOnT) {
-          const field = sampleField(sys, box, input.density, input.density, input.t, checkpoint);
-          const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, timeDependent: { snapshotT: input.t, maxRelDeviation: td.maxRelDeviation } };
-          const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
-          const singular = field.singularCount ? " " + fill(L.tool.singularSamples, { count: field.singularCount }) : "";
-          const note = fill(L.tool.timeDependent, { t: fmt(input.t), deviation: formatDeviation(td.maxRelDeviation) });
-          const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
-          return ok(`${header}${singular}\n${note}\n${line}`, scene);
-        }
-        const eq = findEquilibria(sys, box, { checkpoint });
-        const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
-        const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: withUniqueness(sys, eq.points, box, checkpoint), warning: eq.warning, truncated: eq.truncated };
-        const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
-        const singular = field.singularCount ? " " + fill(L.tool.singularSamples, { count: field.singularCount }) : "";
-        return ok(`${header}${singular}\n${describeEquilibria(scene, input.locale)}`, scene);
+        const { scene, lines } = analyzePlanar(spec, box, input.density, input.locale, input.t, checkpoint);
+        return ok(lines.join("\n"), scene);
+      }),
+  );
+
+  registerAppTool(
+    server,
+    "analyze_second_order",
+    {
+      title: "Analyze a second-order equation x'' = F(x, x')",
+      description:
+        "Reduces a single second-order equation in x(t) to the planar system x' = y, y' = F(x, y) (y = x' is the " +
+        "velocity), then does exactly what analyze_system does for that system: all equilibrium points inside the " +
+        "viewing box (the x axis is position, the y axis is velocity), each classified from its Jacobian " +
+        "(eigenvalues, trace, determinant), plus a sampled vector field for the phase portrait. The text summary " +
+        "starts with the reduction step, because students get that step wrong; read it to the student. " +
+        "USE THIS whenever a student gives ONE second-order equation, either as x'' = F(x, x') or as a full " +
+        "equation such as x'' + a*x' + b*x = 0: harmonic and damped oscillators, the pendulum x'' = -sin(x), " +
+        "Van der Pol x'' - (1 - x^2)*x' + x = 0, Duffing x'' + d*x' + a*x + b*x^3 = 0, and questions about the " +
+        "phase plane, equilibria or stability of such an equation. Do not reduce the equation yourself and call " +
+        "analyze_system; pass the equation as written. For a system of two first-order equations use " +
+        "analyze_system; for one first-order equation dy/dt = g(t, y) use analyze_first_order. " +
+        "Input syntax for `equation`: the unknown is x, its derivatives are written x' and x'' with straight " +
+        "apostrophes, t is the time (a t in the equation makes the reduced system non-autonomous). Either a full " +
+        "equation with exactly one = (x'' + 0.5*x' + x = 0, (1 + x^2)*x'' = -x) or just the right-hand side F " +
+        "of x'' = F (-sin(x) - 0.2*x'). x'' must appear linearly (x''^2 or sin(x'') cannot be reduced). " +
+        "Write multiplication explicitly: x*x', 2*x, not xx' (2x is accepted). Powers use ^, e.g. x^3. " +
+        "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; " +
+        'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
+        BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+      inputSchema: {
+        equation: z
+          .string()
+          .trim()
+          .min(1)
+          .max(200)
+          .describe("The second-order equation in x(t): x'' = F(x, x') written as a full equation with one =, or just F. Derivatives are x' and x''."),
+        params: paramsSchema,
+        ...boxShape,
+        density: density.describe("Grid points per axis for the returned vector field (5..60)."),
+        t: snapshotTime,
+        locale: localeSchema,
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: ui,
+    },
+    (input) =>
+      guarded(d, (checkpoint) => {
+        const L = labels(input.locale);
+        const box = resolveBox(input);
+        const reduced = reduceSecondOrder(input.equation, input.params);
+        const { scene, lines } = analyzePlanar(reduced.spec, box, input.density, input.locale, input.t, checkpoint);
+        scene.secondOrder = { equation: reduced.equation, reduced: reduced.reduced };
+        const reduction = fill(L.tool.secondOrderReduced, { equation: reduced.equation, g: reduced.reduced.g });
+        return ok([reduction, ...lines].join("\n"), scene);
       }),
   );
 

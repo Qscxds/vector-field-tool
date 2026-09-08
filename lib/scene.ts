@@ -100,6 +100,11 @@ export type Scene = {
    */
   timeDependent?: { snapshotT: number; maxRelDeviation: number };
   firstOrder?: FirstOrderView;
+  /**
+   * analyze_second_order only: the second-order equation the student gave (primes normalized) and
+   * the reduction x' = y, y' = g shown to students; `system` carries the same reduced planar system.
+   */
+  secondOrder?: { equation: string; reduced: { f: string; g: string } };
   /** ping only */
   message?: string;
 };

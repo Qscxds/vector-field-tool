@@ -216,6 +216,8 @@ function SceneSummary({ scene }: { scene: Scene }) {
       }),
     );
   }
+  // A second-order scene shows the reduction step (the equation the student gave, then x' = y, y' = g).
+  if (scene.secondOrder) items.push(fill(L.tool.secondOrderReduced, { equation: scene.secondOrder.equation, g: scene.secondOrder.reduced.g }));
   if (scene.system) {
     items.push(scene.kind === "analyze_first_order" && scene.firstOrder ? scene.firstOrder.expr : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
   }
