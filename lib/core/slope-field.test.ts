@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
+import { detectForms } from "./detect-form";
+import { exactPotential } from "./exact";
 import { integrateAdaptive, integrateRK4 } from "./integrate";
-import { compileSystem, ParseError } from "./parse";
+import { compileScalar, compileSystem, ParseError } from "./parse";
 import {
   compileDifferential,
   firstOrderEquilibria,
@@ -73,6 +75,84 @@ describe("the student's t is the kernel's horizontal coordinate", () => {
     expect(code(() => compileDifferential({ kind: "differential", M: "2*x*y", N: "y" }))).toBe("x_in_first_order");
     expect(code(() => firstOrderEquilibria("x - y", { min: -1, max: 1 }))).toBe("x_in_first_order");
     expect(code(() => firstOrderSingularities({ kind: "differential", M: "y", N: "-x" }, box(-2, 2)))).toBe("x_in_first_order");
+  });
+});
+
+describe("a pasted left-hand side is reported on the raw text through every kernel entry point", () => {
+  const caught = (fn: () => unknown): ParseError => {
+    try {
+      fn();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ParseError);
+      return error as ParseError;
+    }
+    throw new Error("expected a ParseError");
+  };
+  const LHS = 'Enter only the right-hand side of the equation; the "dy/dt =" part is implied.';
+
+  it("the parser alone cannot see a left-hand side once the expression is wrapped as -(...)", () => {
+    // This is why the raw check exists: the pattern is anchored at the start of the text.
+    const e = caught(() => compileScalar("-(dy/dt = y)", undefined, { variables: "ty" }));
+    expect(e.code).toBeUndefined();
+  });
+
+  it("explicit g: toSystem, toDifferential and compileDifferential all attribute the raw g", () => {
+    const spec: FirstOrderSpec = { kind: "explicit", g: "dy/dt = y" };
+    for (const fn of [() => toSystem(spec), () => toDifferential(spec), () => compileDifferential(spec), () => firstOrderEquilibria(spec, { min: -1, max: 1 }), () => detectForms(spec, box(-2, 2))]) {
+      const e = caught(fn);
+      expect(e.code).toBe("lhs_in_expression");
+      expect(e.expr).toBe("dy/dt = y");
+      expect(e.message).toBe(LHS);
+    }
+    expect(caught(() => firstOrderEquilibria("y' = y", { min: -1, max: 1 }))).toMatchObject({ code: "lhs_in_expression", expr: "y' = y" });
+  });
+
+  it("differential M with a left-hand side is attributed to M, not to the wrapped -(M)", () => {
+    const spec: FirstOrderSpec = { kind: "differential", M: "dy/dt = y", N: "1" };
+    for (const fn of [
+      () => toSystem(spec),
+      () => toDifferential(spec),
+      () => compileDifferential(spec),
+      () => firstOrderEquilibria(spec, { min: -1, max: 1 }),
+      () => firstOrderSingularities(spec, box(-2, 2)),
+      () => detectForms(spec, box(-2, 2)),
+      () => exactPotential(spec, box(-2, 2)),
+      () => compileSystem(toSystem(spec)),
+    ]) {
+      const e = caught(fn);
+      expect(e.code).toBe("lhs_in_expression");
+      expect(e.expr).toBe("dy/dt = y");
+      expect(e.message).toBe(LHS);
+    }
+  });
+
+  it("differential N with a left-hand side is attributed to N", () => {
+    const spec: FirstOrderSpec = { kind: "differential", M: "t", N: "y' = 1" };
+    for (const fn of [() => toSystem(spec), () => toDifferential(spec), () => compileDifferential(spec), () => firstOrderSingularities(spec, box(-2, 2)), () => detectForms(spec, box(-2, 2))]) {
+      const e = caught(fn);
+      expect(e.code).toBe("lhs_in_expression");
+      expect(e.expr).toBe("y' = 1");
+    }
+    // M is checked before N, so a left-hand side in both names M
+    expect(caught(() => toSystem({ kind: "differential", M: "y = t", N: "y' = 1" })).expr).toBe("y = t");
+  });
+
+  it("dy/dx in M gets the t-instead-of-x sentence; dy/dt does not", () => {
+    expect(caught(() => toSystem({ kind: "differential", M: "dy/dx = y", N: "1" })).message).toBe(
+      `${LHS} In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.`,
+    );
+    expect(caught(() => toSystem({ kind: "explicit", g: "dy/dt = y" })).message).not.toContain("instead of x");
+  });
+
+  it("does not interfere with ordinary expressions or with the other error codes", () => {
+    expect(toSystem({ kind: "differential", M: "y == 0 ? 1 : t", N: "y" })).toEqual({ f: "y", g: "-(y == 0 ? 1 : t)", variables: "ty" });
+    // a comparison typo is not a left-hand side: toSystem passes it through, and the compile step
+    // reports the assignment (no code) with the == hint
+    expect(toSystem({ kind: "explicit", g: "y = 0 ? 1 : -1" }).g).toBe("y = 0 ? 1 : -1");
+    const typo = caught(() => compileSystem(toSystem({ kind: "explicit", g: "y = 0 ? 1 : -1" })));
+    expect(typo.code).toBeUndefined();
+    expect(typo.message).toContain("write ==");
+    expect(caught(() => compileSystem(toSystem({ kind: "explicit", g: "x*y" }))).code).toBe("x_in_first_order");
   });
 });
 

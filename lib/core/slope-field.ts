@@ -16,7 +16,7 @@
  * genuinely undefined where M = N = 0; those points are reported separately.
  */
 import { findEquilibria } from "./equilibria";
-import { compileScalar, compileSystem } from "./parse";
+import { assertNoLeftHandSide, compileScalar, compileSystem } from "./parse";
 import type { Box, Range, SystemSpec, Vec2 } from "./types";
 
 export type FirstOrderSpec =
@@ -24,11 +24,29 @@ export type FirstOrderSpec =
   | { kind: "differential"; M: string; N: string; params?: Record<string, number> };
 
 /**
+ * A pasted left-hand side ("dy/dt = y") must be reported on the text the student typed. Both
+ * conversions below wrap an expression in "-(...)" before it reaches the parser, and the parser's
+ * check is anchored at the start of the text, so it would only see a generic syntax error inside
+ * "-(dy/dt = y)". Checking the raw g, or the raw M and then N, here makes every kernel entry point
+ * (compileDifferential, firstOrderEquilibria, firstOrderSingularities, detectForms,
+ * exactPotential, toSystem + compileSystem) throw code "lhs_in_expression" with expr = the raw text.
+ */
+function assertRightHandSides(spec: FirstOrderSpec): void {
+  if (spec.kind === "explicit") {
+    assertNoLeftHandSide(spec.g, "ty");
+  } else {
+    assertNoLeftHandSide(spec.M, "ty");
+    assertNoLeftHandSide(spec.N, "ty");
+  }
+}
+
+/**
  * x' = N, y' = -M. For the explicit form this is x' = 1, y' = g. The returned SystemSpec carries
  * variables: "ty", so t in the expressions is the horizontal coordinate (and x is rejected);
  * consumers compile it with compileSystem unchanged.
  */
 export function toSystem(spec: FirstOrderSpec): SystemSpec {
+  assertRightHandSides(spec);
   const base: SystemSpec =
     spec.kind === "explicit" ? { f: "1", g: spec.g, variables: "ty" } : { f: spec.N, g: `-(${spec.M})`, variables: "ty" };
   return spec.params ? { ...base, params: spec.params } : base;
@@ -36,6 +54,7 @@ export function toSystem(spec: FirstOrderSpec): SystemSpec {
 
 /** M and N of the differential form, as expression strings. */
 export function toDifferential(spec: FirstOrderSpec): { M: string; N: string } {
+  assertRightHandSides(spec);
   return spec.kind === "explicit" ? { M: `-(${spec.g})`, N: "1" } : { M: spec.M, N: spec.N };
 }
 
