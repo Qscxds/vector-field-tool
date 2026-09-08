@@ -181,7 +181,7 @@ export default function VectorFieldPage() {
             key={p.id}
             type="button"
             onClick={() => loadPreset(p)}
-            style={{ ...buttonStyle, ...(p.id === presetId ? { borderColor: "#1d4ed8", background: "#eff6ff" } : {}) }}
+            style={{ ...buttonStyle, ...(p.id === presetId ? { border: "1px solid #1d4ed8", background: "#eff6ff" } : {}) }}
             data-preset={p.id}
           >
             {p.name[locale]}
