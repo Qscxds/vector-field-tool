@@ -10,6 +10,7 @@ import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
+import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
@@ -24,6 +25,8 @@ type Form = {
   g: string;
   M: string;
   N: string;
+  /** Second-order equation (mode "second"). */
+  second: string;
   xMin: string;
   xMax: string;
   yMin: string;
@@ -33,8 +36,8 @@ type Form = {
 };
 
 type Compiled =
-  | { sys: CompiledSystem; spec: SystemSpec; firstOrder: FirstOrderSpec | null; box: Box; error: null }
-  | { sys: null; spec: null; firstOrder: null; box: null; error: string };
+  | { sys: CompiledSystem; spec: SystemSpec; firstOrder: FirstOrderSpec | null; secondOrder: ReducedSecondOrder | null; box: Box; error: null }
+  | { sys: null; spec: null; firstOrder: null; secondOrder: null; box: null; error: string };
 
 const CANVAS_W = 720;
 const CANVAS_H = 520;
@@ -46,6 +49,7 @@ function fromPreset(p: Preset, density: number, arrowMode: ArrowMode): Form {
     g: p.g,
     M: p.M,
     N: p.N,
+    second: p.second ?? "",
     xMin: String(p.box.xMin),
     xMax: String(p.box.xMax),
     yMin: String(p.box.yMin),
@@ -55,9 +59,9 @@ function fromPreset(p: Preset, density: number, arrowMode: ArrowMode): Form {
   };
 }
 
-/** Student-facing name of the horizontal coordinate: x for a planar system, t for a first-order equation. */
+/** Student-facing name of the horizontal coordinate: x for a planar system or a second-order equation, t for a first-order equation. */
 function horizontalName(mode: PresetMode): "x" | "t" {
-  return mode === "system" ? "x" : "t";
+  return mode === "system" || mode === "second" ? "x" : "t";
 }
 
 function parseBox(form: Form, L: LabelTable): Box {
@@ -75,12 +79,14 @@ function parseBox(form: Form, L: LabelTable): Box {
  * English text: in a planar system a pasted left-hand side is "x' =" / "y' =" and x is a state
  * variable, so the t-instead-of-x sentence is never shown there; the two first-order modes name
  * "dy/dt =" and add the t sentence when the kernel's message carries it (a pasted dy/dx).
+ * Second-order mode: the kernel's specific hints (linearity in x'', the unknown is x, write =) are
+ * English sentences from lib/core/second-order, shown inside the bilingual wrapper (a recorded limitation).
  */
 function explain(error: unknown, L: LabelTable, mode: PresetMode): string {
   if (error instanceof ParseError) {
     if (mode === "system") {
       if (error.code === "lhs_in_expression") return L.ui.lhsInExpressionSystem;
-    } else {
+    } else if (mode !== "second") {
       if (error.code === "x_in_first_order") return L.ui.xInFirstOrder;
       if (error.code === "lhs_in_expression") {
         const wroteDx = error.message.includes(X_IN_FIRST_ORDER_MESSAGE);
@@ -98,8 +104,12 @@ function compile(form: Form, L: LabelTable): Compiled {
     const box = parseBox(form, L);
     let spec: SystemSpec;
     let firstOrder: FirstOrderSpec | null = null;
+    let secondOrder: ReducedSecondOrder | null = null;
     if (form.mode === "system") {
       spec = { f: form.f, g: form.g };
+    } else if (form.mode === "second") {
+      secondOrder = reduceSecondOrder(form.second);
+      spec = secondOrder.spec;
     } else {
       firstOrder = form.mode === "explicit" ? { kind: "explicit", g: form.g } : { kind: "differential", M: form.M, N: form.N };
       spec = toSystem(firstOrder);
@@ -109,9 +119,9 @@ function compile(form: Form, L: LabelTable): Compiled {
       if (firstOrder.kind === "differential") compileDifferential(firstOrder);
     }
     const sys = compileSystem(spec);
-    return { sys, spec, firstOrder, box, error: null };
+    return { sys, spec, firstOrder, secondOrder, box, error: null };
   } catch (error) {
-    return { sys: null, spec: null, firstOrder: null, box: null, error: explain(error, L, form.mode) };
+    return { sys: null, spec: null, firstOrder: null, secondOrder: null, box: null, error: explain(error, L, form.mode) };
   }
 }
 
@@ -144,10 +154,10 @@ export default function VectorFieldPage() {
     height: CANVAS_H,
     density: form.density,
     locale,
-    kind: form.mode === "system" ? "analyze_system" : "analyze_first_order",
+    kind: form.mode === "system" || form.mode === "second" ? "analyze_system" : "analyze_first_order",
     fieldStyle: form.mode === "differential" ? "segments" : "arrows",
     // The snapshot time is part of the key: curves traced at another instant belong to another picture.
-    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${snapshotT}`,
+    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${form.second}|${snapshotT}`,
     withFeatures: true,
     equalScale,
     snapshotT,
@@ -206,6 +216,7 @@ export default function VectorFieldPage() {
               <option value="system">{L.ui.typeSystem}</option>
               <option value="explicit">{L.ui.typeExplicit}</option>
               <option value="differential">{L.ui.typeDifferential}</option>
+              <option value="second">{L.ui.typeSecond}</option>
             </select>
           </label>
           {form.mode === "system" ? (
@@ -214,7 +225,12 @@ export default function VectorFieldPage() {
               <input value={form.f} onChange={(e) => update({ f: e.target.value })} style={inputStyle} spellCheck={false} name="f" />
             </label>
           ) : null}
-          {form.mode !== "differential" ? (
+          {form.mode === "second" ? (
+            <label style={labelStyle}>
+              <span>{L.ui.secondOrderLabel}</span>
+              <input value={form.second} onChange={(e) => update({ second: e.target.value })} style={inputStyle} spellCheck={false} name="second" />
+            </label>
+          ) : form.mode !== "differential" ? (
             <label style={labelStyle}>
               <span>{form.mode === "system" ? L.ui.gLabel : L.ui.gExplicitLabel}</span>
               <input value={form.g} onChange={(e) => update({ g: e.target.value })} style={inputStyle} spellCheck={false} name="g" />
@@ -233,11 +249,11 @@ export default function VectorFieldPage() {
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <label style={labelStyle}>
-              <span>{form.mode === "system" ? L.ui.xMin : L.ui.tMin}</span>
+              <span>{hv === "x" ? L.ui.xMin : L.ui.tMin}</span>
               <input value={form.xMin} onChange={(e) => update({ xMin: e.target.value })} style={inputStyle} name="xMin" />
             </label>
             <label style={labelStyle}>
-              <span>{form.mode === "system" ? L.ui.xMax : L.ui.tMax}</span>
+              <span>{hv === "x" ? L.ui.xMax : L.ui.tMax}</span>
               <input value={form.xMax} onChange={(e) => update({ xMax: e.target.value })} style={inputStyle} name="xMax" />
             </label>
             <label style={labelStyle}>
@@ -275,8 +291,15 @@ export default function VectorFieldPage() {
           <button type="button" onClick={clearTrajectories} style={buttonStyle} disabled={trajectories.length === 0}>
             {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
           </button>
+          {compiled.secondOrder ? (
+            <p style={{ margin: 0, color: "#1f2933" }} data-second-order-reduced>
+              {fill(L.ui.secondOrderReduced, { g: compiled.secondOrder.reduced.g })}
+            </p>
+          ) : null}
           {preset ? <p style={{ margin: 0, color: "#52606d" }}>{preset.note[locale]}</p> : null}
-          <p style={{ margin: 0, color: "#52606d", fontSize: 12 }}>{form.mode === "system" ? L.ui.syntaxHint : L.ui.syntaxHintFirstOrder}</p>
+          <p style={{ margin: 0, color: "#52606d", fontSize: 12 }}>
+            {form.mode === "system" ? L.ui.syntaxHint : form.mode === "second" ? L.ui.syntaxHintSecondOrder : L.ui.syntaxHintFirstOrder}
+          </p>
         </form>
 
         <div style={{ flex: "1 1 720px", minWidth: 0 }}>

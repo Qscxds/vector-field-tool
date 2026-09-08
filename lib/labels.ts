@@ -57,7 +57,8 @@ export type LabelTable = {
     | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
     | "equilibriaTruncated" | "singularitiesTruncated"
     | "nonUniqueTrajectory"
-    | "timeDependentNote" | "snapshotT",
+    | "timeDependentNote" | "snapshotT"
+    | "typeSecond" | "secondOrderLabel" | "secondOrderReduced" | "syntaxHintSecondOrder",
     string
   >;
 };
@@ -222,6 +223,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
       timeDependentNote: "这是非自治系统：向量场随 t 变化，图上显示的是 t = {t} 时刻的快照；平衡点与线性化稳定性分析在此不适用（它们只对自治系统有定义）。悬停和点击得到的解曲线从 t = {t} 出发。",
       snapshotT: "快照时刻 t",
+      typeSecond: "二阶方程 x'' = F(x, x')",
+      secondOrderLabel: "x'' = F(x, x')，或写成完整方程，例如 x'' + 0.5*x' + x = 0",
+      secondOrderReduced: "令 y = x'，降阶为系统 x' = y，y' = {g}。横轴是 x（位置），纵轴是 y = x'（速度）。",
+      syntaxHintSecondOrder: "语法：未知函数是 x，t 是时间；导数用直引号写成 x' 和 x''（例如 x'' + 0.5*x' + x = 0，或只写 x'' = F 的右端 F）。x'' 必须线性出现。乘号要写出来（x*x'，不是 xx'），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
     },
   },
   en: {
@@ -383,6 +388,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
       timeDependentNote: "This is a non-autonomous system: the vector field changes with t, and the picture shows the snapshot at t = {t}; equilibrium points and linearized stability analysis do not apply here (they are only defined for autonomous systems). The solution curves you get by hovering and clicking start at t = {t}.",
       snapshotT: "Snapshot time t",
+      typeSecond: "Second-order equation x'' = F(x, x')",
+      secondOrderLabel: "x'' = F(x, x'), or a full equation such as x'' + 0.5*x' + x = 0",
+      secondOrderReduced: "With y = x' this becomes the system x' = y, y' = {g}. The horizontal axis is x (position), the vertical axis is y = x' (velocity).",
+      syntaxHintSecondOrder: "Syntax: the unknown is x and t is the time; write the derivatives as x' and x'' with straight apostrophes (x'' + 0.5*x' + x = 0, or just the right-hand side F of x'' = F). x'' must appear linearly. Write multiplication explicitly (x*x', not xx'), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
     },
   },
 };

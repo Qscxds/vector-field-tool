@@ -1,7 +1,7 @@
 /** One-click examples for the web shell. Boxes are chosen so the interesting features are visible. */
 import type { Locale } from "@/lib/labels";
 
-export type PresetMode = "system" | "explicit" | "differential";
+export type PresetMode = "system" | "explicit" | "differential" | "second";
 
 export type Preset = {
   id: string;
@@ -14,6 +14,8 @@ export type Preset = {
   /** Differential form M(t, y) dt + N(t, y) dy = 0 (first-order expressions use t and y only). */
   M: string;
   N: string;
+  /** Second-order equation x'' = F(x, x') or a full equation (mode "second"); absent otherwise. */
+  second?: string;
   box: { xMin: number; xMax: number; yMin: number; yMax: number };
   note: Record<Locale, string>;
 };
@@ -47,6 +49,11 @@ export const PRESETS: Preset[] = [
     zh: "x = 2kπ 是中心或弱螺旋，x = (2k+1)π 是鞍点。",
     en: "x = 2kπ are centers-or-weak-spirals, x = (2k+1)π are saddles.",
   }),
+  {
+    id: "damped2", name: { zh: "阻尼振子（二阶方程）", en: "Damped oscillator (second order)" }, mode: "second", f: "", g: "", M: "", N: "", second: "x'' + 0.5*x' + x = 0",
+    box: { xMin: -3, xMax: 3, yMin: -3, yMax: 3 },
+    note: { zh: "x'' + 0.5x' + x = 0：令 y = x' 得 x' = y，y' = -x - 0.5y，与「阻尼振子」预设是同一个系统；原点是稳定螺旋点。", en: "x'' + 0.5x' + x = 0: with y = x' it is x' = y, y' = -x - 0.5y, the same system as the 'Damped oscillator' preset; the origin is a stable spiral." },
+  },
   {
     id: "logistic", name: { zh: "Logistic（一阶）", en: "Logistic (first order)" }, mode: "explicit", f: "1", g: "y*(1 - y)", M: "", N: "",
     box: { xMin: 0, xMax: 6, yMin: -0.5, yMax: 2 },
