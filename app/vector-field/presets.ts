@@ -9,9 +9,9 @@ export type Preset = {
   mode: PresetMode;
   /** x' (system) — unused otherwise. */
   f: string;
-  /** y' (system) or g (explicit). */
+  /** y' (system) or g(t, y) (explicit first-order dy/dt = g). */
   g: string;
-  /** Differential form. */
+  /** Differential form M(t, y) dt + N(t, y) dy = 0 (first-order expressions use t and y only). */
   M: string;
   N: string;
   box: { xMin: number; xMax: number; yMin: number; yMax: number };
@@ -50,20 +50,20 @@ export const PRESETS: Preset[] = [
   {
     id: "logistic", name: { zh: "Logistic（一阶）", en: "Logistic (first order)" }, mode: "explicit", f: "1", g: "y*(1 - y)", M: "", N: "",
     box: { xMin: 0, xMax: 6, yMin: -0.5, yMax: 2 },
-    note: { zh: "dy/dx = y(1-y)：y = 0 不稳定，y = 1 稳定；可分离、自治、Bernoulli（n = 2）。", en: "dy/dx = y(1-y): y = 0 unstable, y = 1 stable; separable, autonomous, Bernoulli (n = 2)." },
+    note: { zh: "dy/dt = y(1-y)：y = 0 不稳定，y = 1 稳定；可分离、自治、Bernoulli（n = 2）。", en: "dy/dt = y(1-y): y = 0 unstable, y = 1 stable; separable, autonomous, Bernoulli (n = 2)." },
   },
   {
-    id: "circles", name: { zh: "圆族 x dx + y dy = 0", en: "Circles x dx + y dy = 0" }, mode: "differential", f: "", g: "", M: "x", N: "y",
+    id: "circles", name: { zh: "圆族 t dt + y dy = 0", en: "Circles t dt + y dy = 0" }, mode: "differential", f: "", g: "", M: "t", N: "y",
     box: { xMin: -2, xMax: 2, yMin: -2, yMax: 2 },
-    note: { zh: "恰当方程，解是圆 x² + y² = C；在 y = 0 处有竖直切线，微分形式下不是奇点。", en: "Exact; solutions are circles x² + y² = C. Vertical tangents at y = 0 are not singularities in differential form." },
+    note: { zh: "恰当方程，解是圆 t² + y² = C；在 y = 0 处有竖直切线，微分形式下不是奇点。", en: "Exact; solutions are circles t² + y² = C. Vertical tangents at y = 0 are not singularities in differential form." },
   },
   {
-    id: "exact", name: { zh: "恰当方程 2xy dx + (x²+y²) dy = 0", en: "Exact 2xy dx + (x²+y²) dy = 0" }, mode: "differential", f: "", g: "", M: "2*x*y", N: "x^2 + y^2",
+    id: "exact", name: { zh: "恰当方程 2ty dt + (t²+y²) dy = 0", en: "Exact 2ty dt + (t²+y²) dy = 0" }, mode: "differential", f: "", g: "", M: "2*t*y", N: "t^2 + y^2",
     box: { xMin: -2, xMax: 2, yMin: -2, yMax: 2 },
-    note: { zh: "∂M/∂y = 2x = ∂N/∂x，隐式解 x²y + y³/3 = C 画成紫色等值线。", en: "∂M/∂y = 2x = ∂N/∂x; the implicit solutions x²y + y³/3 = C are the violet level curves." },
+    note: { zh: "∂M/∂y = 2t = ∂N/∂t，隐式解 t²y + y³/3 = C 画成紫色等值线。", en: "∂M/∂y = 2t = ∂N/∂t; the implicit solutions t²y + y³/3 = C are the violet level curves." },
   },
   {
-    id: "riccati", name: { zh: "Riccati dy/dx = x² + y²", en: "Riccati dy/dx = x² + y²" }, mode: "explicit", f: "1", g: "x^2 + y^2", M: "", N: "",
+    id: "riccati", name: { zh: "Riccati dy/dt = t² + y²", en: "Riccati dy/dt = t² + y²" }, mode: "explicit", f: "1", g: "t^2 + y^2", M: "", N: "",
     box: { xMin: -2, xMax: 2, yMin: -2, yMax: 2 },
     note: { zh: "没有初等闭式解，所有类型探测都是否定的；斜率场和数值解照样有效。", en: "No elementary closed form; every form probe is negative, yet the slope field and numerical solutions are fully valid." },
   },

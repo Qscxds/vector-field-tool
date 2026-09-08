@@ -37,6 +37,32 @@ describe("label tables", () => {
     }
   });
 
+  it("first-order-only labels use the student notation dy/dt = g(t, y), never x or dx (Phase I)", () => {
+    const firstOrderOnly = (L: (typeof LABELS)["zh"]) => [
+      L.ui.typeExplicit, L.ui.typeDifferential, L.ui.gExplicitLabel, L.ui.mLabel, L.ui.nLabel, L.ui.implicitHeading,
+      L.ui.lhsInExpression, L.ui.tMin, L.ui.tMax,
+      L.tool.firstOrderHeader, L.tool.noConstantGeneral, L.tool.exactImplicit,
+      L.stability.varies, L.form.integrating_factor_x, L.form.integrating_factor_y,
+    ];
+    for (const locale of LOCALES) {
+      for (const text of firstOrderOnly(LABELS[locale])) {
+        // "dx", "(x, y)" and a bare x are the old notation; placeholders such as {xMin} are internal names.
+        const bare = text.replace(/\{\w+\}/g, "");
+        expect(bare, `${locale}: ${text}`).not.toMatch(/dx|\(x, y\)/);
+        expect(bare, `${locale}: ${text}`).not.toMatch(/(^|[^A-Za-z0-9_\u4e00-\u9fff])x(?![A-Za-z0-9_])/);
+      }
+    }
+    // The two hints that explain the mistake name x on purpose; they must still use dt, not dx.
+    for (const locale of LOCALES) {
+      for (const text of [LABELS[locale].ui.xInFirstOrder, LABELS[locale].ui.syntaxHintFirstOrder]) {
+        expect(text, `${locale}: ${text}`).not.toMatch(/dx|\(x, y\)/);
+        expect(text, `${locale}: ${text}`).toMatch(/dy\/dt/);
+      }
+    }
+    expect(LABELS.en.ui.xInFirstOrder).toContain("write t instead of x");
+    expect(LABELS.zh.ui.xInFirstOrder).toContain("把 x 写成 t");
+  });
+
   it("caveats read as full sentences in both languages", () => {
     for (const locale of LOCALES) {
       for (const text of Object.values(labels(locale).caveat)) {

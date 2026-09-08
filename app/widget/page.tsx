@@ -117,7 +117,7 @@ export default function WidgetPage() {
     locale,
     kind,
     fieldStyle: scene?.fieldStyle ?? "arrows",
-    systemKey: scene ? `${resultSeq}|${scene.kind}|${scene.system?.f ?? ""}|${scene.system?.g ?? ""}|${JSON.stringify(scene.start ?? null)}|${JSON.stringify(scene.system?.params ?? null)}` : "",
+    systemKey: scene ? `${resultSeq}|${scene.kind}|${scene.system?.variables ?? "xy"}|${scene.system?.f ?? ""}|${scene.system?.g ?? ""}|${JSON.stringify(scene.start ?? null)}|${JSON.stringify(scene.system?.params ?? null)}` : "",
     initialTrajectories: scene?.trajectories,
     start: scene?.start,
     withFeatures: kind === "analyze_system" || kind === "analyze_first_order",
@@ -163,6 +163,7 @@ export default function WidgetPage() {
           />
           <p style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }} data-shown-range>
             {fill(L.ui.shownRange, {
+              hv: horizontalName(live.scene),
               xMin: formatNumber(live.viewport.box.x.min, 3),
               xMax: formatNumber(live.viewport.box.x.max, 3),
               yMin: formatNumber(live.viewport.box.y.min, 3),
@@ -185,6 +186,11 @@ export default function WidgetPage() {
   );
 }
 
+/** Student-facing name of the horizontal coordinate: t for first-order scenes (system.variables "ty"), else x. */
+function horizontalName(scene: Scene): "x" | "t" {
+  return scene.system?.variables === "ty" ? "t" : "x";
+}
+
 function SceneSummary({ scene }: { scene: Scene }) {
   const L = labels(scene.locale ?? "en");
   const items: string[] = [];
@@ -192,6 +198,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
     const fb = scene.featuresBox ?? scene.box;
     items.push(
       fill(L.ui.featuresBox, {
+        hv: horizontalName(scene),
         xMin: formatNumber(fb.x.min, 3),
         xMax: formatNumber(fb.x.max, 3),
         yMin: formatNumber(fb.y.min, 3),

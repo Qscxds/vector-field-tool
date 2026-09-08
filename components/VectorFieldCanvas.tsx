@@ -10,6 +10,7 @@ import { useEffect, useRef, type PointerEvent as ReactPointerEvent } from "react
 import type { Equilibrium } from "@/lib/core/equilibria";
 import type { Vec2 } from "@/lib/core/types";
 import { arrowPolygon, scaleArrows, type ArrowMode } from "@/lib/render/arrows";
+import { axisNameAnchors } from "@/lib/render/axis-names";
 import { chooseTicks } from "@/lib/render/ticks";
 import { fitViewport, screenToWorld, worldToScreen, type Viewport } from "@/lib/render/viewport";
 import type { Scene, TrajectoryView } from "@/lib/scene";
@@ -248,13 +249,16 @@ function drawBase(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewport | nul
   if (scene.trajectories) drawTrajectories(ctx, v, scene);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
   if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
+  // Last, so the names stay legible over the field. Data-driven: a first-order scene (system in
+  // variable mode "ty") calls its horizontal coordinate t, a planar system calls it x.
+  drawAxisNames(ctx, v, scene.system?.variables === "ty" ? "t" : "x", "y");
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
   const xTicks = chooseTicks(v.box.x, 8);
   const yTicks = chooseTicks(v.box.y, 6);
   ctx.lineWidth = 1;
-  ctx.font = "11px system-ui, sans-serif";
+  ctx.font = TICK_FONT;
   ctx.fillStyle = COLORS.label;
   for (const x of xTicks) {
     const s = worldToScreen(v, { x, y: v.box.y.min });
@@ -277,6 +281,25 @@ function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
     ctx.textAlign = "left";
     ctx.textBaseline = "middle";
     ctx.fillText(String(y), 4, s.y);
+  }
+}
+
+const AXIS_NAME_FONT = "italic 13px 'Times New Roman', Times, serif";
+const TICK_FONT = "11px system-ui, sans-serif";
+
+function drawAxisNames(ctx: CanvasRenderingContext2D, v: Viewport, horizontal: string, vertical: string): void {
+  ctx.font = TICK_FONT;
+  const tickColumnWidth = chooseTicks(v.box.y, 6).reduce((w, y) => Math.max(w, ctx.measureText(String(y)).width), 0);
+  const anchors = axisNameAnchors(v, { tickColumnWidth, tickRowHeight: 11 });
+  ctx.font = AXIS_NAME_FONT;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = COLORS.background; // halo so the letter reads over arrows and curves
+  ctx.fillStyle = COLORS.axis;
+  for (const [name, a] of [[horizontal, anchors.horizontal], [vertical, anchors.vertical]] as const) {
+    ctx.textAlign = a.align;
+    ctx.textBaseline = a.baseline;
+    ctx.strokeText(name, a.x, a.y);
+    ctx.fillText(name, a.x, a.y);
   }
 }
 

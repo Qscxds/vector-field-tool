@@ -9,7 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
-import { compileSystem, ParseError, type CompiledSystem } from "@/lib/core/parse";
+import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
 import { toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type LabelTable, type Locale } from "@/lib/labels";
@@ -54,17 +54,31 @@ function fromPreset(p: Preset, density: number, arrowMode: ArrowMode): Form {
   };
 }
 
+/** Student-facing name of the horizontal coordinate: x for a planar system, t for a first-order equation. */
+function horizontalName(mode: PresetMode): "x" | "t" {
+  return mode === "system" ? "x" : "t";
+}
+
 function parseBox(form: Form, L: LabelTable): Box {
   const nums = [form.xMin, form.xMax, form.yMin, form.yMax].map((s) => Number(s.trim()));
   if (nums.some((n) => !Number.isFinite(n))) throw new RangeError(L.ui.rangeError);
   const [xMin, xMax, yMin, yMax] = nums;
-  if (!(xMin < xMax)) throw new RangeError(fill(L.ui.xRangeError, { min: xMin, max: xMax }));
+  if (!(xMin < xMax)) throw new RangeError(fill(L.ui.xRangeError, { hv: horizontalName(form.mode), min: xMin, max: xMax }));
   if (!(yMin < yMax)) throw new RangeError(fill(L.ui.yRangeError, { min: yMin, max: yMax }));
   return { x: { min: xMin, max: xMax }, y: { min: yMin, max: yMax } };
 }
 
 function explain(error: unknown, L: LabelTable): string {
-  if (error instanceof ParseError) return fill(L.ui.exprError, { expr: error.expr, message: error.message });
+  if (error instanceof ParseError) {
+    // The two first-order mistakes with a machine-readable code get the readable bilingual sentence
+    // instead of the generic "problem in the expression" wrapper around the kernel's English text.
+    if (error.code === "x_in_first_order") return L.ui.xInFirstOrder;
+    if (error.code === "lhs_in_expression") {
+      const wroteDx = error.message.includes(X_IN_FIRST_ORDER_MESSAGE);
+      return wroteDx ? `${L.ui.lhsInExpression} ${L.ui.xInFirstOrder}` : L.ui.lhsInExpression;
+    }
+    return fill(L.ui.exprError, { expr: error.expr, message: error.message });
+  }
   if (error instanceof RangeError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
@@ -126,6 +140,7 @@ export default function VectorFieldPage() {
 
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : undefined;
   const lastPair = trajectories.slice(-2);
+  const hv = horizontalName(form.mode);
 
   return (
     <main style={{ maxWidth: 1180, margin: "0 auto", padding: "20px 24px 48px", fontSize: 14, lineHeight: 1.5 }}>
@@ -191,11 +206,11 @@ export default function VectorFieldPage() {
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <label style={labelStyle}>
-              <span>{L.ui.xMin}</span>
+              <span>{form.mode === "system" ? L.ui.xMin : L.ui.tMin}</span>
               <input value={form.xMin} onChange={(e) => update({ xMin: e.target.value })} style={inputStyle} name="xMin" />
             </label>
             <label style={labelStyle}>
-              <span>{L.ui.xMax}</span>
+              <span>{form.mode === "system" ? L.ui.xMax : L.ui.tMax}</span>
               <input value={form.xMax} onChange={(e) => update({ xMax: e.target.value })} style={inputStyle} name="xMax" />
             </label>
             <label style={labelStyle}>
@@ -224,7 +239,7 @@ export default function VectorFieldPage() {
             {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
           </button>
           {preset ? <p style={{ margin: 0, color: "#52606d" }}>{preset.note[locale]}</p> : null}
-          <p style={{ margin: 0, color: "#52606d", fontSize: 12 }}>{L.ui.syntaxHint}</p>
+          <p style={{ margin: 0, color: "#52606d", fontSize: 12 }}>{form.mode === "system" ? L.ui.syntaxHint : L.ui.syntaxHintFirstOrder}</p>
         </form>
 
         <div style={{ flex: "1 1 720px", minWidth: 0 }}>
@@ -247,6 +262,7 @@ export default function VectorFieldPage() {
               />
               <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
                 {fill(L.ui.shownRange, {
+                  hv,
                   xMin: formatNumber(viewport.box.x.min, 3),
                   xMax: formatNumber(viewport.box.x.max, 3),
                   yMin: formatNumber(viewport.box.y.min, 3),
@@ -267,6 +283,7 @@ export default function VectorFieldPage() {
           {scene?.box ? (
             <p style={{ margin: "12px 0 0", color: "#52606d", fontSize: 12 }} data-features-box>
               {fill(L.ui.featuresBox, {
+                hv,
                 xMin: formatNumber((scene.featuresBox ?? scene.box).x.min, 3),
                 xMax: formatNumber((scene.featuresBox ?? scene.box).x.max, 3),
                 yMin: formatNumber((scene.featuresBox ?? scene.box).y.min, 3),
