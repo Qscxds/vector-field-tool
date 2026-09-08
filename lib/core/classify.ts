@@ -30,7 +30,7 @@ export type Classification =
  * Which honesty caveat applies. The student-facing sentences live in lib/labels.ts (per locale);
  * consumers must show the sentence for this key verbatim.
  */
-export type CaveatKey = "center" | "nonHyperbolic" | "notFinite" | "repeatedRoot";
+export type CaveatKey = "center" | "nonHyperbolic" | "notFinite" | "repeatedRoot" | "domainEdge";
 
 export type ClassifyResult = {
   classification: Classification;
@@ -43,7 +43,7 @@ export type ClassifyResult = {
   caveat?: CaveatKey;
 };
 
-const CAVEATS: Record<CaveatKey, CaveatKey> = { center: "center", nonHyperbolic: "nonHyperbolic", notFinite: "notFinite", repeatedRoot: "repeatedRoot" };
+const CAVEATS: Record<CaveatKey, CaveatKey> = { center: "center", nonHyperbolic: "nonHyperbolic", notFinite: "notFinite", repeatedRoot: "repeatedRoot", domainEdge: "domainEdge" };
 
 export type ClassifyOptions = {
   /**

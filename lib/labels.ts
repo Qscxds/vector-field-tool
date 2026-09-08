@@ -90,6 +90,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonHyperbolic: "雅可比矩阵至少有一个特征值在数值精度内为零（行列式约等于零），这个平衡点是非双曲的。Hartman–Grobman 定理不适用，线性化不足以判定它的稳定性，需要中心流形或 Lyapunov 函数等非线性方法。",
       notFinite: "在这一点上雅可比矩阵无法求出有限值（向量场在附近奇异或未定义），因此无法给出任何分类。",
       repeatedRoot: "两个特征值在数值精度内无法区分（判别式落在容差带内而不是精确为零）。它们可能是真正的重根，此时「星形结点 / 退化结点」的名字才严格成立；也可能是极其接近的两个相异实根，此时实际上是一个普通的结点。请把这里的分类当作「重根或近重根」，而不是确定的类型。",
+      domainEdge: "这个平衡点位于向量场定义域的边缘：向量场在它的一侧有定义，在另一侧没有定义（例如 x' = sqrt(x) 在 x = 0 处）。这里不存在线性化（导数只有单侧的），所以无法给出任何分类；请用定义域内一侧的解的走向来讨论它。",
     },
     form: {
       separable: "可分离变量方程",
@@ -233,6 +234,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonHyperbolic: "At least one eigenvalue of the Jacobian is zero to numerical precision (determinant approximately zero), so this equilibrium is non-hyperbolic. The Hartman–Grobman theorem does not apply and linearization cannot decide its stability; a nonlinear method such as a center manifold or a Lyapunov function is needed.",
       notFinite: "The Jacobian cannot be evaluated to a finite value at this point (the vector field is singular or undefined nearby), so no classification can be given.",
       repeatedRoot: "The two eigenvalues cannot be told apart at working precision (the discriminant lies inside the tolerance band rather than being exactly zero). They may be a genuine repeated root, in which case the name star node / degenerate node is strictly correct, or two distinct real roots extremely close together, in which case this is really an ordinary node. Read this classification as 'repeated or nearly repeated root', not as a definite type.",
+      domainEdge: "This equilibrium lies on the edge of the region where the vector field is defined: the field is defined on one side of it and undefined on the other (for example x' = sqrt(x) at x = 0). No linearization exists there (only a one-sided derivative does), so no classification can be given; discuss it through the behavior of the solutions on the side where the field is defined.",
     },
     form: {
       separable: "a separable equation",
