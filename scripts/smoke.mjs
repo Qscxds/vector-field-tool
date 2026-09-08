@@ -4,6 +4,8 @@
  * Usage: node scripts/smoke.mjs [url]
  * Exit code 0 when every check passes. Checks the transport layer end to end: initialize,
  * tools/list, one call per tool, resources/list, resources/read of the widget, GET -> 405.
+ * A local build without BASE_URL serves relative /_next URLs by design; the absolute-URL check is
+ * then reported as SKIP (and counted as passed) when the widget's <base href> is localhost.
  */
 const url = process.argv[2] ?? "http://localhost:3000/mcp";
 let id = 0;
@@ -12,6 +14,12 @@ const results = [];
 function check(name, ok, detail = "") {
   results.push(ok);
   console.log(`${ok ? "PASS" : "FAIL"} ${name}${ok ? "" : `  -> ${detail}`}`);
+}
+
+/** A check that does not apply in this environment; counts as passed. */
+function skip(name, reason) {
+  results.push(true);
+  console.log(`SKIP ${name} (${reason})`);
 }
 
 async function rpc(method, params = {}) {
@@ -89,7 +97,19 @@ if (widget) {
   const csp = c?._meta?.ui?.csp ?? {};
   check("resources/read returns widget HTML", html.toLowerCase().startsWith("<!doctype html") && html.includes("<base href="), JSON.stringify(read.msg).slice(0, 300));
   check("resources/read CSP declares connect/resource/baseUri domains", ["connectDomains", "resourceDomains", "baseUriDomains"].every((k) => Array.isArray(csp[k]) && csp[k].length > 0), JSON.stringify(csp));
-  check("widget asset URLs are absolute", !/(src|href)="\/_next\//.test(html), "found relative /_next URLs (BASE_URL not set at build?)");
+  // Relative /_next URLs are correct for a local build without BASE_URL (the widget is only ever
+  // loaded cross-origin from a public origin). Real FAIL on any other <base href> origin.
+  const baseHref = /<base href="([^"]*)"/i.exec(html)?.[1] ?? "";
+  let baseHost = "";
+  try {
+    baseHost = new URL(baseHref).hostname;
+  } catch {
+    // no or malformed <base href>: the check below decides
+  }
+  const relativeUrls = /(src|href)="\/_next\//.test(html);
+  const localBuild = baseHost === "localhost" || baseHost === "127.0.0.1";
+  if (relativeUrls && localBuild) skip("widget asset URLs are absolute", "local build, BASE_URL not set");
+  else check("widget asset URLs are absolute", !relativeUrls, `found relative /_next URLs under <base href="${baseHref}"> (BASE_URL not set at build?)`);
   console.log(`      widget uri: ${widget.uri}`);
 }
 
