@@ -71,47 +71,47 @@ export const MIN_SAMPLES = 5;
 
 const FORM_NAME: Record<Locale, Record<OdeForm, string>> = {
   zh: {
-    separable: "可分离变量方程 dy/dx = f(x)·h(y)",
-    autonomous: "自治方程（右端与 x 无关）",
-    linear_in_y: "关于 y 的线性方程 dy/dx = P(x)·y + Q(x)",
-    homogeneous: "零次齐次方程 g(tx, ty) = g(x, y)",
-    bernoulli: "Bernoulli 方程 dy/dx = P(x)·y + Q(x)·yⁿ",
-    exact: "恰当方程 ∂M/∂y = ∂N/∂x",
-    integrating_factor_x: "存在只依赖 x 的积分因子 μ(x)",
+    separable: "可分离变量方程 dy/dt = f(t)·h(y)",
+    autonomous: "自治方程（右端与 t 无关）",
+    linear_in_y: "关于 y 的线性方程 dy/dt = P(t)·y + Q(t)",
+    homogeneous: "零次齐次方程 g(kt, ky) = g(t, y)",
+    bernoulli: "Bernoulli 方程 dy/dt = P(t)·y + Q(t)·yⁿ",
+    exact: "恰当方程 ∂M/∂y = ∂N/∂t",
+    integrating_factor_x: "存在只依赖 t 的积分因子 μ(t)",
     integrating_factor_y: "存在只依赖 y 的积分因子 μ(y)",
   },
   en: {
-    separable: "separable equation dy/dx = f(x)·h(y)",
-    autonomous: "autonomous equation (right-hand side independent of x)",
-    linear_in_y: "linear equation in y, dy/dx = P(x)·y + Q(x)",
-    homogeneous: "homogeneous equation of degree zero, g(tx, ty) = g(x, y)",
-    bernoulli: "Bernoulli equation dy/dx = P(x)·y + Q(x)·yⁿ",
-    exact: "exact equation ∂M/∂y = ∂N/∂x",
-    integrating_factor_x: "integrating factor μ(x) depending on x only",
+    separable: "separable equation dy/dt = f(t)·h(y)",
+    autonomous: "autonomous equation (the right-hand side does not depend on t)",
+    linear_in_y: "linear equation in y, dy/dt = P(t)·y + Q(t)",
+    homogeneous: "homogeneous equation of degree zero, g(kt, ky) = g(t, y)",
+    bernoulli: "Bernoulli equation dy/dt = P(t)·y + Q(t)·yⁿ",
+    exact: "exact equation ∂M/∂y = ∂N/∂t",
+    integrating_factor_x: "integrating factor μ(t) depending on t only",
     integrating_factor_y: "integrating factor μ(y) depending on y only",
   },
 };
 
 const TESTED: Record<Locale, Record<OdeForm, string>> = {
   zh: {
-    separable: "检验恒等式 g(x,y)·g(x₀,y₀) = g(x,y₀)·g(x₀,y)",
-    autonomous: "比较 g(x,y) 与 g(x₀,y)",
+    separable: "检验恒等式 g(t,y)·g(t₀,y₀) = g(t,y₀)·g(t₀,y)",
+    autonomous: "比较 g(t,y) 与 g(t₀,y)",
     linear_in_y: "检验 g 在三个相距较远的 y 处是否共线（线性插值恒等式）",
-    homogeneous: "检验 g(tx,ty) = g(x,y)，t 取 0.5、1.7、2.3",
-    bernoulli: "把 g(x,y)/y 拟合成 a(x) + b(x)·y^(n−1) 并在其余点上核对",
-    exact: "用带误差估计的高阶差分比较 ∂M/∂y 与 ∂N/∂x",
-    integrating_factor_x: "检验 (∂M/∂y − ∂N/∂x)/N 是否与 y 无关",
-    integrating_factor_y: "检验 (∂N/∂x − ∂M/∂y)/M 是否与 x 无关",
+    homogeneous: "检验 g(kt,ky) = g(t,y)，k 取 0.5、1.7、2.3",
+    bernoulli: "把 g(t,y)/y 拟合成 a(t) + b(t)·y^(n−1) 并在其余点上核对",
+    exact: "用带误差估计的高阶差分比较 ∂M/∂y 与 ∂N/∂t",
+    integrating_factor_x: "检验 (∂M/∂y − ∂N/∂t)/N 是否与 y 无关",
+    integrating_factor_y: "检验 (∂N/∂t − ∂M/∂y)/M 是否与 t 无关",
   },
   en: {
-    separable: "checked the identity g(x,y)·g(x₀,y₀) = g(x,y₀)·g(x₀,y)",
-    autonomous: "compared g(x,y) with g(x₀,y)",
+    separable: "checked the identity g(t,y)·g(t₀,y₀) = g(t,y₀)·g(t₀,y)",
+    autonomous: "compared g(t,y) with g(t₀,y)",
     linear_in_y: "checked that g at three well-separated y values is collinear (linear interpolation identity)",
-    homogeneous: "checked g(tx,ty) = g(x,y) for t = 0.5, 1.7, 2.3",
-    bernoulli: "fitted g(x,y)/y as a(x) + b(x)·y^(n−1) and verified at the remaining points",
-    exact: "compared ∂M/∂y with ∂N/∂x by high-order differences with error estimates",
-    integrating_factor_x: "checked that (∂M/∂y − ∂N/∂x)/N does not depend on y",
-    integrating_factor_y: "checked that (∂N/∂x − ∂M/∂y)/M does not depend on x",
+    homogeneous: "checked g(kt,ky) = g(t,y) for k = 0.5, 1.7, 2.3",
+    bernoulli: "fitted g(t,y)/y as a(t) + b(t)·y^(n−1) and verified at the remaining points",
+    exact: "compared ∂M/∂y with ∂N/∂t by high-order differences with error estimates",
+    integrating_factor_x: "checked that (∂M/∂y − ∂N/∂t)/N does not depend on y",
+    integrating_factor_y: "checked that (∂N/∂t − ∂M/∂y)/M does not depend on t",
   },
 };
 
@@ -174,18 +174,18 @@ function caveatText(locale: Locale, form: OdeForm, verdict: Verdict, samples: nu
 
 /** Shown when nothing was detected. Deliberately positive: the numerics do not care. */
 export const NO_FORM_NOTE: Record<Locale, string> = {
-  zh: "未检测到任何标准初等解法（可分离、线性、齐次、Bernoulli、恰当、积分因子）。这不是失败：斜率场和数值解与方程能否解出闭式无关，仍然完全有效。很多重要的方程（例如 Riccati 方程 dy/dx = x² + y²）就没有初等闭式解，数值方法正是为这种情况准备的。",
-  en: "No standard elementary method was detected (separable, linear, homogeneous, Bernoulli, exact, integrating factor). That is not a failure: the slope field and the numerical solutions do not depend on a closed form and remain fully valid. Many important equations, such as the Riccati equation dy/dx = x² + y², have no elementary closed-form solution; numerical methods exist for exactly this case.",
+  zh: "未检测到任何标准初等解法（可分离、线性、齐次、Bernoulli、恰当、积分因子）。这不是失败：斜率场和数值解与方程能否解出闭式无关，仍然完全有效。很多重要的方程（例如 Riccati 方程 dy/dt = t² + y²）就没有初等闭式解，数值方法正是为这种情况准备的。",
+  en: "No standard elementary method was detected (separable, linear, homogeneous, Bernoulli, exact, integrating factor). That is not a failure: the slope field and the numerical solutions do not depend on a closed form and remain fully valid. Many important equations, such as the Riccati equation dy/dt = t² + y², have no elementary closed-form solution; numerical methods exist for exactly this case.",
 };
 
 // Irrational-looking fractions of the box for the 13 sample coordinates. No pair has FX = FY or
-// FX + FY = 1: on a box centred at the origin those would put the sample on y = x or y = -x, where
-// textbook equations such as (x - y)/(x + y) have zeros or poles (review C1).
+// FX + FY = 1: on a box centred at the origin those would put the sample on y = t or y = -t, where
+// textbook equations such as (t - y)/(t + y) have zeros or poles (review C1).
 const FX = [0.2137, 0.3819, 0.5773, 0.7071, 0.866, 0.4472, 0.6281, 0.1618, 0.9271, 0.0729, 0.3183, 0.7853, 0.5236];
 const FY = [0.6281, 0.1618, 0.9271, 0.4472, 0.3183, 0.7853, 0.2137, 0.866, 0.5773, 0.7071, 0.0729, 0.3819, 0.4472];
 /** y fractions for the linearity test; none equals an FX entry or 1 - an FX entry. */
 const LINEAR_YS = [0.2618, 0.6545, 0.8541];
-/** x fractions for the autonomy reference column and the integrating-factor grids. */
+/** t fractions (horizontal axis) for the autonomy reference column and the integrating-factor grids. */
 const AUTONOMY_X0 = 0.618;
 const IF_XS = [0.2137, 0.5773, 0.866, 0.4472, 0.7071];
 const IF_YS = [0.1459, 0.3455, 0.6545, 0.9098];
@@ -238,7 +238,7 @@ const STEP_MULTIPLIERS = [1, 4.3, 18.7, 81, 350];
  * Partial derivative by a 4th-order central difference at two step sizes, combined by Richardson
  * extrapolation, with an error estimate from their disagreement plus the rounding floor.
  * Tried at several step sizes (capped at hMax): where the function is huge compared with its
- * derivative (exp(10x) + y), rounding dominates and a larger step is the better estimate.
+ * derivative (exp(10t) + y), rounding dominates and a larger step is the better estimate.
  * A larger step is only trusted when it AGREES with the smallest-step estimate within their
  * combined error bounds: two stencils that agree with each other are not proof of accuracy when
  * both alias a periodic function (sin(2πy) sampled at multiples of its period gives 0 twice;
@@ -369,7 +369,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
 
   const checkpoint = opts.checkpoint;
 
-  // ---- separable: g(x,y) g(x0,y0) = g(x,y0) g(x0,y) ------------------------------------------
+  // ---- separable: g(t,y) g(t0,y0) = g(t,y0) g(t0,y) ------------------------------------------
   {
     checkpoint?.();
     const t = new Tally(tolA);
@@ -388,7 +388,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
     emit("separable", t);
   }
 
-  // ---- autonomous: g independent of x -----------------------------------------------------------
+  // ---- autonomous: g independent of t -----------------------------------------------------------
   {
     checkpoint?.();
     const t = new Tally(tolA);
@@ -417,7 +417,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
     emit("linear_in_y", t);
   }
 
-  // ---- homogeneous of degree 0: g(tx, ty) = g(x, y) -------------------------------------------
+  // ---- homogeneous of degree 0: g(kt, ky) = g(t, y) -------------------------------------------
   {
     checkpoint?.();
     const t = new Tally(tolA);
@@ -425,8 +425,8 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
       const v = g(p);
       if (!finite(v)) { t.drop(); continue; }
       let ok = true, local = 0;
-      for (const s of [0.5, 1.7, 2.3]) {
-        const gs = g({ x: s * p.x, y: s * p.y });
+      for (const k of [0.5, 1.7, 2.3]) {
+        const gs = g({ x: k * p.x, y: k * p.y });
         if (!finite(gs)) { ok = false; break; }
         local = Math.max(local, relDev(gs, v, gFloor));
       }
@@ -436,7 +436,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
     emit("homogeneous", t);
   }
 
-  // ---- Bernoulli: g(x, y) / y = a(x) + b(x) y^(n-1) with n independent of x ---------------------
+  // ---- Bernoulli: g(t, y) / y = a(t) + b(t) y^(n-1) with n independent of t ---------------------
   {
     checkpoint?.();
     const t = new Tally(tolA);
@@ -447,7 +447,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
     const xs = [0.2137, 0.5773, 0.866].map((s) => box.x.min + s * w);
     const uMax = Math.max(...xs.flatMap((x) => ys.map((y) => Math.abs(g({ x, y }) / y))).filter(finite), 0);
     const uFloor = 1e3 * EPS * uMax;
-    // Exponent m = n - 1 from three points at fixed x: F(m) = (u1-u2)(y2^m - y3^m) - (u2-u3)(y1^m - y2^m) = 0.
+    // Exponent m = n - 1 from three points at fixed t: F(m) = (u1-u2)(y2^m - y3^m) - (u2-u3)(y1^m - y2^m) = 0.
     const solveM = (u: number[]): number | undefined => {
       const F = (m: number) => (u[0] - u[1]) * (ys[1] ** m - ys[2] ** m) - (u[1] - u[2]) * (ys[0] ** m - ys[1] ** m);
       let prev = F(-12);
@@ -527,19 +527,19 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
         ysRel.forEach(() => t.drop());
         emit("bernoulli", t, locale === "zh" ? "观察范围内没有 y > 0 的部分，y^n 无法采样" : "the box has no y > 0, so y^n cannot be sampled");
       } else if (columns.length === xs.length && n !== undefined && (Math.abs(n - 1) <= 1e-3 || Math.abs(n) <= 1e-3) && exponents.length === xs.length && Math.max(...exponents) - Math.min(...exponents) <= 1e-6) {
-        // dy/dx = P y + Q y^0 and dy/dx = P y + Q y^1 are linear equations: Bernoulli proper needs n ≠ 0, 1.
+        // dy/dt = P y + Q y^0 and dy/dt = P y + Q y^1 are linear equations: Bernoulli proper needs n ≠ 0, 1.
         const nText = Math.abs(n) <= 1e-3 ? "0" : "1";
         columns.forEach((u) => { const d = fitDev(u, Math.round(n!) - 1); u.forEach((_, i) => t.add(i < 2 || d === null ? 0 : d)); });
         emit("bernoulli", t, locale === "zh" ? `拟合出的指数 n = ${nText}，这是线性方程；按课本定义 Bernoulli 方程要求 n ≠ 0, 1` : `the fitted exponent is n = ${nText}, i.e. a linear equation; a Bernoulli equation proper needs n ≠ 0, 1`, { n: Number(nText) }, undefined, "inconsistent", "excluded");
       } else if (columns.length === xs.length && exponents.length === xs.length) {
-        // Every column fits some exponent, but not the same one: the spread of n across x is the deviation.
+        // Every column fits some exponent, but not the same one: the spread of n across t is the deviation.
         const spread = (Math.max(...exponents) - Math.min(...exponents)) / Math.max(1, Math.abs(exponents[0]));
         columns.forEach((u) => u.forEach(() => t.add(spread)));
-        emit("bernoulli", t, locale === "zh" ? `各 x 处拟合出的指数不一致（n 在 ${Math.min(...exponents).toFixed(3)} 到 ${Math.max(...exponents).toFixed(3)} 之间变化）` : `the fitted exponent differs between x values (n ranges from ${Math.min(...exponents).toFixed(3)} to ${Math.max(...exponents).toFixed(3)})`);
+        emit("bernoulli", t, locale === "zh" ? `各 t 处拟合出的指数不一致（n 在 ${Math.min(...exponents).toFixed(3)} 到 ${Math.max(...exponents).toFixed(3)} 之间变化）` : `the fitted exponent differs between t values (n ranges from ${Math.min(...exponents).toFixed(3)} to ${Math.max(...exponents).toFixed(3)})`);
       } else {
-        // At some x no exponent fits at all (g/y is not of the form a + b y^m there): structurally excluded.
+        // At some t no exponent fits at all (g/y is not of the form a + b y^m there): structurally excluded.
         columns.forEach((u) => u.forEach(() => t.add(1)));
-        emit("bernoulli", t, locale === "zh" ? "在某些 x 处 g/y 无法写成 a + b·y^(n−1)，不存在统一的指数" : "at some x, g/y cannot be written as a + b·y^(n−1): no exponent exists", undefined, undefined, undefined, "excluded");
+        emit("bernoulli", t, locale === "zh" ? "在某些 t 处 g/y 无法写成 a + b·y^(n−1)，不存在统一的指数" : "at some t, g/y cannot be written as a + b·y^(n−1): no exponent exists", undefined, undefined, undefined, "excluded");
       }
     }
   }
@@ -574,7 +574,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
         emit(form, t, locale === "zh" ? "方程已恰当，μ = 1 即可，这一条自动成立" : "the equation is already exact, so μ = 1 works and this holds trivially", { trivial: 1 });
       }
     } else {
-      // μ(x): r = (M_y - N_x) / N must not depend on y. Compare across y at fixed x.
+      // μ(t): r = (M_y - N_t) / N must not depend on y. Compare across y at fixed t.
       const xs = IF_XS.map((s) => box.x.min + s * w);
       const ysL = IF_YS.map((s) => box.y.min + s * h);
       const ratio = (p: Vec2, num: (a: Estimate, b: Estimate) => Estimate, den: (p: Vec2) => number): Estimate | null => {
@@ -599,7 +599,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
       }
       emit("integrating_factor_x", tX);
 
-      // μ(y): s = (N_x - M_y) / M must not depend on x. Compare across x at fixed y.
+      // μ(y): s = (N_t - M_y) / M must not depend on t. Compare across t at fixed y.
       const tY = new Tally(tolD);
       for (const y of ysL) {
         checkpoint?.();

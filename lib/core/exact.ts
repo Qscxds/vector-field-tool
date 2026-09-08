@@ -1,6 +1,8 @@
 /**
- * Potential of an exact equation M dx + N dy = 0: a function F with F_x = M, F_y = N, so the
- * solutions are the level curves F(x, y) = C (the textbook implicit solution).
+ * Potential of an exact equation M dt + N dy = 0: a function F with F_t = M, F_y = N, so the
+ * solutions are the level curves F(t, y) = C (the textbook implicit solution). The student's t is
+ * the kernel's horizontal coordinate: points are still {x, y}, and M, N come from
+ * compileDifferential in variable mode "ty".
  *
  * F is built by a line integral from a base point along two different paths (horizontal-then-
  * vertical and vertical-then-horizontal). If the equation really is exact the two agree; the
@@ -44,17 +46,18 @@ export function simpson(fn: (s: number) => number, a: number, b: number, panels 
 export function exactPotential(spec: FirstOrderSpec, box: Box, opts: ExactPotentialOptions = {}): ExactPotential {
   const { M, N } = compileDifferential(spec);
   const centre = { x: (box.x.min + box.x.max) / 2, y: (box.y.min + box.y.max) / 2 };
-  // A singular centre (e.g. the origin of (x dy - y dx)/(x² + y²)) would make every path integral
+  // A singular centre (e.g. the origin of (t dy - y dt)/(t² + y²)) would make every path integral
   // NaN; fall back to an irrational-fraction point so the check can report a real deviation.
   const fallback = { x: box.x.min + 0.3819 * (box.x.max - box.x.min), y: box.y.min + 0.6181 * (box.y.max - box.y.min) };
   const base = opts.base ?? (Number.isFinite(M(centre)) && Number.isFinite(N(centre)) ? centre : fallback);
   const panels = opts.panels ?? 64;
   const tol = opts.tol ?? 1e-6;
 
+  // Integration dummies: s along the horizontal axis (the student's t), u along the vertical axis.
   const viaHorizontalFirst = (p: Vec2) =>
-    simpson((s) => M({ x: s, y: base.y }), base.x, p.x, panels) + simpson((t) => N({ x: p.x, y: t }), base.y, p.y, panels);
+    simpson((s) => M({ x: s, y: base.y }), base.x, p.x, panels) + simpson((u) => N({ x: p.x, y: u }), base.y, p.y, panels);
   const viaVerticalFirst = (p: Vec2) =>
-    simpson((t) => N({ x: base.x, y: t }), base.y, p.y, panels) + simpson((s) => M({ x: s, y: p.y }), base.x, p.x, panels);
+    simpson((u) => N({ x: base.x, y: u }), base.y, p.y, panels) + simpson((s) => M({ x: s, y: p.y }), base.x, p.x, panels);
 
   // Path-independence check on a coarse grid of irrational fractions (avoids the base point itself).
   // The deviation is relative to the potential's own magnitude over the grid (with a rounding floor),

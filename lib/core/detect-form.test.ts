@@ -12,6 +12,7 @@ import {
   verdictFor,
   type OdeForm,
 } from "./detect-form";
+import { ParseError } from "./parse";
 import type { FirstOrderSpec } from "./slope-field";
 
 const box = { x: { min: 0.3, max: 3 }, y: { min: 0.3, max: 3 } };
@@ -391,5 +392,60 @@ describe("detectForms: honesty rules", () => {
     const en = detectForms(diff("y", "-t"), box, "en");
     expect(zh.map((d) => [d.form, d.verdict])).toEqual(en.map((d) => [d.form, d.verdict]));
     expect(all.length).toBe(8);
+  });
+});
+
+describe("student-facing notation: the independent variable is t", () => {
+  it("form names, evidence and caveats are written in t, never in x", () => {
+    const en = detectForms(explicit("t*y"), box, "en");
+    const zh = detectForms(explicit("t*y"), box, "zh");
+    for (const d of [...en, ...zh]) {
+      expect(d.evidence, d.form).not.toMatch(/g\(x|∂N\/∂x|μ\(x\)|dy\/dx|\(x\)/);
+      expect(d.caveat, d.form).not.toMatch(/g\(x|∂N\/∂x|μ\(x\)|dy\/dx|\(x\)/);
+    }
+    expect(en.find((d) => d.form === "separable")!.evidence).toMatch(/g\(t,y\)·g\(t₀,y₀\) = g\(t,y₀\)·g\(t₀,y\)/);
+    expect(en.find((d) => d.form === "autonomous")!.evidence).toMatch(/[Cc]ompared g\(t,y\) with g\(t₀,y\)/);
+    expect(en.find((d) => d.form === "homogeneous")!.evidence).toMatch(/g\(kt,ky\) = g\(t,y\) for k = 0\.5, 1\.7, 2\.3/);
+    expect(en.find((d) => d.form === "bernoulli")!.evidence).toMatch(/g\(t,y\)\/y as a\(t\) \+ b\(t\)/);
+    expect(en.find((d) => d.form === "exact")!.evidence).toMatch(/∂M\/∂y with ∂N\/∂t/);
+    expect(en.find((d) => d.form === "integrating_factor_x")!.evidence).toMatch(/\(∂M\/∂y − ∂N\/∂t\)\/N does not depend on y/);
+    expect(en.find((d) => d.form === "integrating_factor_y")!.evidence).toMatch(/\(∂N\/∂t − ∂M\/∂y\)\/M does not depend on t/);
+    expect(zh.find((d) => d.form === "homogeneous")!.evidence).toMatch(/g\(kt,ky\) = g\(t,y\)，k 取 0\.5、1\.7、2\.3/);
+    expect(zh.find((d) => d.form === "exact")!.evidence).toMatch(/∂M\/∂y 与 ∂N\/∂t/);
+  });
+
+  it("the form names inside the caveats use t", () => {
+    // t*y is not autonomous: the caveat quotes the form name for the 'inconsistent' verdict.
+    expect(one(explicit("t*y"), "autonomous").caveat).toContain("the right-hand side does not depend on t");
+    expect(one(explicit("t*y"), "autonomous", box, "zh").caveat).toContain("右端与 t 无关");
+    expect(one(explicit("t*y"), "separable").caveat).toContain("dy/dt = f(t)·h(y)");
+    expect(one(explicit("t*y"), "linear_in_y").caveat).toContain("dy/dt = P(t)·y + Q(t)");
+    expect(one(explicit("t*y"), "homogeneous").caveat).toContain("g(kt, ky) = g(t, y)");
+    expect(one(explicit("t*y"), "bernoulli").caveat).toContain("dy/dt = P(t)·y + Q(t)·yⁿ");
+    expect(one(diff("y", "-t"), "exact").caveat).toContain("∂M/∂y = ∂N/∂t");
+    expect(one(explicit("t^2 + y^2"), "integrating_factor_x").caveat).toContain("μ(t) depending on t only");
+    expect(one(explicit("t^2 + y^2"), "integrating_factor_x", box, "zh").caveat).toContain("只依赖 t 的积分因子 μ(t)");
+  });
+
+  it("the Bernoulli extras and the no-form note use t", () => {
+    expect(NO_FORM_NOTE.zh).toMatch(/dy\/dt = t² \+ y²/);
+    expect(NO_FORM_NOTE.en).toMatch(/dy\/dt = t² \+ y²/);
+    expect(NO_FORM_NOTE.en).not.toMatch(/dy\/dx/);
+    // y + y^3 + t·y^5: the exponent fitted at each t differs, so the 'differs between t values' sentence appears.
+    // At fixed t, g/y = 1 + y² + t·y⁴ has two power terms, so no single exponent fits: 'at some t'.
+    const twoPowers = one(explicit("y + y^3 + t*y^5"), "bernoulli");
+    expect(twoPowers.evidence).toMatch(/at some t, g\/y cannot be written|differs between t values/);
+    expect(twoPowers.evidence).not.toMatch(/at some x|between x values/);
+  });
+
+  it("x in a first-order equation is a ParseError with code x_in_first_order, straight from detectForms", () => {
+    try {
+      detectForms(explicit("x*y"), box, "en");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ParseError);
+      expect((error as ParseError).code).toBe("x_in_first_order");
+      return;
+    }
+    throw new Error("expected a ParseError");
   });
 });

@@ -28,7 +28,7 @@ export type TrajectoryView = {
 };
 
 export type FirstOrderView = {
-  /** Human-readable equation: "g" for dy/dx = g, or "M dx + N dy = 0". */
+  /** Human-readable equation: "dy/dt = g" for the explicit form, or "(M) dt + (N) dy = 0". */
   expr: string;
   /** The equation itself, so a client can recompute locally (zoom, pan, hover). */
   spec?: FirstOrderSpec;
@@ -41,7 +41,7 @@ export type FirstOrderView = {
   /** Positive statement shown when no standard form was detected. */
   formsNote?: string;
   /**
-   * For exact equations: level curves F(x, y) = C of the potential (the textbook implicit
+   * For exact equations: level curves F(t, y) = C of the potential (the textbook implicit
    * solution), as world-space segments per level, plus the path-independence check result.
    */
   implicit?: { levels: { level: number; segments: [Vec2, Vec2][] }[]; pathDeviation: number };
@@ -55,8 +55,8 @@ export type FirstOrderView = {
 
 /**
  * How the sampled field should be drawn. A first-order equation in differential form has no
- * natural direction (M dx + N dy = 0 and -M dx - N dy = 0 are the same equation), so it is drawn
- * as undirected segments; explicit dy/dx = g and autonomous systems get arrows.
+ * natural direction (M dt + N dy = 0 and -M dt - N dy = 0 are the same equation), so it is drawn
+ * as undirected segments; explicit dy/dt = g and autonomous systems get arrows.
  */
 export type FieldStyle = "arrows" | "segments";
 
@@ -64,7 +64,11 @@ export type Scene = {
   kind: SceneKind;
   /** Language the producing tool was asked for; consumers use it for their own labels. */
   locale?: Locale;
-  /** Normalised system that produced the scene (x' = f, y' = g). */
+  /**
+   * Normalised system that produced the scene (x' = f, y' = g). Carries variables: "ty" for
+   * first-order scenes (t is the horizontal coordinate there); consumers compile it with
+   * compileSystem unchanged.
+   */
   system?: SystemSpec;
   box?: Box;
   /** The box the equilibria / first-order features were computed for, when it differs from `box` (interactive shells recompute after a pause). */
