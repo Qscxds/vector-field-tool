@@ -80,17 +80,23 @@ const FORM_NAME: Record<Locale, Record<OdeForm, string>> = {
     integrating_factor_x: "存在只依赖 t 的积分因子 μ(t)",
     integrating_factor_y: "存在只依赖 y 的积分因子 μ(y)",
   },
+  // English names carry their own article (a / an) so the caveat templates never have to guess it.
   en: {
-    separable: "separable equation dy/dt = f(t)·h(y)",
-    autonomous: "autonomous equation (the right-hand side does not depend on t)",
-    linear_in_y: "linear equation in y, dy/dt = P(t)·y + Q(t)",
-    homogeneous: "homogeneous equation of degree zero, g(kt, ky) = g(t, y)",
-    bernoulli: "Bernoulli equation dy/dt = P(t)·y + Q(t)·yⁿ",
-    exact: "exact equation ∂M/∂y = ∂N/∂t",
-    integrating_factor_x: "integrating factor μ(t) depending on t only",
-    integrating_factor_y: "integrating factor μ(y) depending on y only",
+    separable: "a separable equation dy/dt = f(t)·h(y)",
+    autonomous: "an autonomous equation (the right-hand side does not depend on t)",
+    linear_in_y: "a linear equation in y, dy/dt = P(t)·y + Q(t)",
+    homogeneous: "a homogeneous equation of degree zero, g(kt, ky) = g(t, y)",
+    bernoulli: "a Bernoulli equation dy/dt = P(t)·y + Q(t)·yⁿ",
+    exact: "an exact equation ∂M/∂y = ∂N/∂t",
+    integrating_factor_x: "an integrating factor μ(t) depending on t only",
+    integrating_factor_y: "an integrating factor μ(y) depending on y only",
   },
 };
+
+/** "an exact equation" -> "An exact equation", for a form name that starts a sentence. */
+function capitalize(s: string): string {
+  return s.length ? s[0].toUpperCase() + s.slice(1) : s;
+}
 
 const TESTED: Record<Locale, Record<OdeForm, string>> = {
   zh: {
@@ -160,15 +166,16 @@ function caveatText(locale: Locale, form: OdeForm, verdict: Verdict, samples: nu
         return `无法在这个范围内检验「${FORM_NAME.zh[form]}」：有效采样点不足（值无定义，或舍入误差大到无法分辨阈值 ${t}）。`;
     }
   }
+  const name = FORM_NAME.en[form];
   switch (verdict) {
     case "consistent":
-      return `Numerical evidence, not a proof: the equation is merely consistent with a ${FORM_NAME.en[form]} at ${samples} sample points. An equation that is not of this form can pass if the points happen to be special. Tell students it "behaves numerically like" this form, not that it "is" one.`;
+      return `Numerical evidence, not a proof: the equation is merely consistent with ${name} at ${samples} sample points. An equation that is not of this form can pass if the points happen to be special. Tell students it "behaves numerically like" this form, not that it "is" one.`;
     case "borderline":
-      return `Borderline: the largest deviation from a ${FORM_NAME.en[form]}, ${d}, lies within an order of magnitude of the threshold ${t}. This may be floating-point rounding, or the equation may not strictly be of this form (a tiny perturbation term, for instance). Say that it is a borderline case; do not present it as a yes or a no.`;
+      return `Borderline: the largest deviation from ${name}, ${d}, lies within an order of magnitude of the threshold ${t}. This may be floating-point rounding, or the equation may not strictly be of this form (a tiny perturbation term, for instance). Say that it is a borderline case; do not present it as a yes or a no.`;
     case "inconsistent":
-      return `The deviation from a ${FORM_NAME.en[form]} at the sample points, ${d}, is clearly above the threshold ${t}, so this form is not supported. This too is a numerical statement about sample points only.`;
+      return `The deviation from ${name} at the sample points, ${d}, is clearly above the threshold ${t}, so this form is not supported. This too is a numerical statement about sample points only.`;
     default:
-      return `A ${FORM_NAME.en[form]} cannot be tested on this box: too few usable sample points (undefined values, or rounding too large to resolve the threshold ${t}).`;
+      return `${capitalize(name)} cannot be tested on this box: too few usable sample points (undefined values, or rounding too large to resolve the threshold ${t}).`;
   }
 }
 

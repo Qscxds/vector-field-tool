@@ -395,6 +395,75 @@ describe("detectForms: honesty rules", () => {
   });
 });
 
+describe("English article agreement: the article is part of the form name", () => {
+  // Enough equations to produce every verdict for most forms, and all four verdicts for several.
+  const specs: Array<[FirstOrderSpec, typeof box]> = [
+    [explicit("t*y"), box], // separable, linear consistent; autonomous, homogeneous inconsistent
+    [diff("2*t*y", "t^2 + y^2"), box], // exact consistent; integrating factors trivially consistent
+    [diff("y", "-t"), box], // integrating factors consistent; exact inconsistent
+    [explicit("y*(1-y)"), box], // autonomous, Bernoulli consistent
+    [explicit("t^2 + y^2"), box], // every form inconsistent
+    [explicit("sqrt(-1 - y^2)"), box], // every form untestable
+    [explicit("t*y*(1 + 1e-9*t*y)"), box], // separable borderline
+    [explicit("y + 1e-8*t"), box], // autonomous borderline
+    [explicit("y + 1e-8*y^2"), box], // linear borderline
+    [explicit("y + y^3"), { x: { min: 0.3, max: 3 }, y: { min: -3, max: -0.3 } }], // Bernoulli untestable (no y > 0)
+  ];
+
+  it("no en caveat or evidence string has 'a' before a vowel or 'an' before a consonant", () => {
+    let checked = 0;
+    for (const [spec, b] of specs) {
+      for (const d of detectForms(spec, b, "en")) {
+        for (const text of [d.caveat, d.evidence]) {
+          expect(text, `${d.form} ${d.verdict}: ${text}`).not.toMatch(/\ba [aeiou]/i);
+          expect(text, `${d.form} ${d.verdict}: ${text}`).not.toMatch(/\ban [^aeiou]/i);
+          checked++;
+        }
+      }
+    }
+    expect(checked).toBe(specs.length * ALL_FORMS.length * 2);
+  });
+
+  it("each template uses the name with its own article (hand-written expectations)", () => {
+    // consistent
+    expect(one(diff("2*t*y", "t^2 + y^2"), "exact").caveat).toContain("merely consistent with an exact equation ∂M/∂y = ∂N/∂t at ");
+    expect(one(explicit("y*(1-y)"), "autonomous").caveat).toContain("merely consistent with an autonomous equation (the right-hand side does not depend on t) at ");
+    expect(one(diff("y", "-t"), "integrating_factor_x").caveat).toContain("merely consistent with an integrating factor μ(t) depending on t only at ");
+    expect(one(explicit("t*y"), "separable").caveat).toContain("merely consistent with a separable equation dy/dt = f(t)·h(y) at ");
+    expect(one(explicit("y*(1-y)"), "bernoulli").caveat).toContain("merely consistent with a Bernoulli equation dy/dt = P(t)·y + Q(t)·yⁿ at ");
+    // inconsistent
+    expect(one(explicit("t*y"), "autonomous").caveat).toMatch(/^The deviation from an autonomous equation \(the right-hand side does not depend on t\) at the sample points, /);
+    expect(one(diff("y", "-t"), "exact").caveat).toMatch(/^The deviation from an exact equation ∂M\/∂y = ∂N\/∂t at the sample points, /);
+    expect(one(explicit("t^2 + y^2"), "integrating_factor_y").caveat).toMatch(/^The deviation from an integrating factor μ\(y\) depending on y only at the sample points, /);
+    expect(one(explicit("t^2 + y^2"), "homogeneous").caveat).toMatch(/^The deviation from a homogeneous equation of degree zero, g\(kt, ky\) = g\(t, y\) at the sample points, /);
+    // borderline
+    expect(one(explicit("y + 1e-8*t"), "autonomous").caveat).toMatch(/^Borderline: the largest deviation from an autonomous equation /);
+    expect(one(explicit("t*y*(1 + 1e-9*t*y)"), "separable").caveat).toMatch(/^Borderline: the largest deviation from a separable equation /);
+    expect(one(explicit("y + 1e-8*y^2"), "linear_in_y").caveat).toMatch(/^Borderline: the largest deviation from a linear equation in y, /);
+    // untestable: the name opens the sentence, so its article is capitalized
+    const none = detectForms(explicit("sqrt(-1 - y^2)"), box, "en");
+    const untestable = (form: OdeForm) => none.find((d) => d.form === form)!.caveat;
+    expect(untestable("autonomous")).toMatch(/^An autonomous equation \(the right-hand side does not depend on t\) cannot be tested on this box: /);
+    expect(untestable("exact")).toMatch(/^An exact equation ∂M\/∂y = ∂N\/∂t cannot be tested on this box: /);
+    expect(untestable("integrating_factor_x")).toMatch(/^An integrating factor μ\(t\) depending on t only cannot be tested on this box: /);
+    expect(untestable("integrating_factor_y")).toMatch(/^An integrating factor μ\(y\) depending on y only cannot be tested on this box: /);
+    expect(untestable("separable")).toMatch(/^A separable equation dy\/dt = f\(t\)·h\(y\) cannot be tested on this box: /);
+    expect(untestable("linear_in_y")).toMatch(/^A linear equation in y, dy\/dt = P\(t\)·y \+ Q\(t\) cannot be tested on this box: /);
+    expect(untestable("homogeneous")).toMatch(/^A homogeneous equation of degree zero, g\(kt, ky\) = g\(t, y\) cannot be tested on this box: /);
+    expect(untestable("bernoulli")).toMatch(/^A Bernoulli equation dy\/dt = P\(t\)·y \+ Q\(t\)·yⁿ cannot be tested on this box: /);
+    // no doubled article survives from the old templates
+    for (const d of [...none, ...detectForms(explicit("t*y"), box, "en"), ...detectForms(diff("y", "-t"), box, "en")]) {
+      expect(d.caveat, d.form).not.toMatch(/\b(a|an) (a|an) /i);
+    }
+  });
+
+  it("the Chinese names are untouched", () => {
+    expect(one(explicit("t*y"), "autonomous", box, "zh").caveat).toContain("「自治方程（右端与 t 无关）」");
+    expect(one(explicit("t*y"), "separable", box, "zh").caveat).toContain("「可分离变量方程 dy/dt = f(t)·h(y)」");
+    expect(one(diff("y", "-t"), "exact", box, "zh").caveat).toContain("「恰当方程 ∂M/∂y = ∂N/∂t」");
+  });
+});
+
 describe("student-facing notation: the independent variable is t", () => {
   it("form names, evidence and caveats are written in t, never in x", () => {
     const en = detectForms(explicit("t*y"), box, "en");
