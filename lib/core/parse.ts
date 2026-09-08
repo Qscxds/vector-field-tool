@@ -136,6 +136,18 @@ export type CompileOptions = {
   variables?: VariableMode;
 };
 
+/**
+ * Options of the lower-level validator `parseValidated`. `symbols` REPLACES the mode's variable
+ * set for one specific caller (lib/core/second-order.ts validates in {x, t, xd, xdd}: the
+ * placeholders xd and xdd for x' and x'', and no y); the placeholders are rejected everywhere else
+ * because only that caller passes them. `unknownSymbolMessage` lets such a caller word the
+ * unknown-symbol error in its own notation (return undefined to keep the standard message).
+ */
+export type ValidateOptions = CompileOptions & {
+  symbols?: readonly string[];
+  unknownSymbolMessage?: (name: string) => string | undefined;
+};
+
 export interface CompiledSystem {
   /** Evaluates (f, g) at a point; `t` defaults to 0 for autonomous use. Never throws. */
   eval(p: Vec2, t?: number): Vec2;
@@ -175,7 +187,7 @@ function isXSymbol(name: string, mode: VariableMode): boolean {
   return mode === "ty" && /^[xyt]*x[xyt]*$/.test(name);
 }
 
-function parseChecked(expr: string, paramNames: string[], mode: VariableMode): MathNode {
+function parseChecked(expr: string, paramNames: string[], mode: VariableMode, opts: ValidateOptions = {}): MathNode {
   if (typeof expr !== "string" || expr.trim() === "") {
     throw new ParseError(expr, "Expression is empty.");
   }
@@ -192,7 +204,7 @@ function parseChecked(expr: string, paramNames: string[], mode: VariableMode): M
     const error = toParseError(expr, cause, "Could not parse expression");
     throw new ParseError(expr, withComparisonHint(expr, error.message));
   }
-  const allowedSymbols = new Set([...MODE_VARIABLES[mode], ...ALLOWED_CONSTANTS, ...paramNames]);
+  const allowedSymbols = new Set([...(opts.symbols ?? MODE_VARIABLES[mode]), ...ALLOWED_CONSTANTS, ...paramNames]);
 
   try {
     node.traverse((n: MathNode, path: string | null, parent: MathNode | null) => {
@@ -210,7 +222,7 @@ function parseChecked(expr: string, paramNames: string[], mode: VariableMode): M
         if (path === "fn" && parent !== null && math.isFunctionNode(parent)) return;
         if (!allowedSymbols.has(n.name)) {
           if (isXSymbol(n.name, mode)) throw new ParseError(expr, X_IN_FIRST_ORDER_MESSAGE, "x_in_first_order");
-          throw new ParseError(expr, unknownSymbolMessage(n.name, paramNames, mode));
+          throw new ParseError(expr, opts.unknownSymbolMessage?.(n.name) ?? unknownSymbolMessage(n.name, paramNames, mode));
         }
       } else if (math.isFunctionNode(n)) {
         const fn = n.fn;
@@ -283,20 +295,34 @@ function toNumber(value: unknown): number {
 }
 
 /**
- * Compiles a scalar expression into a fast evaluator of a kernel point {x, y}.
- * - "xy" (default): symbols x, y and the time t; the evaluator's second argument is t.
- * - "ty": symbols t and y only; t is bound to p.x (the horizontal coordinate), y to p.y, and the
- *   time argument is ignored. x is not in the scope at all, so a stray x can never evaluate.
- * In both modes the returned function never throws.
+ * The mathjs instance behind the parser, for callers that work on the AST itself (lib/core/second-order.ts
+ * substitutes symbols and simplifies). Never hand user text to its `evaluate`; go through
+ * `parseValidated` / `compileScalar`.
  */
-export function compileScalar(
+export const mathjs = math;
+
+/**
+ * Validates parameters and the expression against the whitelist and returns the AST (the first
+ * half of compileScalar). Throws ParseError. Exported for lib/core/second-order.ts, which needs the
+ * validated AST of an equation in its placeholder symbols before it can build the reduced system.
+ */
+export function parseValidated(expr: string, params?: Record<string, number>, opts: ValidateOptions = {}): MathNode {
+  const mode: VariableMode = opts.variables ?? "xy";
+  const paramNames = validateParams(expr, params);
+  return parseChecked(expr, paramNames, mode, opts);
+}
+
+/**
+ * Compiles an already validated AST into an evaluator (the second half of compileScalar). `expr`
+ * is only used to label a compile failure. The AST must use the mode's symbols only.
+ */
+export function compileNode(
   expr: string,
+  node: MathNode,
   params?: Record<string, number>,
   opts: CompileOptions = {},
 ): (p: Vec2, t?: number) => number {
   const mode: VariableMode = opts.variables ?? "xy";
-  const paramNames = validateParams(expr, params);
-  const node = parseChecked(expr, paramNames, mode);
   let code: { evaluate: (scope: Scope) => unknown };
   try {
     code = node.compile();
@@ -326,6 +352,21 @@ export function compileScalar(
       return NaN;
     }
   };
+}
+
+/**
+ * Compiles a scalar expression into a fast evaluator of a kernel point {x, y}.
+ * - "xy" (default): symbols x, y and the time t; the evaluator's second argument is t.
+ * - "ty": symbols t and y only; t is bound to p.x (the horizontal coordinate), y to p.y, and the
+ *   time argument is ignored. x is not in the scope at all, so a stray x can never evaluate.
+ * In both modes the returned function never throws.
+ */
+export function compileScalar(
+  expr: string,
+  params?: Record<string, number>,
+  opts: CompileOptions = {},
+): (p: Vec2, t?: number) => number {
+  return compileNode(expr, parseValidated(expr, params, opts), params, opts);
 }
 
 /** Compiles a planar system; both expressions share the parameter set and the variable mode. */
