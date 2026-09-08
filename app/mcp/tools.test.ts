@@ -452,6 +452,32 @@ describe("analyze_second_order", () => {
     expect(r.text).toMatch(/equation/);
   });
 
+  it("x'' = -x + sin(t): the reduced system is non-autonomous, so the shared time-dependence branch runs before any equilibrium search and t selects the snapshot", async () => {
+    // x' = y, y' = sin(t) - x: identical to the analyze_system case above, so the same derivation
+    // applies (relative deviation at least 0.1975 on the default box). The reduction line still
+    // comes first; then the snapshot note; no equilibrium, classification or eigenvalue is claimed.
+    const at0 = await call("analyze_second_order", { equation: "x'' = -x + sin(t)", density: 5, locale: "en" });
+    expect(at0.isError).toBeFalsy();
+    expect(at0.scene.secondOrder?.equation).toBe("x'' = -x + sin(t)");
+    expect(at0.scene.equilibria).toBeUndefined();
+    expect(at0.scene.timeDependent?.snapshotT).toBe(0);
+    expect(at0.scene.timeDependent!.maxRelDeviation).toBeGreaterThan(0.19);
+    expect(at0.text.startsWith("Second-order equation x'' = -x + sin(t): with y = x' it becomes the system x' = y, y' = ")).toBe(true);
+    expect(at0.text).toContain(labels("en").tool.timeDependent.slice(0, 20));
+    expect(at0.text).not.toMatch(/\n1\. /);
+    expect(at0.text).not.toMatch(/eigenvalue/i);
+    const at15 = await call("analyze_second_order", { equation: "x'' = -x + sin(t)", density: 5, t: 1.5, locale: "en" });
+    expect(at15.scene.timeDependent).toEqual({ snapshotT: 1.5, maxRelDeviation: at0.scene.timeDependent!.maxRelDeviation });
+    expect(at15.text).toContain("t = 1.5");
+    const a = at0.scene.field!.samples, b = at15.scene.field!.samples;
+    expect(a).toHaveLength(25);
+    for (let i = 0; i < a.length; i++) {
+      expect(b[i].at).toEqual(a[i].at);
+      expect(b[i].v.x).toBe(a[i].v.x); // f = y does not depend on t
+      expect(b[i].v.y - a[i].v.y).toBeCloseTo(Math.sin(1.5), 12);
+    }
+  });
+
   it("describes itself: when to use it, the notation, and that it shows the reduction", async () => {
     const { tools } = await client.listTools();
     const t = tools.find((t) => t.name === "analyze_second_order")!;
