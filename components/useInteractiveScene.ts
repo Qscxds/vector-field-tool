@@ -4,15 +4,22 @@
  * The interaction model shared by the web shell and the MCP widget: a viewport over a "home" box
  * (equal-scale by default; `equalScale: false` fills the canvas with the box as entered),
  * cursor-anchored wheel zoom, drag pan, double-click reset, the field re-sampled for
- * every view, equilibria / first-order features recomputed for the visible box after a pause, a
- * hover preview of the solution through the cursor (rAF-throttled, step-budgeted, skipped near
- * singular points) and click-to-keep trajectories. All mathematics goes through lib/interactive.
+ * every view, equilibria / first-order features recomputed after a pause, a hover preview of the
+ * solution through the cursor (rAF-throttled, step-budgeted, skipped near singular points) and
+ * click-to-keep trajectories. All mathematics goes through lib/interactive.
+ *
+ * Features box rule: at the HOME view (view === null, not zoomed or panned) the features are
+ * computed for the home box, the entered range, in BOTH equal-scale modes, so flipping the toggle
+ * or opening the same link on a canvas of another aspect ratio never changes which equilibria /
+ * constant solutions / forms are listed; the equal-scale margin only carries field arrows. After a
+ * zoom or pan the features box is the visible box (after FEATURE_DEBOUNCE_MS). Scene.featuresBox
+ * carries the box used, so the shells' "computed for the range ..." line stays exact.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledSystem } from "@/lib/core/parse";
 import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
-import { computeFeatures, FEATURE_DEBOUNCE_MS, HOVER_PIXEL_THRESHOLD, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features } from "@/lib/interactive";
+import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features } from "@/lib/interactive";
 import { labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
@@ -100,13 +107,22 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
 
   const [featureBox, setFeatureBox] = useState<Box | null>(null);
   const viewBoxKey = viewport ? JSON.stringify(viewport.box) : "";
+  // Home view (view === null): the entered range, at once. Zoomed or panned: the visible box, after
+  // a pause. (homeBox can be null for one render while a compile error resets the view.)
+  const targetFeatureBox = viewport ? (view === null && homeBox ? featuresBoxFor(homeBox, viewport.box, true) : viewport.box) : null;
+  const targetFeatureBoxKey = targetFeatureBox ? JSON.stringify(targetFeatureBox) : "";
   useEffect(() => {
-    if (!viewport) return;
-    const id = setTimeout(() => setFeatureBox(viewport.box), view ? FEATURE_DEBOUNCE_MS : 0);
+    if (!targetFeatureBox) return;
+    const id = setTimeout(
+      // Same box as before (the equal-scale toggle at the home view): keep the reference, so the
+      // memoized features are not recomputed for an identical range.
+      () => setFeatureBox((prev) => (prev && JSON.stringify(prev) === targetFeatureBoxKey ? prev : targetFeatureBox)),
+      view ? FEATURE_DEBOUNCE_MS : 0,
+    );
     return () => clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewBoxKey]);
-  const effectiveFeatureBox = featureBox ?? viewport?.box ?? null;
+  }, [viewBoxKey, targetFeatureBoxKey]);
+  const effectiveFeatureBox = featureBox ?? targetFeatureBox;
   const features = useMemo<Features>(
     () => (withFeatures && sys && effectiveFeatureBox ? computeFeatures(sys, firstOrder, effectiveFeatureBox, locale) : {}),
     [withFeatures, sys, firstOrder, effectiveFeatureBox, locale],

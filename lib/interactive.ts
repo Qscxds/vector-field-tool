@@ -49,6 +49,17 @@ export const SINGULAR_PIXEL_RADIUS = 8;
 export const FEATURE_DEBOUNCE_MS = 250;
 
 /**
+ * The box the features (equilibria, constant solutions, singular points, forms, level curves) are
+ * computed for. At the HOME view (not zoomed or panned) it is the entered range itself, in both
+ * equal-scale modes: the equal-scale margin only carries field arrows, so flipping the toggle, or
+ * viewing the same link on a canvas of another aspect ratio (phone vs desktop), never changes
+ * which features are listed. After a zoom or pan it is the visible box.
+ */
+export function featuresBoxFor(homeBox: Box, visibleBox: Box, atHome: boolean): Box {
+  return atHome ? homeBox : visibleBox;
+}
+
+/**
  * Equilibria (systems) or constant solutions / singular points / forms / implicit curves (first
  * order) inside `box`. Never throws: a failure inside the kernel yields no features rather than a
  * broken page.

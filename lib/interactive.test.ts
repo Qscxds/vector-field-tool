@@ -5,6 +5,7 @@ import type { Vec2 } from "./core/types";
 import {
   computeFeatures,
   expandBox,
+  featuresBoxFor,
   fixedStopBox,
   HOVER_DIAGONALS,
   HOVER_STEP_CAP,
@@ -14,7 +15,7 @@ import {
   traceFixed,
   tracePreview,
 } from "./interactive";
-import { fitViewport, zoomAt } from "./render/viewport";
+import { fitViewport, panBy, zoomAt } from "./render/viewport";
 import type { TrajectoryView } from "./scene";
 
 const box = { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } };
@@ -45,6 +46,39 @@ describe("computeFeatures", () => {
     expect(computeFeatures(sys, spec, b, "en").firstOrder?.formsNote).toMatch(/Riccati/);
     expect(computeFeatures(sys, spec, b, "zh").firstOrder?.formsNote).toMatch(/Riccati/);
     expect(computeFeatures(sys, spec, b, "zh").firstOrder?.formsNote).not.toBe(computeFeatures(sys, spec, b, "en").firstOrder?.formsNote);
+  });
+});
+
+describe("the features box at the home view is the entered range, whatever the canvas shows", () => {
+  const home = { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } };
+
+  it("equilibria sitting in the equal-scale margin are not listed at the home view", () => {
+    // A 720 x 520 canvas over the 4 x 4 box gives 130 px/unit, so the visible box is 720/130 = 5.538
+    // wide: x in [-2.769, 2.769]. x' = x² - 6.25, y' = -y has its equilibria at (±2.5, 0), inside
+    // that margin but outside the entered range. At the home view they must not appear, in either
+    // equal-scale mode and on a phone-shaped canvas (whose margin is in y) alike.
+    const desktop = fitViewport(home, 720, 520);
+    expect(desktop.box.x.max).toBeCloseTo(720 / 130 / 2, 9);
+    expect(desktop.box.y.max).toBeCloseTo(2, 12);
+    const phone = fitViewport(home, 375, 812);
+    expect(phone.box.y.max).toBeCloseTo(812 / 93.75 / 2, 9);
+    const filled = fitViewport(home, 720, 520, { equalScale: false });
+    for (const vp of [desktop, phone, filled]) expect(featuresBoxFor(home, vp.box, true)).toEqual(home);
+
+    const sys = compileSystem({ f: "x^2 - 6.25", g: "-y" });
+    expect(computeFeatures(sys, null, featuresBoxFor(home, desktop.box, true), "en").equilibria).toHaveLength(0);
+    // the same margin box, used directly, would have listed both: that is the difference the rule makes
+    const inMargin = computeFeatures(sys, null, desktop.box, "en").equilibria!;
+    expect(inMargin.map((e) => Math.round(e.at.x * 1e6) / 1e6).sort((a, b) => a - b)).toEqual([-2.5, 2.5]);
+  });
+
+  it("after a zoom or a pan the features box is the visible box", () => {
+    const vp = fitViewport(home, 720, 520);
+    const zoomed = zoomAt(vp, { x: 360, y: 260 }, 2, { original: home });
+    expect(featuresBoxFor(home, zoomed.box, false)).toEqual(zoomed.box);
+    expect(featuresBoxFor(home, zoomed.box, false)).not.toEqual(home);
+    const panned = panBy(vp, 100, 0);
+    expect(featuresBoxFor(home, panned.box, false)).toEqual(panned.box);
   });
 });
 

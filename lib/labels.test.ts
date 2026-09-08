@@ -77,6 +77,15 @@ describe("label tables", () => {
     for (const locale of LOCALES) expect(LABELS[locale].ui.lhsInExpression, locale).toMatch(/dy\/dt/);
   });
 
+  it("the features-box sentence names both the entered range (home view) and the visible range (after zoom/pan)", () => {
+    expect(LABELS.zh.ui.featuresBox).toMatch(/输入范围/);
+    expect(LABELS.zh.ui.featuresBox).toMatch(/可见范围/);
+    expect(LABELS.zh.ui.featuresBox).not.toMatch(/当前可见范围/);
+    expect(LABELS.en.ui.featuresBox).toMatch(/entered range at the home view/);
+    expect(LABELS.en.ui.featuresBox).toMatch(/visible range after zooming or panning/);
+    expect(LABELS.en.ui.featuresBox).not.toMatch(/computed for the visible range/);
+  });
+
   it("caveats read as full sentences in both languages", () => {
     for (const locale of LOCALES) {
       for (const text of Object.values(labels(locale).caveat)) {
