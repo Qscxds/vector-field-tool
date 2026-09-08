@@ -37,6 +37,15 @@ const EXPRESSION_RULES =
   'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
   'A piecewise right-hand side may use comparisons and a conditional, e.g. "x > 0 ? 1 : -1".';
 
+/** analyze_first_order only: the student's independent variable is t, and there is no separate time. */
+const FIRST_ORDER_EXPRESSION_RULES =
+  'Expression syntax: the only variables are t (the independent variable) and y (the unknown function); ' +
+  'there is no separate time variable, and x is rejected (write t instead). Enter only the right-hand side, ' +
+  'never "dy/dt =". Write multiplication explicitly: t*y, not ty (2*t and 2t are both fine). Powers use ^, e.g. t^2. ' +
+  'Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; ' +
+  'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
+  'A piecewise right-hand side may use comparisons and a conditional, e.g. "t > 0 ? 1 : -1".';
+
 const NEVER_COMPUTE =
   'Do NOT compute any of this yourself: no mental arithmetic, no estimating eigenvalues, equilibria, ' +
   'stability or trajectories from memory. Always call this tool and report exactly what it returns. ' +
@@ -45,6 +54,10 @@ const NEVER_COMPUTE =
 
 const BOX_RULES =
   'The viewing box (xMin, xMax, yMin, yMax) must have xMin < xMax and yMin < yMax; defaults are -3..3.';
+
+const FIRST_ORDER_BOX_RULES =
+  'The viewing box must have xMin < xMax and yMin < yMax; defaults are -3..3. xMin and xMax are the t range ' +
+  '(horizontal axis), yMin and yMax the y range.';
 
 const LOCALE_RULE =
   "`locale` is REQUIRED (the call fails without it): set it from the language the student writes in, 'zh' when the question is in Chinese, 'en' for every other language.";
@@ -62,6 +75,13 @@ const boxShape = {
   xMax: coordinate.default(3).describe("Right edge of the viewing box."),
   yMin: coordinate.default(-3).describe("Bottom edge of the viewing box."),
   yMax: coordinate.default(3).describe("Top edge of the viewing box."),
+};
+/** Same keys, defaults and types as boxShape (no aliases): only the descriptions speak of t. */
+const firstOrderBoxShape = {
+  xMin: coordinate.default(-3).describe("Left end of the t range (horizontal axis)."),
+  xMax: coordinate.default(3).describe("Right end of the t range (horizontal axis)."),
+  yMin: coordinate.default(-3).describe("Bottom of the y range."),
+  yMax: coordinate.default(3).describe("Top of the y range."),
 };
 const density = z
   .number()
@@ -118,18 +138,21 @@ function compileOrExplain(spec: SystemSpec) {
 }
 
 function compileOrExplainFirstOrder(spec: FirstOrderSpec, systemSpec: SystemSpec) {
-  // Compile M and N separately first so a parse error is attributed to the field that has it
-  // (the system form wraps M as -(M), and N's text may contain M's).
+  // Differential form: compile M and N separately first so a parse error is attributed to the field
+  // that has it (the system form wraps M as -(M), and N's text may contain M's). Explicit form: the
+  // system compiles g verbatim, so the kernel's left-hand-side check sees exactly what the student
+  // typed; the differential form would wrap it as -(g) and turn a pasted "dy/dt =" into a generic
+  // syntax error.
   try {
-    compileDifferential(spec);
+    if (spec.kind === "differential") compileDifferential(spec);
+    return compileSystem(systemSpec);
   } catch (error) {
     if (error instanceof ParseError) {
-      const which = spec.kind === "explicit" ? "g (the right-hand side of dy/dx)" : error.expr === spec.N ? "N" : "M";
+      const which = spec.kind === "explicit" ? "g (the right-hand side of dy/dt)" : error.expr === spec.N ? "N" : "M";
       throw new ToolInputError(`Cannot parse ${which}: ${error.message}`);
     }
     throw error;
   }
-  return compileSystem(systemSpec);
 }
 
 /** Uniformly thins a polyline to at most `max` points, always keeping the last one. */
@@ -265,7 +288,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "sampled vector field for drawing the phase portrait. " +
         "USE THIS whenever a student asks about equilibria, fixed points, stability, the phase portrait, the type " +
         "of a critical point, eigenvalues of the linearization, or long-term behavior of a 2D autonomous system. " +
-        "For a single first-order equation dy/dx = g(x, y) use analyze_first_order instead. " +
+        "For a single first-order equation dy/dt = g(t, y) use analyze_first_order instead. " +
         EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
@@ -403,16 +426,16 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     server,
     "analyze_first_order",
     {
-      title: "Analyze a first-order equation (dy/dx = g, or M dx + N dy = 0)",
+      title: "Analyze a first-order equation (dy/dt = g(t, y), or M dt + N dy = 0)",
       description:
-        "For a single first-order ODE, given either explicitly as dy/dx = g(x, y) (parameter `expr`) or in " +
-        "differential form M(x, y) dx + N(x, y) dy = 0 (parameters `M` and `N`, the natural form of exact " +
+        "For a single first-order ODE, given either explicitly as dy/dt = g(t, y) (parameter `expr`) or in " +
+        "differential form M(t, y) dt + N(t, y) dy = 0 (parameters `M` and `N`, the natural form of exact " +
         "equations). Returns: the slope/direction field inside the viewing box (undirected segments for the " +
         "differential form, which has no natural direction); constant solutions y = c with their stability " +
-        "(stable / unstable / semi-stable / varies with x); points where the direction is undefined (M = N = 0); " +
+        "(stable / unstable / semi-stable / varies with t); points where the direction is undefined (M = N = 0); " +
         "a list of standard forms the equation is NUMERICALLY CONSISTENT WITH (separable, autonomous, linear in y, " +
-        "homogeneous, Bernoulli, exact, integrating factor in x or y), each with its evidence and a caveat; and, " +
-        "for exact equations, the implicit solution F(x, y) = C drawn as level curves. " +
+        "homogeneous, Bernoulli, exact, integrating factor in t or y), each with its evidence and a caveat; and, " +
+        "for exact equations, the implicit solution F(t, y) = C drawn as level curves. " +
         "USE THIS whenever a student has ONE equation with a single unknown function: logistic growth, Newton " +
         "cooling, separable or linear equations, exact equations, slope fields, isoclines, equilibrium " +
         "solutions, 'what method solves this'. For a system of two equations use analyze_system. " +
@@ -420,16 +443,16 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "When you relay them, keep the uncertainty: say the equation 'behaves numerically like a separable " +
         "equation', never 'is a separable equation', and pass the caveat on. An empty list is not a failure: it " +
         "means no standard elementary method was detected, while the slope field and numerical solutions remain " +
-        "fully valid (many important equations, e.g. Riccati dy/dx = x^2 + y^2, have no closed form). " +
-        "Variables: y is the unknown function, x the independent variable. Provide exactly one of `expr` or the " +
-        "pair `M`, `N`. " +
-        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        "fully valid (many important equations, e.g. Riccati dy/dt = t^2 + y^2, have no closed form). " +
+        "Variables: y is the unknown function, t the independent variable (write t, never x; x is rejected). " +
+        "Provide exactly one of `expr` or the pair `M`, `N`. " +
+        FIRST_ORDER_EXPRESSION_RULES + " " + FIRST_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
-        expr: expression.optional().describe("Right-hand side g(x, y) of dy/dx = g(x, y). Omit when giving M and N."),
-        M: expression.optional().describe("M(x, y) in M dx + N dy = 0. Requires N."),
-        N: expression.optional().describe("N(x, y) in M dx + N dy = 0. Requires M."),
+        expr: expression.optional().describe("Right-hand side g(t, y) of dy/dt = g(t, y). The independent variable is t; x is rejected. Omit when giving M and N."),
+        M: expression.optional().describe("M(t, y) in M(t, y) dt + N(t, y) dy = 0. Variables t and y only. Requires N."),
+        N: expression.optional().describe("N(t, y) in M(t, y) dt + N(t, y) dy = 0. Variables t and y only. Requires M."),
         params: paramsSchema,
-        ...boxShape,
+        ...firstOrderBoxShape,
         density,
         locale: localeSchema,
       },
@@ -444,7 +467,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const hasExpr = typeof input.expr === "string";
         const hasMN = typeof input.M === "string" || typeof input.N === "string";
         if (hasExpr === hasMN) {
-          throw new ToolInputError("Provide exactly one form: either `expr` (dy/dx = g) or both `M` and `N` (M dx + N dy = 0).");
+          throw new ToolInputError("Provide exactly one form: either `expr` (dy/dt = g(t, y)) or both `M` and `N` (M dt + N dy = 0).");
         }
         if (hasMN && !(typeof input.M === "string" && typeof input.N === "string")) {
           throw new ToolInputError("The differential form needs both `M` and `N`.");
@@ -456,12 +479,12 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           : input.params
             ? { kind: "differential", M: input.M as string, N: input.N as string, params: input.params }
             : { kind: "differential", M: input.M as string, N: input.N as string };
-        const equationText = spec.kind === "explicit" ? `dy/dx = ${spec.g}` : `(${spec.M}) dx + (${spec.N}) dy = 0`;
+        const equationText = spec.kind === "explicit" ? `dy/dt = ${spec.g}` : `(${spec.M}) dt + (${spec.N}) dy = 0`;
 
         const systemSpec = toSystem(spec);
         const sys = compileOrExplainFirstOrder(spec, systemSpec);
         const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
-        const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x, checkpoint });
+        const eq = firstOrderEquilibria(spec, box.y, { tRange: box.x, checkpoint });
         const singular = firstOrderSingularities(spec, box, { checkpoint });
         const forms = detectForms(spec, box, locale, { checkpoint });
         const reported = reportedForms(forms);

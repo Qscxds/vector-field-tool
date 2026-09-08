@@ -55,7 +55,8 @@ describe("tools/list", () => {
     for (const t of tools.filter((t) => t.name !== "ping")) {
       expect(t.description).toMatch(/USE THIS/);
       expect(t.description).toMatch(/Do NOT compute/);
-      expect(t.description).toMatch(/x\*y/);
+      // the planar tools write x*y; the first-order tool has no x at all and writes t*y
+      expect(t.description).toMatch(t.name === "analyze_first_order" ? /t\*y/ : /x\*y/);
       expect(t.description).toMatch(/caveat/);
       expect(t.description).toMatch(/'zh' when the question is in Chinese/);
       expect(t.description).toMatch(/REQUIRED/);
@@ -64,6 +65,25 @@ describe("tools/list", () => {
       expect(props.locale?.default).toBeUndefined();
       expect(t.inputSchema.required).toContain("locale");
     }
+  });
+
+  it("analyze_first_order speaks the student's notation dy/dt = g(t, y) and never dy/dx", async () => {
+    const { tools } = await client.listTools();
+    const t = tools.find((t) => t.name === "analyze_first_order")!;
+    expect(t.description).toMatch(/dy\/dt = g\(t, y\)/);
+    expect(t.description).toMatch(/M\(t, y\) dt \+ N\(t, y\) dy = 0/);
+    expect(t.description).toMatch(/x is rejected/);
+    expect(t.description).not.toMatch(/dy\/dx|\(x, y\)|M dx/);
+    const props = t.inputSchema.properties as Record<string, { description?: string }>;
+    // parameter NAMES are unchanged (no aliases); only their descriptions say t
+    expect(Object.keys(props).sort()).toEqual(["M", "N", "density", "expr", "locale", "params", "xMin", "xMax", "yMin", "yMax"].sort());
+    expect(props.xMin.description).toMatch(/t range/);
+    expect(props.xMax.description).toMatch(/t range/);
+    expect(props.expr.description).toMatch(/dy\/dt = g\(t, y\)/);
+    expect(props.M.description).toMatch(/M\(t, y\)/);
+    expect(props.N.description).toMatch(/N\(t, y\)/);
+    const planar = tools.find((t) => t.name === "analyze_system")!;
+    expect(planar.description).not.toMatch(/dy\/dx/);
   });
 
   it("keeps the widget resource registered and links every tool to it", async () => {
@@ -109,7 +129,7 @@ describe("cost controls", () => {
   });
 
   it("the expression length cap applies to M and N as well as to f, g and expr", async () => {
-    const long = "x+".repeat(101) + "1"; // 203 characters
+    const long = "t+".repeat(101) + "1"; // 203 characters
     for (const [name, args, field] of [
       ["analyze_first_order", { M: long, N: "y" }, "M"],
       ["analyze_first_order", { M: "t", N: long }, "N"],
@@ -124,7 +144,7 @@ describe("cost controls", () => {
   });
 
   it("a transcendental textbook exact equation (Zill §2.4 Ex. 3) finishes inside the budget at default parameters (review C9)", async () => {
-    // (e^{2y} - y cos xy) dx + (2x e^{2y} - x cos xy + 2y) dy = 0: ∂M/∂y = 2e^{2y} - cos xy + xy sin xy = ∂N/∂x.
+    // (e^{2y} - y cos ty) dt + (2t e^{2y} - t cos ty + 2y) dy = 0: ∂M/∂y = 2e^{2y} - cos ty + ty sin ty = ∂N/∂t.
     const t0 = performance.now();
     const r = await call("analyze_first_order", { M: "exp(2*y) - y*cos(t*y)", N: "2*t*exp(2*y) - t*cos(t*y) + 2*y", locale: "en" });
     const elapsed = performance.now() - t0;
@@ -197,6 +217,8 @@ describe("locale", () => {
 
   it("English first-order summary uses the English tables and note", async () => {
     const logistic = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 });
+    expect(logistic.text).toMatch(/^Equation dy\/dt = y\*\(1-y\); viewing box t ∈ \[-3, 3\], y ∈ \[-1, 2\]\./);
+    expect(logistic.text).not.toMatch(/x ∈ \[/);
     expect(logistic.text).toContain("Constant solution y = 1: stable");
     expect(logistic.text).toContain("Numerically behaves like a separable equation");
     const riccati = await call("analyze_first_order", { expr: "t^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3 });
@@ -361,6 +383,8 @@ describe("analyze_first_order", () => {
     expect(r.scene.system).toEqual({ f: "1", g: "y*(1-y)", variables: "ty" });
     expect(r.scene.fieldStyle).toBe("arrows");
     expect(r.scene.firstOrder?.spec).toEqual({ kind: "explicit", g: "y*(1-y)" });
+    expect(r.scene.firstOrder?.expr).toBe("dy/dt = y*(1-y)");
+    expect(r.text).toMatch(/^方程 dy\/dt = y\*\(1-y\)，观察范围 t∈\[-3, 3\]，y∈\[-1, 2\]。/);
     expect(r.scene.firstOrder?.autonomous).toBe(true);
     const ys = r.scene.firstOrder!.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability]);
     expect(ys).toEqual([[0, "unstable"], [1, "stable"]]);
@@ -386,15 +410,17 @@ describe("analyze_first_order", () => {
   it("says when there are no constant solutions", async () => {
     const r = await call("analyze_first_order", { expr: "t - y", locale: "zh" });
     expect(r.scene.firstOrder?.solutions).toEqual([]);
-    expect(r.text).toContain("没有常数解");
+    expect(r.text).toContain("没有常数解（右端依赖 t；");
   });
 
-  it("accepts the differential form: y dx - x dy = 0 has undirected segments and a singular origin", async () => {
+  it("accepts the differential form: y dt - t dy = 0 has undirected segments and a singular origin", async () => {
     const r = await call("analyze_first_order", { M: "y", N: "-t", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.fieldStyle).toBe("segments");
     expect(r.scene.system).toEqual({ f: "-t", g: "-(y)", variables: "ty" });
     expect(r.scene.firstOrder?.spec).toEqual({ kind: "differential", M: "y", N: "-t" });
+    expect(r.scene.firstOrder?.expr).toBe("(y) dt + (-t) dy = 0");
+    expect(r.text).toMatch(/^方程 \(y\) dt \+ \(-t\) dy = 0，观察范围 t∈\[-2, 2\]，y∈\[-2, 2\]。/);
     const sing = r.scene.firstOrder!.singularities!;
     expect(sing).toHaveLength(1);
     expect(Math.hypot(sing[0].x, sing[0].y)).toBeLessThan(1e-6);
@@ -405,7 +431,7 @@ describe("analyze_first_order", () => {
     expect(forms).not.toContain("exact");
   });
 
-  it("draws the implicit solution of an exact equation: 2xy dx + (x² + y²) dy = 0", async () => {
+  it("draws the implicit solution of an exact equation: 2ty dt + (t² + y²) dy = 0", async () => {
     const r = await call("analyze_first_order", { M: "2*t*y", N: "t^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.firstOrder!.forms!.filter((f) => f.verdict === "consistent").map((f) => f.form)).toContain("exact");
@@ -414,7 +440,8 @@ describe("analyze_first_order", () => {
     expect(implicit.pathDeviation).toBeLessThan(1e-9);
     expect(implicit.levels.length).toBeGreaterThan(3);
     expect(implicit.levels.some((l) => l.segments.length > 0)).toBe(true);
-    // every contour point really lies on its level of F = x²y + y³/3 (up to the base constant)
+    // every contour point really lies on its level of F = t²y + y³/3 (up to the base constant); the
+    // helper reads the kernel Vec2 field p.x, which IS the student's t
     const F = (p: { x: number; y: number }) => p.x * p.x * p.y + (p.y * p.y * p.y) / 3;
     for (const { level, segments } of implicit.levels) {
       for (const [a] of segments.slice(0, 20)) {
@@ -434,8 +461,8 @@ describe("analyze_first_order", () => {
     expect(r.text).toContain("未通过检验的形式");
   });
 
-  it("closed but not exact: (x dy - y dx)/(x² + y²) passes the exactness probe but fails the path check, and says so", async () => {
-    // M = -y/(x²+y²), N = x/(x²+y²): ∂M/∂y = ∂N/∂x = (y² - x²)/(x²+y²)² everywhere except the
+  it("closed but not exact: (t dy - y dt)/(t² + y²) passes the exactness probe but fails the path check, and says so", async () => {
+    // M = -y/(t²+y²), N = t/(t²+y²): ∂M/∂y = ∂N/∂t = (y² - t²)/(t²+y²)² everywhere except the
     // origin, so the local criterion holds; but the form is dθ, whose integral around the origin is
     // 2π, so a potential on a box containing the origin cannot exist: the two integration paths
     // disagree wherever they wind differently around the origin.
@@ -467,6 +494,40 @@ describe("analyze_first_order", () => {
   it("explains parse errors", async () => {
     const r = await call("analyze_first_order", { expr: "y +" });
     expect(r.isError).toBe(true);
-    expect(r.text).toMatch(/Cannot parse/);
+    expect(r.text).toMatch(/Cannot parse g \(the right-hand side of dy\/dt\)/);
+  });
+
+  it("rejects x in a first-order equation with the t-instead-of-x hint, attributed to the field that has it", async () => {
+    const g = await call("analyze_first_order", { expr: "x^2 + y^2" });
+    expect(g.isError).toBe(true);
+    expect(g.text).toMatch(/Cannot parse g \(the right-hand side of dy\/dt\)/);
+    expect(g.text).toContain("the independent variable is t");
+    expect(g.text).toContain("write t instead of x");
+    const m = await call("analyze_first_order", { M: "x", N: "y" });
+    expect(m.isError).toBe(true);
+    expect(m.text).toMatch(/Cannot parse M/);
+    expect(m.text).toContain("write t instead of x");
+    const n = await call("analyze_first_order", { M: "t", N: "x*y" });
+    expect(n.text).toMatch(/Cannot parse N/);
+    expect(n.text).toContain("write t instead of x");
+  });
+
+  it("a pasted left-hand side is refused with the right-hand-side hint; dy/dx also gets the t sentence", async () => {
+    const dx = await call("analyze_first_order", { expr: "dy/dx = t*y" });
+    expect(dx.isError).toBe(true);
+    expect(dx.text).toContain("Enter only the right-hand side");
+    expect(dx.text).toContain("write t instead of x");
+    for (const expr of ["dy/dt = t*y", "y' = y", "y = t"]) {
+      const r = await call("analyze_first_order", { expr });
+      expect(r.isError, expr).toBe(true);
+      expect(r.text, expr).toContain("Enter only the right-hand side");
+      expect(r.text, expr).not.toContain("write t instead of x");
+    }
+  });
+
+  it("function names containing the letter x are still fine in t mode", async () => {
+    const r = await call("analyze_first_order", { expr: "exp(t) + max(t, y)", xMin: -1, xMax: 1, yMin: -1, yMax: 1 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.system).toEqual({ f: "1", g: "exp(t) + max(t, y)", variables: "ty" });
   });
 });

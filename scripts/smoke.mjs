@@ -54,7 +54,11 @@ const calls = [
   ["analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3 }, (r) => r.structuredContent?.equilibria?.length === 2 && r.structuredContent.equilibria.some((e) => e.classification === "center_or_weak_spiral" && e.caveat)],
   ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 6.283185307179586 }, (r) => r.structuredContent?.trajectories?.length === 2 && r.structuredContent.trajectories.every((t) => t.status === "completed")],
   ["sample_field", { f: "x", g: "y", density: 5 }, (r) => r.structuredContent?.field?.samples?.length === 25],
-  ["analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 }, (r) => r.structuredContent?.firstOrder?.solutions?.length === 2],
+  [
+    "analyze_first_order",
+    { expr: "y*(1-y)", yMin: -1, yMax: 2 },
+    (r) => r.structuredContent?.firstOrder?.solutions?.length === 2 && r.structuredContent.system?.variables === "ty" && /^dy\/dt = /.test(r.structuredContent.firstOrder.expr ?? ""),
+  ],
 ];
 for (const [name, args, verify] of calls) {
   const r = await rpc("tools/call", { name, arguments: name === "ping" ? args : { locale: "en", ...args } });
@@ -64,6 +68,8 @@ for (const [name, args, verify] of calls) {
 
 const bad = await rpc("tools/call", { name: "analyze_system", arguments: { f: "xy", g: "y", locale: "en" } });
 check("tools/call invalid expression -> isError result", bad.msg?.result?.isError === true && /x\*y/.test(bad.msg.result.content[0].text), JSON.stringify(bad.msg).slice(0, 300));
+const xInFirstOrder = await rpc("tools/call", { name: "analyze_first_order", arguments: { expr: "x^2 + y^2", locale: "en" } });
+check("tools/call x in a first-order equation -> isError result saying to write t", xInFirstOrder.msg?.result?.isError === true && /write t instead of x/.test(xInFirstOrder.msg.result.content[0].text), JSON.stringify(xInFirstOrder.msg).slice(0, 300));
 // Schema violations: the SDK reports them either as JSON-RPC -32602 or as an isError result whose
 // text names the field (SDK 1.30 does the latter). Both are spec-compliant; HTTP 500 is not.
 const outOfRange = await rpc("tools/call", { name: "sample_field", arguments: { f: "x", g: "y", density: 999, locale: "en" } });
