@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ParseError, compileScalar, compileSystem } from "./parse";
+import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, ParseError } from "./parse";
 
 const near = (a: number, b: number, eps = 1e-12) => Math.abs(a - b) <= eps;
 
@@ -273,6 +273,8 @@ describe('first-order variable mode { variables: "ty" }', () => {
 
 describe("a left-hand side in the expression", () => {
   const LHS = 'Enter only the right-hand side of the equation; the "dy/dt =" part is implied.';
+  const LHS_SYSTEM = 'Enter only the right-hand side of the equation; the "x\' =" / "y\' =" part is implied.';
+  const T_SENTENCE = "In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.";
   const check = (expr: string, opts?: { variables: "xy" | "ty" }) => {
     try {
       compileScalar(expr, undefined, opts);
@@ -283,30 +285,113 @@ describe("a left-hand side in the expression", () => {
     throw new Error(`expected a ParseError for ${JSON.stringify(expr)}`);
   };
 
-  it('is reported with code "lhs_in_expression" and the exact message, in both modes', () => {
-    for (const expr of ["dy/dt = t", "dy / dt = y", "y' = t", "y′ = t", "y = t", "x' = y", "  y' = y  ", "y=y"]) {
-      for (const opts of [undefined, { variables: "xy" as const }, { variables: "ty" as const }]) {
+  it("exports the two mode-specific messages", () => {
+    expect(LHS_IN_EXPRESSION_MESSAGE).toBe(LHS);
+    expect(LHS_IN_SYSTEM_MESSAGE).toBe(LHS_SYSTEM);
+    expect(LHS_IN_SYSTEM_MESSAGE).not.toMatch(/dy\/dt|instead of x/);
+  });
+
+  it('is reported with code "lhs_in_expression" and the mode\'s own wording', () => {
+    for (const expr of ["dy/dt = t", "dy / dt = y", "y' = t", "y′ = t", "y = t", "x' = y", "  y' = y  ", "y=y", "y = 2", "x = y"]) {
+      // planar system (the default): x is a state variable, so the message names x' = / y' = and never t
+      for (const opts of [undefined, { variables: "xy" as const }]) {
         const e = check(expr, opts);
         expect(e.code, expr).toBe("lhs_in_expression");
-        expect(e.message, expr).toBe(LHS);
+        expect(e.message, expr).toBe(LHS_SYSTEM);
+        expect(e.expr, expr).toBe(expr);
       }
+      // first-order: dy/dt =, and none of these pasted sides mentions x as a variable
+      const e = check(expr, { variables: "ty" });
+      expect(e.code, expr).toBe("lhs_in_expression");
+      expect(e.message, expr).toBe(LHS);
     }
   });
 
-  it("dy/dx = ... also gets the t-instead-of-x sentence", () => {
-    for (const opts of [undefined, { variables: "ty" as const }]) {
-      const e = check("dy/dx = x", opts);
-      expect(e.code).toBe("lhs_in_expression");
-      expect(e.message).toBe(`${LHS} In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.`);
+  it("dy/dx = ... gets the t-instead-of-x sentence in first-order mode only", () => {
+    const ty = check("dy/dx = y", { variables: "ty" });
+    expect(ty.code).toBe("lhs_in_expression");
+    expect(ty.message).toBe(`${LHS} ${T_SENTENCE}`);
+    expect(check("dy/dx = x", { variables: "ty" }).message).toBe(`${LHS} ${T_SENTENCE}`);
+    expect(check("dy/dt = y", { variables: "ty" }).message).not.toContain("write t instead of x");
+    // planar: dy/dx is not a first-order slip, and x is legitimately a variable
+    for (const opts of [undefined, { variables: "xy" as const }]) {
+      const xy = check("dy/dx = y", opts);
+      expect(xy.code).toBe("lhs_in_expression");
+      expect(xy.message).toBe(LHS_SYSTEM);
+      expect(xy.message).not.toContain("instead of x");
     }
-    expect(check("dy/dx = y").message).toContain("write t instead of x");
-    expect(check("dy/dt = y").message).not.toContain("write t instead of x");
   });
 
-  it("does not mistake comparisons for a left-hand side", () => {
+  it("x' = y in a planar system is a left-hand side with the x'/y' wording and no t sentence", () => {
+    const e = check("x' = y", { variables: "xy" });
+    expect(e.code).toBe("lhs_in_expression");
+    expect(e.message).toBe(LHS_SYSTEM);
+    expect(e.message).not.toContain("instead of x");
+  });
+
+  it('a bare "y =" followed by a "?" is a comparison typo, not a left-hand side, and gets the == hint', () => {
+    for (const opts of [{ variables: "ty" as const }, { variables: "xy" as const }, undefined]) {
+      const e = check("y = 0 ? 1 : -1", opts);
+      expect(e.code, JSON.stringify(opts)).not.toBe("lhs_in_expression");
+      expect(e.code).toBeUndefined();
+      expect(e.message).toContain("write ==");
+      expect(e.message).toContain(COMPARISON_HINT);
+      expect(e.message).toMatch(/Assignments are not allowed/);
+    }
+    // the prime forms are left-hand sides whatever follows
+    expect(check("y' = 0 ? 1 : -1", { variables: "ty" }).code).toBe("lhs_in_expression");
+    expect(check("dy/dt = y > 0 ? 1 : -1", { variables: "ty" }).code).toBe("lhs_in_expression");
+    // and a bare "y =" with nothing conditional after it still is one
+    expect(check("y = 2", { variables: "ty" }).code).toBe("lhs_in_expression");
+    expect(check("y = 2", { variables: "ty" }).message).not.toContain("write ==");
+  });
+
+  it("a lone = that mathjs cannot parse also gets the == hint; == <= >= != do not", () => {
+    const e = check("2 = y", { variables: "ty" });
+    expect(e.code).toBeUndefined();
+    expect(e.message).toMatch(/^Could not parse expression/);
+    expect(e.message).toContain(COMPARISON_HINT);
+    // a syntax error without any "=" gets no hint
+    expect(check("(t + y", { variables: "ty" }).message).not.toContain("write ==");
+    // "==" inside an otherwise broken expression is not a lone "="
+    expect(check("(y == 0", { variables: "ty" }).message).not.toContain("write ==");
+    expect(check("(y <= 0", { variables: "ty" }).message).not.toContain("write ==");
+    expect(check("(y >= 0", { variables: "ty" }).message).not.toContain("write ==");
+    expect(check("(y != 0", { variables: "ty" }).message).not.toContain("write ==");
+  });
+
+  it("legitimate comparisons, conditionals and expressions are still accepted", () => {
+    const ty = { variables: "ty" as const };
+    expect(compileScalar("y == 0 ? 1 : 0", undefined, ty)({ x: 0, y: 0 })).toBe(1);
+    expect(compileScalar("y == 0 ? 1 : 0", undefined, ty)({ x: 0, y: 3 })).toBe(0);
+    expect(compileScalar("y >= 0 ? 1 : -1", undefined, ty)({ x: 0, y: -2 })).toBe(-1);
+    expect(compileScalar("y - 1", undefined, ty)({ x: 0, y: 4 })).toBe(3);
+    expect(compileScalar("y*(1-y)", undefined, ty)({ x: 0, y: 0.5 })).toBe(0.25);
     expect(compileScalar("y == 0")({ x: 0, y: 0 })).toBe(1);
     expect(compileScalar("y >= 1")({ x: 0, y: 2 })).toBe(1);
-    expect(compileScalar("y == 0 ? 1 : 2", undefined, { variables: "ty" })({ x: 0, y: 3 })).toBe(2);
+    expect(compileScalar("y == 0 ? 1 : 2", undefined, ty)({ x: 0, y: 3 })).toBe(2);
     expect(compileScalar("y")({ x: 0, y: 4 })).toBe(4);
+    expect(compileScalar("x == 0 ? 1 : -1")({ x: 0, y: 0 })).toBe(1);
+  });
+
+  it("assertNoLeftHandSide reports the raw text in the mode's wording and is silent otherwise", () => {
+    const thrown = (expr: string, mode: "xy" | "ty") => {
+      try {
+        assertNoLeftHandSide(expr, mode);
+      } catch (error) {
+        expect(error).toBeInstanceOf(ParseError);
+        return error as ParseError;
+      }
+      return null;
+    };
+    expect(thrown("dy/dt = y", "ty")).toMatchObject({ code: "lhs_in_expression", expr: "dy/dt = y", message: LHS });
+    expect(thrown("dy/dx = y", "ty")).toMatchObject({ code: "lhs_in_expression", expr: "dy/dx = y", message: `${LHS} ${T_SENTENCE}` });
+    expect(thrown("x' = y", "xy")).toMatchObject({ code: "lhs_in_expression", expr: "x' = y", message: LHS_SYSTEM });
+    expect(thrown("dy/dx = y", "xy")).toMatchObject({ code: "lhs_in_expression", message: LHS_SYSTEM });
+    expect(thrown("  y = t  ", "ty")?.expr).toBe("  y = t  ");
+    for (const expr of ["y = 0 ? 1 : -1", "y == 0 ? 1 : 0", "y*(1-y)", "", "   ", "-(dy/dt = y)"]) {
+      expect(thrown(expr, "ty"), expr).toBeNull();
+      expect(thrown(expr, "xy"), expr).toBeNull();
+    }
   });
 });

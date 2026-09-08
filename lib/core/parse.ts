@@ -49,14 +49,50 @@ export const MODE_VARIABLES: Readonly<Record<VariableMode, readonly string[]>> =
 /** Readable messages behind the ParseError codes; the web shell shows its own bilingual text. */
 export const X_IN_FIRST_ORDER_MESSAGE =
   "In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.";
+/** A left-hand side pasted into a first-order expression ("ty" mode). */
 export const LHS_IN_EXPRESSION_MESSAGE = 'Enter only the right-hand side of the equation; the "dy/dt =" part is implied.';
+/** A left-hand side pasted into a planar-system expression ("xy" mode), where x is a state variable. */
+export const LHS_IN_SYSTEM_MESSAGE = 'Enter only the right-hand side of the equation; the "x\' =" / "y\' =" part is implied.';
+/** Appended when a lone "=" (not ==, <=, >=, !=) made the text an assignment or a syntax error. */
+export const COMPARISON_HINT = "If you meant a comparison, write ==.";
 
 /**
- * A left-hand side at the start of the text: dy/dx =, dy/dt =, y' =, x' =, y′ = (unicode prime) or
- * y =. A comparison "y == 0" is not a left-hand side. Group 1 is the differential's variable
- * (x or t) when the text starts with dy/d?.
+ * A left-hand side at the start of the text: dy/dx =, dy/dt =, y' =, x' =, y′ = (unicode prime),
+ * y = or x =. A comparison "y == 0" is not a left-hand side. Group 1 is the differential's
+ * variable (x or t) when the text starts with dy/d?; group 2 is set for the bare "y =" / "x ="
+ * alternative, which only counts as a left-hand side when no "?" follows (see assertNoLeftHandSide).
  */
-const LHS_PATTERN = /^(?:d\s*y\s*\/\s*d\s*([xt])|[xy]\s*['′]|y)\s*=(?!=)/;
+const LHS_PATTERN = /^(?:d\s*y\s*\/\s*d\s*([xt])|[xy]\s*['′]|([xy]))\s*=(?!=)/;
+
+/** True when the text contains an "=" that is not part of ==, <=, >=, != (a likely typo for ==). */
+function hasLoneEquals(expr: string): boolean {
+  return /(^|[^=<>!])=(?!=)/.test(expr);
+}
+
+function withComparisonHint(expr: string, message: string): string {
+  return hasLoneEquals(expr) ? `${message} ${COMPARISON_HINT}` : message;
+}
+
+/**
+ * Throws ParseError code "lhs_in_expression" (with `expr` as given) when the text starts with a
+ * left-hand side. The message is mode-aware: "ty" mode names "dy/dt =" and adds the
+ * t-instead-of-x sentence only when the pasted side was dy/dx; "xy" mode names "x' =" / "y' ="
+ * and never mentions t (x is a state variable there). A bare "y =" / "x =" followed by a "?"
+ * later in the text is a comparison typo ("y = 0 ? 1 : -1"), not a left-hand side: it is left to
+ * the parser, whose error then hints at "==". The dy/dx =, dy/dt =, y' =, x' = forms always count.
+ * Kernel entry points that wrap an expression before compiling it (-(g), -(M)) call this on the
+ * raw text first, so the error always carries what the student typed.
+ */
+export function assertNoLeftHandSide(expr: string, mode: VariableMode): void {
+  if (typeof expr !== "string") return;
+  const trimmed = expr.trim();
+  const lhs = LHS_PATTERN.exec(trimmed);
+  if (!lhs) return;
+  if (lhs[2] !== undefined && trimmed.slice(lhs[0].length).includes("?")) return;
+  if (mode === "xy") throw new ParseError(expr, LHS_IN_SYSTEM_MESSAGE, "lhs_in_expression");
+  const message = lhs[1] === "x" ? `${LHS_IN_EXPRESSION_MESSAGE} ${X_IN_FIRST_ORDER_MESSAGE}` : LHS_IN_EXPRESSION_MESSAGE;
+  throw new ParseError(expr, message, "lhs_in_expression");
+}
 
 /** Names that mathjs or JavaScript would interpret before our scope does. */
 const RESERVED_NAMES: ReadonlySet<string> = new Set([
@@ -148,23 +184,22 @@ function parseChecked(expr: string, paramNames: string[], mode: VariableMode): M
   }
   // Before mathjs: "y' = t" and "dy/dx = x" are mathjs syntax errors and "y = t" is an assignment;
   // all three must be reported as a left-hand side, not as a generic parse failure.
-  const lhs = LHS_PATTERN.exec(expr.trim());
-  if (lhs) {
-    const message = lhs[1] === "x" ? `${LHS_IN_EXPRESSION_MESSAGE} ${X_IN_FIRST_ORDER_MESSAGE}` : LHS_IN_EXPRESSION_MESSAGE;
-    throw new ParseError(expr, message, "lhs_in_expression");
-  }
+  assertNoLeftHandSide(expr, mode);
   let node: MathNode;
   try {
     node = math.parse(expr);
   } catch (cause) {
-    throw toParseError(expr, cause, "Could not parse expression");
+    const error = toParseError(expr, cause, "Could not parse expression");
+    throw new ParseError(expr, withComparisonHint(expr, error.message));
   }
   const allowedSymbols = new Set([...MODE_VARIABLES[mode], ...ALLOWED_CONSTANTS, ...paramNames]);
 
   try {
     node.traverse((n: MathNode, path: string | null, parent: MathNode | null) => {
       if (!ALLOWED_NODE_TYPES.has(n.type)) {
-        throw new ParseError(expr, describeForbiddenNode(n, mode));
+        const message = describeForbiddenNode(n, mode);
+        // "y = 0 ? 1 : -1" parses as an assignment: the student most likely meant ==.
+        throw new ParseError(expr, n.type === "AssignmentNode" ? withComparisonHint(expr, message) : message);
       }
       if (math.isConstantNode(n)) {
         if (typeof n.value !== "number" || !Number.isFinite(n.value)) {
