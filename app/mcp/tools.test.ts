@@ -86,6 +86,20 @@ describe("tools/list", () => {
     expect(planar.description).not.toMatch(/dy\/dx/);
   });
 
+  it("analyze_system and sample_field take a snapshot time t (default 0) for non-autonomous systems; trace_trajectory does not", async () => {
+    const { tools } = await client.listTools();
+    for (const name of ["analyze_system", "sample_field"]) {
+      const t = tools.find((t) => t.name === name)!;
+      const props = t.inputSchema.properties as Record<string, { default?: number; description?: string }>;
+      expect(props.t?.default, name).toBe(0);
+      expect(props.t?.description, name).toMatch(/non-autonomous/);
+      expect(t.inputSchema.required, name).not.toContain("t");
+      expect(t.description, name).toMatch(/non-autonomous/);
+    }
+    const trace = tools.find((t) => t.name === "trace_trajectory")!;
+    expect(Object.keys(trace.inputSchema.properties as object)).not.toContain("t");
+  });
+
   it("keeps the widget resource registered and links every tool to it", async () => {
     const { resources } = await client.listResources();
     const widget = resources.find((r) => r.uri.startsWith("ui://vector-field-tool/") && r.mimeType === "text/html;profile=mcp-app");
@@ -275,6 +289,56 @@ describe("analyze_system", () => {
     expect(r.scene.system).toEqual({ f: "a*x", g: "b*y", params: { a: -1, b: -2 } });
   });
 
+  it("a non-autonomous system gets a snapshot field and the sentence, never equilibria or stability, in both locales", async () => {
+    // x' = y, y' = -x + sin(t): the field changes with t by |sin t| at every point, at most 0.98777
+    // over the probe times, and |F| <= hypot(3, 4) = 5 on the default box, so the measured relative
+    // deviation is at least 0.1975.
+    for (const locale of ["zh", "en"] as const) {
+      const r = await call("analyze_system", { f: "y", g: "-x + sin(t)", locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.kind).toBe("analyze_system");
+      expect(r.scene.equilibria).toBeUndefined();
+      expect(r.scene.warning).toBeUndefined();
+      expect(r.scene.timeDependent?.snapshotT).toBe(0);
+      expect(r.scene.timeDependent!.maxRelDeviation).toBeGreaterThan(0.19);
+      expect(r.scene.field?.samples).toHaveLength(400);
+      const L = labels(locale);
+      expect(r.text).toContain(L.tool.timeDependent.slice(0, 20));
+      expect(r.text).toContain(L.tool.timeDependent.slice(-12));
+      expect(r.text).toContain(fill(L.tool.sampleFieldLine, { nx: 20, ny: 20, f: "y", g: "-x + sin(t)", maxMag: "", singular: "" }).slice(0, 14));
+      // no numbered equilibrium line, no classification word, no eigenvalues
+      expect(r.text).not.toMatch(/\n1\. /);
+      expect(r.text).not.toMatch(/eigenvalue|特征值/i);
+      expect(r.text).toContain("t = 0");
+    }
+  });
+
+  it("the snapshot time t changes the sampled field of a non-autonomous system: g(t = 1.5) - g(t = 0) = sin 1.5 at every sample", async () => {
+    const at0 = await call("analyze_system", { f: "y", g: "-x + sin(t)", density: 5 });
+    const at15 = await call("analyze_system", { f: "y", g: "-x + sin(t)", density: 5, t: 1.5 });
+    expect(at15.scene.timeDependent).toEqual({ snapshotT: 1.5, maxRelDeviation: at0.scene.timeDependent!.maxRelDeviation });
+    expect(at15.text).toContain("t = 1.5");
+    const a = at0.scene.field!.samples, b = at15.scene.field!.samples;
+    expect(a).toHaveLength(25);
+    for (let i = 0; i < a.length; i++) {
+      expect(b[i].at).toEqual(a[i].at);
+      expect(b[i].v.x).toBe(a[i].v.x); // f = y does not depend on t
+      expect(b[i].v.y - a[i].v.y).toBeCloseTo(Math.sin(1.5), 12);
+    }
+  });
+
+  it("an autonomous system is unchanged by the detection: x' = y, y' = -x still has its center-or-weak-spiral with the caveat", async () => {
+    const r = await call("analyze_system", { f: "y", g: "-x", t: 1.5, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.timeDependent).toBeUndefined();
+    expect(r.scene.equilibria).toHaveLength(1);
+    expect(Math.hypot(r.scene.equilibria![0].at.x, r.scene.equilibria![0].at.y)).toBeLessThan(1e-9);
+    expect(r.scene.equilibria![0].classification).toBe("center_or_weak_spiral");
+    expect(r.scene.equilibria![0].caveat).toBe("center");
+    expect(r.text).toContain("Equilibrium (0, 0): center or weak spiral");
+    expect(r.text).not.toMatch(/non-autonomous/);
+  });
+
   it("fails schema validation for a malformed params key (SDK surfaces it as an isError result)", async () => {
     // The server answers JSON-RPC -32602; the SDK client converts that into an isError result.
     const r = await call("analyze_system", { f: "x", g: "y", params: { "1a": 1 } });
@@ -342,6 +406,25 @@ describe("trace_trajectory", () => {
     expect(Math.abs(t.points[t.points.length - 1].x)).toBeLessThan(1e-8);
   });
 
+  it("a non-autonomous system is traced from t = 0 and the summary says so; an autonomous one gets no such note", async () => {
+    // x' = 0, y' = cos(t) from (0, 0): y(t) = sin t, so at t = 1 the point is (0, sin 1). Over
+    // [0, 1] the speed |cos t| stays above cos 1 = 0.54, so no speed-based stop can fire.
+    const r = await call("trace_trajectory", { f: "0", g: "cos(t)", x0: 0, y0: 0, direction: "forward", tSpan: 1, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    const t = r.scene.trajectories![0];
+    expect(t.status).toBe("completed");
+    const end = t.points[t.points.length - 1];
+    expect(end.x).toBe(0);
+    expect(end.y).toBeCloseTo(Math.sin(1), 5);
+    expect(r.scene.timeDependent?.snapshotT).toBe(0);
+    expect(r.text).toContain("the trajectory starts at t = 0");
+    const zh = await call("trace_trajectory", { f: "0", g: "cos(t)", x0: 0, y0: 0, direction: "forward", tSpan: 1, locale: "zh" });
+    expect(zh.text).toContain("轨线从 t = 0 出发");
+    const autonomous = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1, locale: "en" });
+    expect(autonomous.scene.timeDependent).toBeUndefined();
+    expect(autonomous.text).not.toMatch(/non-autonomous/);
+  });
+
   it("rk4 reaches any accepted tSpan instead of truncating at 20000 steps", async () => {
     const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 500, method: "rk4", direction: "forward", xMin: -5, xMax: 5, yMin: -5, yMax: 5, locale: "en" });
     const t = r.scene.trajectories![0];
@@ -357,6 +440,23 @@ describe("sample_field", () => {
     expect(r.scene.field?.samples).toHaveLength(25);
     expect(r.scene.field?.singularCount).toBe(5); // the x = 0 column
     expect(r.text).toContain("5 个采样点无定义");
+  });
+
+  it("samples a non-autonomous field at the snapshot time t and adds the note; an autonomous field gets neither", async () => {
+    // x' = t, y' = 0 at t = 2: every sample is (2, 0).
+    const r = await call("sample_field", { f: "t", g: "0", density: 5, t: 2, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.timeDependent?.snapshotT).toBe(2);
+    expect(r.scene.field!.samples.every((s) => s.v.x === 2 && s.v.y === 0)).toBe(true);
+    expect(r.scene.field!.maxMag).toBe(2);
+    expect(r.text).toContain("snapshot at t = 2");
+    expect(r.text).toContain(labels("en").tool.widgetDraws);
+    const zh = await call("sample_field", { f: "t", g: "0", density: 5, locale: "zh" });
+    expect(zh.scene.timeDependent?.snapshotT).toBe(0);
+    expect(zh.text).toContain("t = 0 时刻的快照");
+    const autonomous = await call("sample_field", { f: "x", g: "y", density: 5, t: 2, locale: "en" });
+    expect(autonomous.scene.timeDependent).toBeUndefined();
+    expect(autonomous.text).not.toMatch(/non-autonomous/);
   });
 
   it("rejects density outside 5..60 with a message naming density", async () => {

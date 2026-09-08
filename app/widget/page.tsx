@@ -118,10 +118,12 @@ export default function WidgetPage() {
     locale,
     kind,
     fieldStyle: scene?.fieldStyle ?? "arrows",
-    systemKey: scene ? `${resultSeq}|${scene.kind}|${scene.system?.variables ?? "xy"}|${scene.system?.f ?? ""}|${scene.system?.g ?? ""}|${JSON.stringify(scene.start ?? null)}|${JSON.stringify(scene.system?.params ?? null)}` : "",
+    systemKey: scene ? `${resultSeq}|${scene.kind}|${scene.system?.variables ?? "xy"}|${scene.system?.f ?? ""}|${scene.system?.g ?? ""}|${JSON.stringify(scene.start ?? null)}|${JSON.stringify(scene.system?.params ?? null)}|${scene.timeDependent?.snapshotT ?? 0}` : "",
     initialTrajectories: scene?.trajectories,
     start: scene?.start,
     withFeatures: kind === "analyze_system" || kind === "analyze_first_order",
+    // The tool's snapshot time (its t parameter) is the instant the widget keeps showing.
+    snapshotT: scene?.timeDependent?.snapshotT ?? 0,
   });
 
   const live = interactive.scene && interactive.viewport ? interactive : null;
@@ -200,7 +202,9 @@ function horizontalName(scene: Scene): "x" | "t" {
 function SceneSummary({ scene }: { scene: Scene }) {
   const L = labels(scene.locale ?? "en");
   const items: string[] = [];
-  if (scene.box && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order")) {
+  // Non-autonomous: the snapshot note replaces the features-box line (nothing was computed for a range).
+  if (scene.timeDependent) items.push(fill(L.ui.timeDependentNote, { t: formatNumber(scene.timeDependent.snapshotT, 4) }));
+  if (scene.box && !scene.timeDependent && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order")) {
     const fb = scene.featuresBox ?? scene.box;
     items.push(
       fill(L.ui.featuresBox, {

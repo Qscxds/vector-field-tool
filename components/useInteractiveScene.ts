@@ -18,6 +18,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledSystem } from "@/lib/core/parse";
 import type { FirstOrderSpec } from "@/lib/core/slope-field";
+import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
 import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features } from "@/lib/interactive";
 import { labels } from "@/lib/labels";
@@ -51,6 +52,13 @@ export type InteractiveInput = {
    * exactly (pixel scales differ); changing it resets the view like a home-box change.
    */
   equalScale?: boolean;
+  /**
+   * Snapshot time of a non-autonomous system (default 0): the field is sampled at this t, and
+   * hover previews and clicked curves start at it, so the curve shown is the solution through the
+   * clicked point AT the displayed instant. Ignored by an autonomous system. Put it in `systemKey`
+   * so that changing it drops the curves of the previous instant.
+   */
+  snapshotT?: number;
 };
 
 export type InteractiveHandlers = {
@@ -72,7 +80,7 @@ export type InteractiveScene = {
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, start, withFeatures, equalScale = true } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, start, withFeatures, equalScale = true, snapshotT = 0 } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   const [trajectories, setTrajectories] = useState<TrajectoryView[]>(initialTrajectories ?? []);
@@ -103,7 +111,16 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     [view, homeBox, width, height, equalScale],
   );
 
-  const field = useMemo(() => (sys && viewport ? sampleField(sys, viewport.box, density, density) : null), [sys, viewport, density]);
+  // Measured once on the ENTERED box, never on the visible one: whether the system is
+  // non-autonomous is a property of the equation, and zooming or panning must not flip it.
+  // First-order specs are never time-dependent (their t is the horizontal coordinate).
+  const timeDependence = useMemo(() => (sys && !firstOrder && homeBox ? detectTimeDependence(sys, homeBox) : null), [sys, firstOrder, homeBox]);
+  const timeDependent = useMemo(
+    () => (timeDependence?.dependsOnT ? { snapshotT, maxRelDeviation: timeDependence.maxRelDeviation } : undefined),
+    [timeDependence, snapshotT],
+  );
+
+  const field = useMemo(() => (sys && viewport ? sampleField(sys, viewport.box, density, density, snapshotT) : null), [sys, viewport, density, snapshotT]);
 
   const [featureBox, setFeatureBox] = useState<Box | null>(null);
   const viewBoxKey = viewport ? JSON.stringify(viewport.box) : "";
@@ -124,8 +141,11 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   }, [viewBoxKey, targetFeatureBoxKey]);
   const effectiveFeatureBox = featureBox ?? targetFeatureBox;
   const features = useMemo<Features>(
-    () => (withFeatures && sys && effectiveFeatureBox ? computeFeatures(sys, firstOrder, effectiveFeatureBox, locale) : {}),
-    [withFeatures, sys, firstOrder, effectiveFeatureBox, locale],
+    () =>
+      withFeatures && sys && effectiveFeatureBox
+        ? computeFeatures(sys, firstOrder, effectiveFeatureBox, locale, { snapshotT, ...(timeDependence ? { timeDependence } : {}) })
+        : {},
+    [withFeatures, sys, firstOrder, effectiveFeatureBox, locale, snapshotT, timeDependence],
   );
 
   const scene = useMemo<Scene | null>(() => {
@@ -141,11 +161,14 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       equilibria: features.equilibria,
       warning: features.warning,
       truncated: features.truncated,
+      // Also for scenes without features (sample_field, trace_trajectory): the canvas labels the
+      // snapshot time whenever the field changes with t.
+      timeDependent,
       firstOrder: features.firstOrder,
       trajectories,
       start,
     };
-  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox]);
+  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent]);
 
   // Refs so the handlers stay referentially stable (the canvas binds its wheel listener once).
   const viewportRef = useRef(viewport);
@@ -162,6 +185,8 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   featuresRef.current = features;
   const localeRef = useRef(locale);
   localeRef.current = locale;
+  const snapshotTRef = useRef(snapshotT);
+  snapshotTRef.current = snapshotT;
 
   const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
   const rafRef = useRef<number | null>(null);
@@ -190,7 +215,8 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     const home = homeBoxRef.current;
     if (!s || !home) return;
     // The curve's extent is the solution's business (20x the home box); the view only clips it.
-    setTrajectories((prev) => [...prev, ...markNonUnique(traceFixed(s, p, home), featuresRef.current, home)]);
+    // It starts at the displayed snapshot time (matters only for a non-autonomous system).
+    setTrajectories((prev) => [...prev, ...markNonUnique(traceFixed(s, p, home, snapshotTRef.current), featuresRef.current, home)]);
   }, []);
 
   const onHoverWorld = useCallback((world: Vec2 | null, screen: Vec2 | null) => {
@@ -222,7 +248,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
         return;
       }
       setHint(null);
-      setOverlay(markNonUnique(tracePreview(s, h.world, vp), featuresRef.current, vp.box));
+      setOverlay(markNonUnique(tracePreview(s, h.world, vp, snapshotTRef.current), featuresRef.current, vp.box));
     });
   }, []);
   useEffect(

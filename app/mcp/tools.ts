@@ -11,6 +11,7 @@ import { findEquilibria } from "@/lib/core/equilibria";
 import { sampleField } from "@/lib/core/field";
 import { integrateAdaptive, integrateRK4, type IntegrateOptions } from "@/lib/core/integrate";
 import { compileSystem, ParseError } from "@/lib/core/parse";
+import { detectTimeDependence } from "@/lib/core/time-dependence";
 import { contourSegmentsFromGrid, sampleGrid } from "@/lib/render/contours";
 import { detectForms, NO_FORM_NOTE, reportedForms, type FormDetection } from "@/lib/core/detect-form";
 import { exactPotential, potentialLevelsFromValues } from "@/lib/core/exact";
@@ -62,6 +63,12 @@ const FIRST_ORDER_BOX_RULES =
 const LOCALE_RULE =
   "`locale` is REQUIRED (the call fails without it): set it from the language the student writes in, 'zh' when the question is in Chinese, 'en' for every other language.";
 
+/** analyze_system and sample_field: what happens when f or g mentions t. */
+const NON_AUTONOMOUS_RULE =
+  "If f or g mentions t the system is non-autonomous: the field changes with time, so the tool returns the field " +
+  "sampled at the snapshot time `t` and says so, and equilibria and stability are NOT computed (they are undefined " +
+  "for a non-autonomous system).";
+
 // ---------- schemas ----------
 
 const expression = z.string().trim().min(1).max(200).describe("A mathjs expression in x and y.");
@@ -96,6 +103,11 @@ const density = z
 const localeSchema = z
   .enum(LOCALES as [Locale, ...Locale[]])
   .describe("REQUIRED. Language of the text summary: 'zh' if the student writes in Chinese, otherwise 'en'.");
+const snapshotTime = z
+  .number()
+  .finite()
+  .default(0)
+  .describe("Snapshot time for a non-autonomous system (f or g mentions t): the field is sampled at this t. Ignored otherwise.");
 
 type BoxInput = { xMin: number; xMax: number; yMin: number; yMax: number };
 
@@ -293,6 +305,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "USE THIS whenever a student asks about equilibria, fixed points, stability, the phase portrait, the type " +
         "of a critical point, eigenvalues of the linearization, or long-term behavior of a 2D autonomous system. " +
         "For a single first-order equation dy/dt = g(t, y) use analyze_first_order instead. " +
+        NON_AUTONOMOUS_RULE + " " +
         EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
@@ -300,6 +313,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         params: paramsSchema,
         ...boxShape,
         density: density.describe("Grid points per axis for the returned vector field (5..60)."),
+        t: snapshotTime,
         locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -311,6 +325,18 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
+        // Non-autonomous (f or g changes with t): equilibria, eigenvalues and stability classes do
+        // not exist for it. Return only the field, as a snapshot at the requested time, and say so.
+        const td = detectTimeDependence(sys, box, { checkpoint });
+        if (td.dependsOnT) {
+          const field = sampleField(sys, box, input.density, input.density, input.t, checkpoint);
+          const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, timeDependent: { snapshotT: input.t, maxRelDeviation: td.maxRelDeviation } };
+          const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
+          const singular = field.singularCount ? " " + fill(L.tool.singularSamples, { count: field.singularCount }) : "";
+          const note = fill(L.tool.timeDependent, { t: fmt(input.t), deviation: formatDeviation(td.maxRelDeviation) });
+          const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
+          return ok(`${header}${singular}\n${note}\n${line}`, scene);
+        }
         const eq = findEquilibria(sys, box, { checkpoint });
         const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
         const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: withUniqueness(sys, eq.points, box, checkpoint), warning: eq.warning, truncated: eq.truncated };
@@ -374,11 +400,25 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             tEnd: tr.times[tr.times.length - 1],
           };
         });
+        // Non-autonomous: the curve is still the solution through the start point, from t = 0; the
+        // student must hear that another start time gives another curve. Equilibria are not
+        // defined for such a system, so no uniqueness probe is run either (decided before any
+        // findEquilibria call).
+        const td = detectTimeDependence(sys, box, { checkpoint });
         // A curve through an equilibrium where uniqueness fails (x' = sqrt(|x|) at the origin) is
         // one of infinitely many: find the equilibria, probe them, and flag such curves.
-        const eq = findEquilibria(sys, box, { checkpoint });
-        const trajectories = markNonUnique(traced, { equilibria: withUniqueness(sys, eq.points, box, checkpoint) }, box);
-        const scene: Scene = { kind: "trace_trajectory", locale: input.locale, system: spec, box, start, trajectories };
+        const trajectories = td.dependsOnT
+          ? traced
+          : markNonUnique(traced, { equilibria: withUniqueness(sys, findEquilibria(sys, box, { checkpoint }).points, box, checkpoint) }, box);
+        const scene: Scene = {
+          kind: "trace_trajectory",
+          locale: input.locale,
+          system: spec,
+          box,
+          start,
+          trajectories,
+          ...(td.dependsOnT ? { timeDependent: { snapshotT: 0, maxRelDeviation: td.maxRelDeviation } } : {}),
+        };
         const lines = trajectories.flatMap((t) => {
           const end = t.points[t.points.length - 1];
           const line = fill(L.tool.trajectoryLine, {
@@ -390,6 +430,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           });
           return t.nonUnique ? [line, L.tool.nonUniqueTrajectory] : [line];
         });
+        if (td.dependsOnT) lines.push(fill(L.tool.timeDependentTrajectory, { deviation: formatDeviation(td.maxRelDeviation) }));
         return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: spec.g })}\n${lines.join("\n")}`, scene);
       }),
   );
@@ -406,6 +447,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "USE THIS when a student just wants to see the direction field / vector field / phase plane arrows of a " +
         "system without an equilibrium analysis, or to render a picture in the widget. For equilibria and stability " +
         "use analyze_system, which also returns a field. " +
+        NON_AUTONOMOUS_RULE + " " +
         EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
@@ -413,6 +455,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         params: paramsSchema,
         ...boxShape,
         density,
+        t: snapshotTime,
         locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -424,10 +467,19 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
-        const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
-        const scene: Scene = { kind: "sample_field", locale: input.locale, system: spec, box, field };
+        const td = detectTimeDependence(sys, box, { checkpoint });
+        const field = sampleField(sys, box, input.density, input.density, input.t, checkpoint);
+        const scene: Scene = {
+          kind: "sample_field",
+          locale: input.locale,
+          system: spec,
+          box,
+          field,
+          ...(td.dependsOnT ? { timeDependent: { snapshotT: input.t, maxRelDeviation: td.maxRelDeviation } } : {}),
+        };
         const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
-        return ok(`${line} ${L.tool.widgetDraws}`, scene);
+        const note = td.dependsOnT ? "\n" + fill(L.tool.timeDependent, { t: fmt(input.t), deviation: formatDeviation(td.maxRelDeviation) }) : "";
+        return ok(`${line} ${L.tool.widgetDraws}${note}`, scene);
       }),
   );
 

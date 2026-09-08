@@ -126,6 +126,13 @@ export default function VectorFieldPage() {
   const [presetId, setPresetId] = useState<string | null>(PRESETS[0].id);
   // View option, not part of the equation: toggling it keeps the selected preset.
   const [equalScale, setEqualScale] = useState(true);
+  // Snapshot time of a non-autonomous system (the input is only shown for one); text so the
+  // student can type "-" or "1." without the field snapping back. Unparsable -> 0.
+  const [snapshotTText, setSnapshotTText] = useState("0");
+  const snapshotT = useMemo(() => {
+    const v = Number(snapshotTText.trim());
+    return snapshotTText.trim() !== "" && Number.isFinite(v) ? v : 0;
+  }, [snapshotTText]);
   const compiled = useMemo(() => compile(form, L), [form, L]);
 
   const interactive = useInteractiveScene({
@@ -139,9 +146,11 @@ export default function VectorFieldPage() {
     locale,
     kind: form.mode === "system" ? "analyze_system" : "analyze_first_order",
     fieldStyle: form.mode === "differential" ? "segments" : "arrows",
-    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}`,
+    // The snapshot time is part of the key: curves traced at another instant belong to another picture.
+    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${snapshotT}`,
     withFeatures: true,
     equalScale,
+    snapshotT,
   });
   const { scene, viewport, overlay, hint, trajectories, clearTrajectories, handlers } = interactive;
 
@@ -240,6 +249,12 @@ export default function VectorFieldPage() {
               <input value={form.yMax} onChange={(e) => update({ yMax: e.target.value })} style={inputStyle} name="yMax" />
             </label>
           </div>
+          {scene?.timeDependent ? (
+            <label style={labelStyle}>
+              <span>{L.ui.snapshotT}</span>
+              <input value={snapshotTText} onChange={(e) => setSnapshotTText(e.target.value)} style={inputStyle} name="snapshotT" inputMode="decimal" />
+            </label>
+          ) : null}
           <label style={labelStyle}>
             <span>
               {L.ui.density}: {form.density} × {form.density}
@@ -314,7 +329,14 @@ export default function VectorFieldPage() {
             <p style={{ margin: "8px 0 0", color: "#92400e" }}>{fill(L.ui.singularNote, { count: scene.field.singularCount })}</p>
           ) : null}
 
-          {scene?.box ? (
+          {/* Non-autonomous: no features are computed for any range, so the features-box line and the
+              equilibria list give way to the snapshot note. */}
+          {scene?.timeDependent ? (
+            <p role="status" data-time-dependent style={{ margin: "12px 0 0", color: "#92400e" }}>
+              {fill(L.ui.timeDependentNote, { t: formatNumber(scene.timeDependent.snapshotT, 4) })}
+            </p>
+          ) : null}
+          {scene?.box && !scene.timeDependent ? (
             <p style={{ margin: "12px 0 0", color: "#52606d", fontSize: 12 }} data-features-box>
               {fill(L.ui.featuresBox, {
                 hv,
@@ -325,7 +347,7 @@ export default function VectorFieldPage() {
               })}
             </p>
           ) : null}
-          {scene?.kind === "analyze_system" ? <EquilibriaList scene={scene} L={L} /> : null}
+          {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} /> : null}
           {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
           {scene && lastGroup ? (
             <p style={{ margin: "8px 0 0", color: "#52606d" }} data-last-trajectory>

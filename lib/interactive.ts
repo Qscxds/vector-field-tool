@@ -17,13 +17,24 @@ import { exactPotential, potentialLevelsFromValues } from "./core/exact";
 import { integrateAdaptive } from "./core/integrate";
 import type { CompiledSystem } from "./core/parse";
 import { firstOrderEquilibria, firstOrderSingularities, type FirstOrderSpec } from "./core/slope-field";
+import { detectTimeDependence, type TimeDependence } from "./core/time-dependence";
 import type { Box, Locale, Vec2 } from "./core/types";
 import { equilibriaUniqueness } from "./core/uniqueness";
 import { contourSegmentsFromGrid, sampleGrid } from "./render/contours";
 import { worldToScreen, type Viewport } from "./render/viewport";
 import type { FirstOrderView, Scene, TrajectoryView } from "./scene";
 
-export type Features = Pick<Scene, "equilibria" | "warning" | "truncated" | "firstOrder">;
+export type Features = Pick<Scene, "equilibria" | "warning" | "truncated" | "firstOrder" | "timeDependent">;
+
+export type FeatureOptions = {
+  /** Snapshot time of a non-autonomous system; recorded in `timeDependent`. Default 0. */
+  snapshotT?: number;
+  /**
+   * A verdict already measured (the shells measure it once, on the entered box, so that zooming or
+   * panning can never flip it). When absent the verdict is measured on `box`.
+   */
+  timeDependence?: TimeDependence;
+};
 
 /** Path-independence tolerance of the numerical potential (exactPotential's default). */
 export const EXACT_PATH_TOL = 1e-6;
@@ -68,12 +79,17 @@ export function featuresBoxFor(homeBox: Box, visibleBox: Box, atHome: boolean): 
 
 /**
  * Equilibria (systems) or constant solutions / singular points / forms / implicit curves (first
- * order) inside `box`. Never throws: a failure inside the kernel yields no features rather than a
- * broken page.
+ * order) inside `box`. A non-autonomous system gets `timeDependent` INSTEAD of equilibria: they
+ * are not defined for it, and listing the equilibria of the t = snapshot slice would be exactly
+ * the silent error this tool exists to avoid. First-order specs are never time-dependent (their
+ * t is the horizontal coordinate). Never throws: a failure inside the kernel yields no features
+ * rather than a broken page.
  */
-export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec | null, box: Box, locale: Locale): Features {
+export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec | null, box: Box, locale: Locale, opts: FeatureOptions = {}): Features {
   try {
     if (!firstOrder) {
+      const td = opts.timeDependence ?? detectTimeDependence(sys, box);
+      if (td.dependsOnT) return { timeDependent: { snapshotT: opts.snapshotT ?? 0, maxRelDeviation: td.maxRelDeviation } };
       const eq = findEquilibria(sys, box);
       return { equilibria: withUniqueness(sys, eq.points, box), warning: eq.warning, truncated: eq.truncated };
     }
@@ -203,6 +219,11 @@ export type TraceOptions = {
   maxSteps?: number;
   /** Stop after this on-screen length (pixels) per direction, measured with `viewport`. */
   screenLength?: { viewport: Viewport; maxPixels: number };
+  /**
+   * Start time. Default 0. For a non-autonomous system the shells pass the displayed snapshot
+   * time, so the curve shown is the solution through the clicked point AT the time in the picture.
+   */
+  t0?: number;
 };
 
 /** The solution through `start`, forward and backward, under the given stop rules. */
@@ -212,6 +233,7 @@ export function traceBoth(sys: CompiledSystem, start: Vec2, opts: TraceOptions):
       direction,
       box: opts.stopBox,
       h: 0.05,
+      t0: opts.t0 ?? 0,
       ...(opts.maxSteps ? { maxSteps: opts.maxSteps } : {}),
       ...(opts.screenLength ? { arcLength: { limit: opts.screenLength.maxPixels, metric: screenMetric(opts.screenLength.viewport) } } : {}),
     });
@@ -226,17 +248,18 @@ export function traceBoth(sys: CompiledSystem, start: Vec2, opts: TraceOptions):
   });
 }
 
-/** Hover preview through `world`: fixed on-screen length, whatever the field's speed or the zoom. */
-export function tracePreview(sys: CompiledSystem, world: Vec2, viewport: Viewport): TrajectoryView[] {
+/** Hover preview through `world`: fixed on-screen length, whatever the field's speed or the zoom. Starts at `t0` (the snapshot time). */
+export function tracePreview(sys: CompiledSystem, world: Vec2, viewport: Viewport, t0 = 0): TrajectoryView[] {
   return traceBoth(sys, world, {
     stopBox: hoverStopBox(viewport.box),
     tSpan: PREVIEW_TSPAN,
     maxSteps: HOVER_STEP_CAP,
     screenLength: { viewport, maxPixels: HOVER_DIAGONALS * Math.hypot(viewport.width, viewport.height) },
+    t0,
   });
 }
 
-/** Fixed trajectory through `world`: extends by the solution's own rule, clipped only by drawing. */
-export function traceFixed(sys: CompiledSystem, world: Vec2, homeBox: Box): TrajectoryView[] {
-  return traceBoth(sys, world, { stopBox: fixedStopBox(homeBox), stop: "far" });
+/** Fixed trajectory through `world`: extends by the solution's own rule, clipped only by drawing. Starts at `t0` (the snapshot time). */
+export function traceFixed(sys: CompiledSystem, world: Vec2, homeBox: Box, t0 = 0): TrajectoryView[] {
+  return traceBoth(sys, world, { stopBox: fixedStopBox(homeBox), stop: "far", t0 });
 }

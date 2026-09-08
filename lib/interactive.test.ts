@@ -42,6 +42,36 @@ describe("computeFeatures", () => {
     expect(f.firstOrder?.expr).toBe("(2*t*y) dt + (t^2 + y^2) dy = 0");
   });
 
+  it("a non-autonomous system gets timeDependent instead of equilibria, with the snapshot time it was asked for", () => {
+    // x' = y, y' = -x + sin(t): the field changes by up to sin(1.4142) ≈ 0.98777 over the probe
+    // times, |F| <= hypot(2, 3) < 3.61 on this box -> relative deviation above 0.27.
+    const sys = compileSystem({ f: "y", g: "-x + sin(t)" });
+    const f = computeFeatures(sys, null, box, "en");
+    expect(f.equilibria).toBeUndefined();
+    expect(f.warning).toBeUndefined();
+    expect(f.firstOrder).toBeUndefined();
+    expect(f.timeDependent?.snapshotT).toBe(0);
+    expect(f.timeDependent!.maxRelDeviation).toBeGreaterThan(0.27);
+    expect(computeFeatures(sys, null, box, "en", { snapshotT: 1.5 }).timeDependent?.snapshotT).toBe(1.5);
+    // The autonomous oscillator keeps its equilibrium and gets no timeDependent.
+    const auto = computeFeatures(compileSystem({ f: "y", g: "-x" }), null, box, "en", { snapshotT: 1.5 });
+    expect(auto.timeDependent).toBeUndefined();
+    expect(auto.equilibria).toHaveLength(1);
+  });
+
+  it("honours a verdict measured elsewhere (the shells measure it once on the entered box)", () => {
+    const sys = compileSystem({ f: "y", g: "-x" });
+    const f = computeFeatures(sys, null, box, "en", { timeDependence: { dependsOnT: true, maxRelDeviation: 0.5, samples: 13 } });
+    expect(f).toEqual({ timeDependent: { snapshotT: 0, maxRelDeviation: 0.5 } });
+  });
+
+  it("a first-order equation whose right-hand side mentions t is never time-dependent: t is its horizontal coordinate", () => {
+    const spec = { kind: "explicit" as const, g: "sin(t)" };
+    const f = computeFeatures(compileSystem(toSystem(spec)), spec, box, "en");
+    expect(f.timeDependent).toBeUndefined();
+    expect(f.firstOrder?.autonomous).toBe(false);
+  });
+
   it("uses the locale for the no-form note", () => {
     const spec = { kind: "explicit" as const, g: "t^2 + y^2" };
     const sys = compileSystem(toSystem(spec));
@@ -206,6 +236,42 @@ describe("fixed trajectories extend by the solution, not the view (H2.3)", () =>
     const end = fwd.points[fwd.points.length - 1];
     expect(end.x).toBeCloseTo(20, 9);
     expect(fwd.tEnd).toBeCloseTo(4, 9);
+  });
+
+  it("a curve traced at a snapshot time starts there: for x' = 0, y' = cos(t) the same point at another time gives another curve", () => {
+    // y(t) = y0 + sin(t) - sin(t0) from (0, 0), over one time unit (the speed |cos t| stays above
+    // cos 1 = 0.54 on every interval used, so no speed-based stop can fire):
+    //   t0 = 0  forward  -> y(1)     = sin 1,   tEnd = 1
+    //   t0 = π  forward  -> y(π + 1) = -sin 1,  tEnd = π + 1   (the mirror image of the t0 = 0 curve)
+    //   t0 = π  backward -> y(π - 1) = sin 1,   tEnd = π - 1
+    const sys = compileSystem({ f: "0", g: "cos(t)" });
+    const wide = { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } };
+    const [f0] = traceBoth(sys, { x: 0, y: 0 }, { stopBox: wide, tSpan: 1 });
+    expect(f0.status).toBe("completed");
+    expect(f0.points[f0.points.length - 1].y).toBeCloseTo(Math.sin(1), 5);
+    expect(f0.tEnd).toBeCloseTo(1, 9);
+    const [fwd, back] = traceBoth(sys, { x: 0, y: 0 }, { stopBox: wide, tSpan: 1, t0: Math.PI });
+    expect(fwd.status).toBe("completed");
+    expect(fwd.points[fwd.points.length - 1].y).toBeCloseTo(-Math.sin(1), 5);
+    expect(fwd.tEnd).toBeCloseTo(Math.PI + 1, 9);
+    expect(back.status).toBe("completed");
+    expect(back.points[back.points.length - 1].y).toBeCloseTo(Math.sin(1), 5);
+    expect(back.tEnd).toBeCloseTo(Math.PI - 1, 9);
+  });
+
+  it("traceFixed and tracePreview pass the snapshot time through: times are absolute", () => {
+    const sys = compileSystem({ f: "1", g: "0" });
+    const home = { x: { min: -1, max: 1 }, y: { min: -1, max: 1 } };
+    // x = t - t0 reaches the far box edge 20 at t = t0 + 20 = 23.
+    const [fixed] = traceFixed(sys, { x: 0, y: 0 }, home, 3);
+    expect(fixed.status).toBe("left_box");
+    expect(fixed.tEnd).toBeCloseTo(23, 9);
+    // Preview over 100 px/unit: limit/100 world units in limit/100 time units, from t0 = 5.
+    const viewport = fitViewport(box, 400, 400);
+    const limit = HOVER_DIAGONALS * Math.hypot(400, 400);
+    const [preview] = tracePreview(sys, { x: 0, y: 0 }, viewport, 5);
+    expect(preview.status).toBe("arc_length");
+    expect(preview.tEnd).toBeCloseTo(5 + limit / 100, 6);
   });
 
   it("traceBoth honours an explicit step cap", () => {

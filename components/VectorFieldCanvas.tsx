@@ -12,6 +12,7 @@ import type { Vec2 } from "@/lib/core/types";
 import { arrowPolygon, scaleArrows, type ArrowMode } from "@/lib/render/arrows";
 import { axisNameAnchors } from "@/lib/render/axis-names";
 import { chooseTicks } from "@/lib/render/ticks";
+import { formatNumber } from "@/lib/labels";
 import { fitViewport, screenToWorld, worldToScreen, type Viewport } from "@/lib/render/viewport";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 
@@ -267,6 +268,21 @@ function drawBase(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewport | nul
   // Last, so the names stay legible over the field. Data-driven: a first-order scene (system in
   // variable mode "ty") calls its horizontal coordinate t, a planar system calls it x.
   drawAxisNames(ctx, v, scene.system?.variables === "ty" ? "t" : "x", "y");
+  // Data-driven: a non-autonomous scene says which instant the field was sampled at.
+  if (scene.timeDependent) drawSnapshotTime(ctx, v, scene.timeDependent.snapshotT);
+}
+
+/** "t = 1.5" in the top-right corner: the picture is a snapshot of a field that changes with t. */
+function drawSnapshotTime(ctx: CanvasRenderingContext2D, v: Viewport, t: number): void {
+  ctx.font = AXIS_NAME_FONT;
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = COLORS.background;
+  ctx.fillStyle = COLORS.axis;
+  ctx.textAlign = "right";
+  ctx.textBaseline = "top";
+  const text = `t = ${formatNumber(t, 4)}`;
+  ctx.strokeText(text, v.width - 8, 6);
+  ctx.fillText(text, v.width - 8, 6);
 }
 
 function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {

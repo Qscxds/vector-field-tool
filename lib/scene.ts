@@ -18,7 +18,10 @@ export type TrajectoryView = {
   status: IntegrationStatus;
   /** Accepted integration steps before downsampling. */
   steps: number;
-  /** Time reached (signed from the start time 0). */
+  /**
+   * Time reached (absolute). The start time is 0, except in the interactive shells over a
+   * non-autonomous system, where a traced curve starts at the displayed snapshot time.
+   */
   tEnd: number;
   /**
    * What 'left_box' refers to: the viewing box of a tool call ("view", default) or the far stop box
@@ -89,6 +92,13 @@ export type Scene = {
   warning?: EquilibriaResult["warning"];
   /** True when more equilibria were found than are listed in `equilibria` (the first maxPoints, sorted by x). Independent of `warning`. */
   truncated?: EquilibriaResult["truncated"];
+  /**
+   * Set when the system is non-autonomous (f or g changes with t, measured by
+   * lib/core/time-dependence). The field is then a snapshot at `snapshotT`, traced curves start
+   * there, and the scene carries NO equilibria and NO warning: equilibrium points and linearized
+   * stability are not defined for a non-autonomous system. First-order scenes never set it.
+   */
+  timeDependent?: { snapshotT: number; maxRelDeviation: number };
   firstOrder?: FirstOrderView;
   /** ping only */
   message?: string;
