@@ -17,7 +17,7 @@ import type { Scene, TrajectoryView } from "@/lib/scene";
 
 export type VectorFieldCanvasProps = {
   scene: Scene;
-  /** Equal-scale viewport; defaults to fitViewport(scene.box). */
+  /** Viewport (equal-scale or filled; the parent decides); defaults to the equal-scale fitViewport(scene.box). */
   viewport?: Viewport;
   width?: number;
   height?: number;

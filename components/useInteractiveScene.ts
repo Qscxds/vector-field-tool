@@ -1,8 +1,9 @@
 "use client";
 
 /**
- * The interaction model shared by the web shell and the MCP widget: an equal-scale viewport over a
- * "home" box, cursor-anchored wheel zoom, drag pan, double-click reset, the field re-sampled for
+ * The interaction model shared by the web shell and the MCP widget: a viewport over a "home" box
+ * (equal-scale by default; `equalScale: false` fills the canvas with the box as entered),
+ * cursor-anchored wheel zoom, drag pan, double-click reset, the field re-sampled for
  * every view, equilibria / first-order features recomputed for the visible box after a pause, a
  * hover preview of the solution through the cursor (rAF-throttled, step-budgeted, skipped near
  * singular points) and click-to-keep trajectories. All mathematics goes through lib/interactive.
@@ -38,6 +39,11 @@ export type InteractiveInput = {
   start?: Vec2;
   /** Whether equilibria & co. are recomputed for the visible box (false for sample_field / trace_trajectory). */
   withFeatures: boolean;
+  /**
+   * Same pixels per unit on both axes (default true). false fills the canvas with the home box
+   * exactly (pixel scales differ); changing it resets the view like a home-box change.
+   */
+  equalScale?: boolean;
 };
 
 export type InteractiveHandlers = {
@@ -59,17 +65,25 @@ export type InteractiveScene = {
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, start, withFeatures } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, start, withFeatures, equalScale = true } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   const [trajectories, setTrajectories] = useState<TrajectoryView[]>(initialTrajectories ?? []);
   const [overlay, setOverlay] = useState<TrajectoryView[]>([]);
   const [hint, setHint] = useState<{ at: Vec2; text: string } | null>(null);
 
+  // Screen position of the last hover preview; declared here because the reset effect clears it.
+  const lastHoverScreen = useRef<Vec2 | null>(null);
+
   const homeKey = homeBox ? JSON.stringify(homeBox) : "";
   useEffect(() => {
+    // A new home box or a scale-mode change re-fits the view. The hover preview was computed with
+    // the old metric (its on-screen length and stop box depend on the viewport), so drop it too.
     setView(null);
-  }, [homeKey]);
+    lastHoverScreen.current = null;
+    setOverlay([]);
+    setHint(null);
+  }, [homeKey, equalScale]);
   useEffect(() => {
     setTrajectories(initialTrajectories ?? []);
     setOverlay([]);
@@ -78,8 +92,8 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   }, [systemKey]);
 
   const viewport = useMemo(
-    () => (view && view.width === width && view.height === height ? view : homeBox ? fitViewport(homeBox, width, height) : null),
-    [view, homeBox, width, height],
+    () => (view && view.width === width && view.height === height ? view : homeBox ? fitViewport(homeBox, width, height, { equalScale }) : null),
+    [view, homeBox, width, height, equalScale],
   );
 
   const field = useMemo(() => (sys && viewport ? sampleField(sys, viewport.box, density, density) : null), [sys, viewport, density]);
@@ -129,7 +143,6 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   localeRef.current = locale;
 
   const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
-  const lastHoverScreen = useRef<Vec2 | null>(null);
   const rafRef = useRef<number | null>(null);
 
   const onWheelZoom = useCallback((screen: Vec2, factor: number) => {
