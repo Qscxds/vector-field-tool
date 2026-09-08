@@ -39,11 +39,15 @@ export function axisNameAnchors(v: Viewport, opts: AxisNameOptions): AxisNameLay
 
   let horizontal: AxisNameAnchor;
   if (v.box.y.min <= 0 && 0 <= v.box.y.max) {
+    // Below the axis line by preference: constant-solution labels ("y = 0 (unstable)") sit ABOVE the
+    // line at the same right end, so a name above it would overprint them whenever y = 0 is a
+    // constant solution. Above is used only when the strip below would run into the tick numbers.
+    const below = origin.y + margin;
     const above = Math.min(origin.y - margin, rowTop - 2);
     horizontal =
-      above >= nameHeight
-        ? { x: v.width - edge, y: above, align: "right", baseline: "bottom" }
-        : { x: v.width - edge, y: origin.y + margin, align: "right", baseline: "top" }; // axis at the very top
+      below + nameHeight <= rowTop - 2
+        ? { x: v.width - edge, y: below, align: "right", baseline: "top" }
+        : { x: v.width - edge, y: above, align: "right", baseline: "bottom" }; // axis near the bottom
   } else {
     horizontal = { x: v.width - edge, y: rowTop - 2, align: "right", baseline: "bottom" }; // bottom-right corner
   }

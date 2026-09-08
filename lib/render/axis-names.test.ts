@@ -11,10 +11,11 @@ const vp = (x: [number, number], y: [number, number]): Viewport => ({
 });
 
 describe("axisNameAnchors", () => {
-  it("both axes on screen: the names hug the axis lines (right end above y = 0, top right of x = 0)", () => {
+  it("both axes on screen: the names hug the axis lines (right end just below y = 0, top right of x = 0)", () => {
     const { horizontal, vertical } = axisNameAnchors(vp([-3, 3], [-3, 3]), opts);
-    // y = 0 is at screen y = 300, x = 0 at screen x = 300
-    expect(horizontal).toEqual({ x: 594, y: 296, align: "right", baseline: "bottom" });
+    // y = 0 is at screen y = 300, x = 0 at screen x = 300. Below the line (300 + 4, top baseline), so the
+    // name never overprints a constant-solution label, which is drawn above the line at the same end.
+    expect(horizontal).toEqual({ x: 594, y: 304, align: "right", baseline: "top" });
     expect(vertical).toEqual({ x: 304, y: 4, align: "left", baseline: "top" });
   });
 
@@ -24,13 +25,13 @@ describe("axisNameAnchors", () => {
     expect(vertical).toEqual({ x: 4 + 20 + 4, y: 4, align: "left", baseline: "top" });
   });
 
-  it("y = 0 near the bottom edge: the name stays above the tick numbers", () => {
+  it("y = 0 near the bottom edge: no room below (594 + 14 > 584), so the name goes above, clamped over the tick numbers", () => {
     // y = 0 at screen y = 5.9 / 6 * 600 = 590; above the axis would be 586, but the tick strip starts at 584
     const { horizontal } = axisNameAnchors(vp([-3, 3], [-0.1, 5.9]), opts);
     expect(horizontal).toEqual({ x: 594, y: 584, align: "right", baseline: "bottom" });
   });
 
-  it("y = 0 near the top edge: no room above, so the name goes just below the axis", () => {
+  it("y = 0 near the top edge: the name goes just below the axis", () => {
     // y = 0 at screen y = 0.1 / 6 * 600 = 10; 10 - 4 = 6 < 14
     const { horizontal } = axisNameAnchors(vp([-3, 3], [-5.9, 0.1]), opts);
     expect(horizontal.baseline).toBe("top");
