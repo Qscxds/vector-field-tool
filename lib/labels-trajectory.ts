@@ -54,12 +54,15 @@ export function groupTrajectories(trajectories: readonly TrajectoryView[]): Traj
  */
 export function trajectoryLines(scene: Pick<Scene, "system" | "fieldStyle">, group: readonly TrajectoryView[], L: LabelTable): string[] {
   const mode = trajectoryMode(scene);
+  // A curve through a point where uniqueness fails (TrajectoryView.nonUnique) gets the sentence
+  // once per group, after the status lines.
+  const nonUnique = group.some((t) => t.nonUnique) ? [L.ui.nonUniqueTrajectory] : [];
   if (mode === "differential") {
     const sides = group.map((t) => trajectoryStatus(t, L));
-    if (sides.length < 2) return sides;
-    return [fill(L.ui.trajectorySides, { first: sides[0], second: sides[1] })];
+    if (sides.length < 2) return [...sides, ...nonUnique];
+    return [fill(L.ui.trajectorySides, { first: sides[0], second: sides[1] }), ...nonUnique];
   }
-  return group.map((t) => {
+  const lines = group.map((t) => {
     const direction = t.direction === "forward" ? L.tool.forward : L.tool.backward;
     const status = trajectoryStatus(t, L);
     if (mode === "explicit") {
@@ -68,4 +71,5 @@ export function trajectoryLines(scene: Pick<Scene, "system" | "fieldStyle">, gro
     }
     return `${direction} ${fill(L.ui.toward, { t: formatNumber(t.tEnd, 2), status })}`;
   });
+  return [...lines, ...nonUnique];
 }

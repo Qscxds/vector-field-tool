@@ -10,10 +10,13 @@ import {
   HOVER_DIAGONALS,
   HOVER_STEP_CAP,
   hoverStopBox,
+  markNonUnique,
+  NON_UNIQUE_REL_TOL,
   screenMetric,
   traceBoth,
   traceFixed,
   tracePreview,
+  withUniqueness,
 } from "./interactive";
 import { fitViewport, panBy, zoomAt } from "./render/viewport";
 import type { TrajectoryView } from "./scene";
@@ -209,5 +212,80 @@ describe("fixed trajectories extend by the solution, not the view (H2.3)", () =>
     const [fwd] = traceBoth(compileSystem({ f: "y", g: "-x" }), { x: 1, y: 0 }, { stopBox: box, maxSteps: 7 });
     expect(fwd.status).toBe("max_steps");
     expect(fwd.steps).toBe(7);
+  });
+});
+
+describe("trajectories through a point where uniqueness fails (J.2)", () => {
+  const spec = { kind: "explicit" as const, g: "sqrt(y)" };
+  const sys = compileSystem(toSystem(spec));
+  // 0 is not a sample point of the y scan (-0.31 + i·1.51/400 = 0 needs i = 82.12).
+  const home = { x: { min: -3, max: 3 }, y: { min: -0.31, max: 1.2 } };
+  const features = computeFeatures(sys, spec, home, "en");
+
+  it("computeFeatures carries the domain-edge line with its uniqueness verdict", () => {
+    expect(features.firstOrder?.solutions).toHaveLength(1);
+    expect(features.firstOrder?.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave", uniqueness: { verdict: "unbounded" } });
+  });
+
+  it("dy/dt = sqrt(y) from (0, 0.25) backward reaches y = 0 and is flagged; forward it is not", () => {
+    // Backward, y = (1/2 + t/2)² reaches 0 at t = -1 in finite time (this is the non-uniqueness):
+    // the integrator stops at the domain edge, far closer to the line than 1e-9 · 6. Forward, y
+    // grows and leaves the far box without touching the line.
+    const pair = markNonUnique(traceFixed(sys, { x: 0, y: 0.25 }, home), features, home);
+    const back = pair.find((t) => t.direction === "backward")!;
+    const fwd = pair.find((t) => t.direction === "forward")!;
+    expect(back.status).toBe("domain_edge");
+    expect(Math.abs(back.points[back.points.length - 1].y)).toBeLessThan(NON_UNIQUE_REL_TOL * 6);
+    expect(back.nonUnique).toBe(true);
+    expect(fwd.nonUnique).toBeUndefined();
+  });
+
+  it("from (0, 1) forward is not flagged", () => {
+    const [fwd] = markNonUnique(traceFixed(sys, { x: 0, y: 1 }, home), features, home);
+    expect(fwd.direction).toBe("forward");
+    expect(fwd.status).toBe("left_box");
+    expect(fwd.nonUnique).toBeUndefined();
+  });
+
+  it("a curve starting ON the line is flagged by its start point", () => {
+    const pair = markNonUnique(traceFixed(sys, { x: 0, y: 0 }, home), features, home);
+    expect(pair.every((t) => t.nonUnique)).toBe(true);
+  });
+
+  it("returns the very same array when no feature is non-unique (the logistic equation)", () => {
+    const lspec = { kind: "explicit" as const, g: "y*(1-y)" };
+    const lsys = compileSystem(toSystem(lspec));
+    const lhome = { x: { min: 0, max: 6 }, y: { min: -0.5, max: 2 } };
+    const lf = computeFeatures(lsys, lspec, lhome, "en");
+    expect(lf.firstOrder?.solutions.map((s) => s.uniqueness?.verdict)).toEqual(["bounded_at_tested_scales", "bounded_at_tested_scales"]);
+    const pair = traceFixed(lsys, { x: 3, y: 0.5 }, lhome);
+    expect(markNonUnique(pair, lf, lhome)).toBe(pair);
+  });
+
+  it("a planar equilibrium with unbounded quotients flags the curve through it, even when no step lands on it", () => {
+    // x' = sqrt|x|, y' = -y from (0.25, 0): backward, x = ((1 + t)/2)² reaches the origin at t = -1
+    // and continues into x < 0 (the field is defined there), so the curve CROSSES the origin; the
+    // segment test catches it whether or not an integration step lands within 4e-9 of it.
+    const psys = compileSystem({ f: "sqrt(abs(x))", g: "-y" });
+    const pbox = { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } };
+    const pf = computeFeatures(psys, null, pbox, "en");
+    expect(pf.equilibria).toHaveLength(1);
+    expect(pf.equilibria![0].uniqueness).toMatchObject({ verdict: "unbounded", along: "x" });
+    expect(pf.equilibria![0].uniqueness!.exponent).toBeCloseTo(0.5, 6);
+    const pair = markNonUnique(traceFixed(psys, { x: 0.25, y: 0 }, pbox), pf, pbox);
+    expect(pair.find((t) => t.direction === "backward")!.nonUnique).toBe(true);
+    // forward, x only grows: never near the origin
+    expect(pair.find((t) => t.direction === "forward")!.nonUnique).toBeUndefined();
+  });
+
+  it("computeFeatures and withUniqueness attach a bounded verdict to the equilibria of a smooth system", () => {
+    const lin = compileSystem({ f: "x", g: "-y" });
+    const f = computeFeatures(lin, null, box, "en");
+    expect(f.equilibria![0].uniqueness?.verdict).toBe("bounded_at_tested_scales");
+    const raw = computeFeatures(lin, null, box, "en").equilibria!.map(({ uniqueness: _u, ...rest }) => rest);
+    expect(withUniqueness(lin, raw, box)[0].uniqueness?.verdict).toBe("bounded_at_tested_scales");
+    // a bounded verdict never flags anything
+    const pair = traceFixed(lin, { x: 0, y: 1 }, box);
+    expect(markNonUnique(pair, f, box)).toBe(pair);
   });
 });

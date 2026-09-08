@@ -30,7 +30,7 @@ describe("label tables", () => {
   it("placeholders match between languages", () => {
     const placeholders = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort();
     const zh = LABELS.zh, en = LABELS.en;
-    for (const section of ["tool", "ui"] as const) {
+    for (const section of ["tool", "ui", "uniqueness"] as const) {
       for (const key of Object.keys(zh[section]) as Array<keyof typeof zh[typeof section]>) {
         expect(placeholders(zh[section][key]), `${section}.${String(key)}`).toEqual(placeholders(en[section][key]));
       }
@@ -84,6 +84,36 @@ describe("label tables", () => {
     expect(LABELS.en.ui.featuresBox).toMatch(/entered range at the home view/);
     expect(LABELS.en.ui.featuresBox).toMatch(/visible range after zooming or panning/);
     expect(LABELS.en.ui.featuresBox).not.toMatch(/computed for the visible range/);
+  });
+
+  it("uniqueness and domain-edge texts are full sentences that name the Lipschitz condition, with no sentence for a bounded result (J.2)", () => {
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      for (const key of ["unbounded", "borderline", "unboundedPoint", "borderlinePoint"] as const) {
+        expect(L.uniqueness[key], `${locale}.${key}`).toMatch(/[。.]$/);
+        expect(L.uniqueness[key], `${locale}.${key}`).toMatch(/Lipschitz/);
+        expect(L.uniqueness[key], `${locale}.${key}`).toContain("{alpha}");
+      }
+      expect(L.uniqueness.unbounded).toContain("{y}");
+      expect(L.uniqueness.unboundedPoint).toContain("{point}");
+      expect(Object.keys(L.uniqueness)).not.toContain("bounded");
+      expect(L.tool.nonUniqueTrajectory).toBe(L.ui.nonUniqueTrajectory);
+      expect(L.tool.nonUniqueTrajectory).toMatch(/[。.]$/);
+      for (const key of ["edge_approach", "edge_leave"] as const) expect(L.stability[key], `${locale}.${key}`).not.toMatch(/dx|\(x, y\)/);
+    }
+    expect(labels("zh").stability.edge_leave).toContain("定义域边界");
+    expect(labels("en").stability.edge_approach).toContain("edge of the domain");
+    expect(labels("en").uniqueness.unbounded).toMatch(/unbounded/);
+  });
+
+  it("uniquenessSentence speaks only for unbounded and borderline verdicts", async () => {
+    const { uniquenessSentence } = await import("./labels");
+    const L = labels("en");
+    expect(uniquenessSentence(L, { verdict: "bounded_at_tested_scales", exponent: 0 }, { y: 0 })).toBeNull();
+    expect(uniquenessSentence(L, { verdict: "untestable", exponent: NaN }, { y: 0 })).toBeNull();
+    expect(uniquenessSentence(L, undefined, { y: 0 })).toBeNull();
+    expect(uniquenessSentence(L, { verdict: "unbounded", exponent: 0.5 }, { y: 0 })).toBe(fill(L.uniqueness.unbounded, { y: "0", alpha: "0.5" }));
+    expect(uniquenessSentence(L, { verdict: "borderline", exponent: 0.1234 }, { point: { x: 1, y: 2 } })).toBe(fill(L.uniqueness.borderlinePoint, { point: "(1, 2)", alpha: "0.12" }));
   });
 
   it("caveats read as full sentences in both languages", () => {

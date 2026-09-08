@@ -7,7 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { NO_FORM_NOTE } from "@/lib/core/detect-form";
-import { labels } from "@/lib/labels";
+import { fill, labels } from "@/lib/labels";
 import type { Scene } from "@/lib/scene";
 import { SlidingWindowLimiter } from "./rate-limit";
 import { createMcpServer } from "./server";
@@ -550,5 +550,73 @@ describe("truncated lists are said in full sentences (J.5b)", () => {
     expect(r.scene.firstOrder?.singularities).toHaveLength(20);
     expect(r.text).toContain(labels("zh").tool.truncated);
     expect(r.text).toContain(labels("zh").ui.singularitiesTruncated.replace(/\{max\}/g, "20"));
+  });
+});
+
+describe("uniqueness failure and domain-edge constant solutions (J.2)", () => {
+  it("dy/dt = sqrt(y): y = 0 is reported as a domain-edge line that solutions leave, with the uniqueness sentence right after it", async () => {
+    // y range [-0.31, 1.2]: 0 is not a sample point (i = 82.12). ∂g/∂y = 1/(2 sqrt y) is unbounded: α = 1/2.
+    const r = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -0.31, yMax: 1.2, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    const [s] = r.scene.firstOrder!.solutions;
+    expect(s).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave", uniqueness: { verdict: "unbounded", probesFailing: 7, probesTotal: 7, side: "above" } });
+    expect(s.uniqueness!.exponent).toBeCloseTo(0.5, 6);
+    const L = labels("en");
+    const solutionLine = fill(L.tool.constantSolution, { y: "0", stability: L.stability.edge_leave });
+    const sentence = fill(L.uniqueness.unbounded, { y: "0", alpha: "0.5" });
+    expect(r.text).toContain(solutionLine);
+    expect(r.text).toContain(sentence);
+    expect(r.text.indexOf(sentence)).toBe(r.text.indexOf(solutionLine) + solutionLine.length + 1); // the very next line
+    expect(r.text).not.toContain("semi-stable");
+    const zh = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -0.31, yMax: 1.2, locale: "zh" });
+    expect(zh.text).toContain(labels("zh").stability.edge_leave);
+    expect(zh.text).toContain("Lipschitz 条件不成立");
+  });
+
+  it("dy/dt = -sqrt(y) is approached from the defined side", async () => {
+    const r = await call("analyze_first_order", { expr: "-sqrt(y)", yMin: -0.31, yMax: 1.2, locale: "en" });
+    expect(r.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_approach" });
+    expect(r.text).toContain(labels("en").stability.edge_approach);
+  });
+
+  it("says nothing about uniqueness for the logistic equation (bounded is not a proof, so it is not claimed)", async () => {
+    const r = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2, locale: "en" });
+    expect(r.scene.firstOrder!.solutions.map((s) => s.uniqueness?.verdict)).toEqual(["bounded_at_tested_scales", "bounded_at_tested_scales"]);
+    expect(r.scene.firstOrder!.solutions.every((s) => s.domainEdge === undefined)).toBe(true);
+    expect(r.text).not.toMatch(/Lipschitz|uniqueness/);
+  });
+
+  it("analyze_system: x' = sqrt(|x|), y' = -y carries the uniqueness verdict at the origin and prints the sentence after the equilibrium line", async () => {
+    const r = await call("analyze_system", { f: "sqrt(abs(x))", g: "-y", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.equilibria).toHaveLength(1);
+    const [e] = r.scene.equilibria!;
+    expect(e.uniqueness).toMatchObject({ verdict: "unbounded", along: "x" });
+    expect(e.uniqueness!.exponent).toBeCloseTo(0.5, 6);
+    const sentence = fill(labels("en").uniqueness.unboundedPoint, { point: "(0, 0)", alpha: "0.5" });
+    expect(r.text).toContain(sentence);
+    expect(r.text.indexOf(sentence)).toBeGreaterThan(r.text.indexOf("1. Equilibrium (0, 0)"));
+    // a smooth system stays silent and still carries the verdict
+    const lin = await call("analyze_system", { f: "x", g: "-y", locale: "en" });
+    expect(lin.scene.equilibria![0].uniqueness?.verdict).toBe("bounded_at_tested_scales");
+    expect(lin.text).not.toMatch(/Lipschitz/);
+  });
+
+  it("trace_trajectory flags a curve through the non-unique origin and prints the sentence; a curve that misses it is not flagged", async () => {
+    // Backward from (0.25, 0), x = ((1 + t)/2)² crosses the origin at t = -1; forward x only grows.
+    const r = await call("trace_trajectory", { f: "sqrt(abs(x))", g: "-y", x0: 0.25, y0: 0, tSpan: 5, xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    const back = r.scene.trajectories!.find((t) => t.direction === "backward")!;
+    const fwd = r.scene.trajectories!.find((t) => t.direction === "forward")!;
+    expect(back.nonUnique).toBe(true);
+    expect(fwd.nonUnique).toBeUndefined();
+    const L = labels("en");
+    expect(r.text).toContain(L.tool.nonUniqueTrajectory);
+    expect(r.text.split("\n").filter((l) => l === L.tool.nonUniqueTrajectory)).toHaveLength(1);
+    expect(r.text.indexOf(L.tool.nonUniqueTrajectory)).toBeGreaterThan(r.text.indexOf(L.tool.backward));
+    // the harmonic oscillator never touches its (bounded) equilibrium: no flag, no sentence
+    const osc = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1, locale: "en" });
+    expect(osc.scene.trajectories!.every((t) => t.nonUnique === undefined)).toBe(true);
+    expect(osc.text).not.toContain(L.tool.nonUniqueTrajectory);
   });
 });

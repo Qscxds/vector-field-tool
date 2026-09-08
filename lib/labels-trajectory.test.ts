@@ -108,6 +108,33 @@ describe("trajectoryLines for a differential-form scene (circles preset t dt + y
   });
 });
 
+describe("trajectoryLines adds the non-uniqueness sentence once per group (J.2)", () => {
+  const tv = (direction: "forward" | "backward", nonUnique?: boolean): TrajectoryView => ({
+    direction,
+    points: [{ x: 0, y: 0 }, { x: 1, y: 0 }],
+    status: "completed",
+    steps: 1,
+    tEnd: 1,
+    ...(nonUnique ? { nonUnique } : {}),
+  });
+
+  it("explicit first order: after the status lines, in the shell's language", () => {
+    const scene = firstOrderScene({ kind: "explicit", g: "sqrt(y)" });
+    const lines = trajectoryLines(scene, [tv("forward"), tv("backward", true)], en);
+    expect(lines).toHaveLength(3);
+    expect(lines[2]).toBe(en.ui.nonUniqueTrajectory);
+    expect(trajectoryLines(scene, [tv("forward"), tv("backward", true)], zh)[2]).toBe(zh.ui.nonUniqueTrajectory);
+    expect(trajectoryLines(scene, [tv("forward"), tv("backward")], en)).toHaveLength(2);
+  });
+
+  it("planar and differential scenes get it too", () => {
+    const planar = trajectoryLines({ system: { f: "sqrt(abs(x))", g: "-y" } }, [tv("forward", true)], en);
+    expect(planar).toEqual([`${en.tool.forward} to t = 1, ${en.status.completed}`, en.ui.nonUniqueTrajectory]);
+    const diff = trajectoryLines(firstOrderScene({ kind: "differential", M: "-sqrt(y)", N: "1" }), [tv("forward"), tv("backward", true)], en);
+    expect(diff).toEqual([`one side: ${en.status.completed}; other side: ${en.status.completed}`, en.ui.nonUniqueTrajectory]);
+  });
+});
+
 describe("trajectoryLines for a planar system keeps today's text", () => {
   it("harmonic oscillator clicked at (1, 0): direction, tEnd and status", () => {
     const home = { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } };

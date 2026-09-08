@@ -19,7 +19,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CompiledSystem } from "@/lib/core/parse";
 import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
-import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features } from "@/lib/interactive";
+import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features } from "@/lib/interactive";
 import { labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
@@ -156,6 +156,10 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   sysRef.current = sys;
   const singularRef = useRef<Vec2[]>([]);
   singularRef.current = features.firstOrder?.singularities ?? [];
+  // Constant solutions / equilibria with their uniqueness verdicts: a traced curve through one
+  // where uniqueness fails is flagged (markNonUnique) so the shells can say so.
+  const featuresRef = useRef<Features>(features);
+  featuresRef.current = features;
   const localeRef = useRef(locale);
   localeRef.current = locale;
 
@@ -186,7 +190,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     const home = homeBoxRef.current;
     if (!s || !home) return;
     // The curve's extent is the solution's business (20x the home box); the view only clips it.
-    setTrajectories((prev) => [...prev, ...traceFixed(s, p, home)]);
+    setTrajectories((prev) => [...prev, ...markNonUnique(traceFixed(s, p, home), featuresRef.current, home)]);
   }, []);
 
   const onHoverWorld = useCallback((world: Vec2 | null, screen: Vec2 | null) => {
@@ -218,7 +222,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
         return;
       }
       setHint(null);
-      setOverlay(tracePreview(s, h.world, vp));
+      setOverlay(markNonUnique(tracePreview(s, h.world, vp), featuresRef.current, vp.box));
     });
   }, []);
   useEffect(

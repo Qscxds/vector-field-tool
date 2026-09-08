@@ -12,7 +12,7 @@ import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type LabelTable, type Locale } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
@@ -288,6 +288,12 @@ export default function VectorFieldPage() {
                   {L.ui.equalScaleWarning}
                 </p>
               ) : null}
+              {/* The hover preview passes through a point where uniqueness fails (kept curves say it in the last-trajectory line). */}
+              {overlay.some((t) => t.nonUnique) ? (
+                <p role="status" data-non-unique-preview style={{ margin: "6px 0 0", color: "#92400e" }}>
+                  {L.ui.nonUniqueTrajectory}
+                </p>
+              ) : null}
               <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
                 {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
                   hv,
@@ -345,6 +351,7 @@ function EquilibriaList({ scene, L }: { scene: Scene; L: LabelTable }) {
             <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}; λ = {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable}; tr ={" "}
             {formatNumber(p.trace, 5)}, det = {formatNumber(p.determinant, 5)}.
             {p.caveat ? <span style={{ color: "#92400e" }}> {L.caveat[p.caveat]}</span> : null}
+            <UniquenessNote text={uniquenessSentence(L, p.uniqueness, { point: p.at })} />
           </li>
         ))}
       </ol>
@@ -364,7 +371,10 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
         ) : (
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             {fo.solutions.map((s) => (
-              <li key={s.y}>{fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] })}</li>
+              <li key={s.y} data-domain-edge={s.domainEdge} data-uniqueness={s.uniqueness?.verdict}>
+                {fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] })}
+                <UniquenessNote text={uniquenessSentence(L, s.uniqueness, { y: s.y })} />
+              </li>
             ))}
           </ul>
         )}
@@ -392,6 +402,15 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
       ) : null}
     </section>
   );
+}
+
+/** The uniqueness sentence under a constant solution or an equilibrium; nothing when the quotients stayed bounded. */
+function UniquenessNote({ text }: { text: string | null }) {
+  return text ? (
+    <div data-uniqueness-note style={{ color: "#92400e", marginTop: 2 }}>
+      {text}
+    </div>
+  ) : null;
 }
 
 /** Detected forms by verdict: consistent, borderline (flagged), then the rejected and untestable ones. */

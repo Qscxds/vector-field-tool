@@ -54,6 +54,18 @@ const COLORS = {
 /** Longer than the OS double-click interval is not needed: the second pointerup cancels the first click. */
 const CLICK_DELAY_MS = 220;
 
+/**
+ * Non-uniqueness marks, all data-driven from the Scene (uniqueness verdict "unbounded"):
+ * a trajectory through such a point is dashed (it is one of infinitely many); a constant solution
+ * gets a dotted companion line on each side (a double line) and a "!" badge; an equilibrium gets
+ * the "!" badge beside its marker. A domain-edge constant solution has its own dash-dot pattern.
+ */
+const NON_UNIQUE_DASH = [6, 4];
+const NON_UNIQUE_COMPANION_DASH = [2, 3];
+const NON_UNIQUE_COMPANION_OFFSET = 4;
+const DOMAIN_EDGE_DASH = [10, 4, 2, 4];
+const BADGE_RADIUS = 7;
+
 const STABLE: ReadonlySet<Equilibrium["classification"]> = new Set(["stable_node", "stable_spiral"]);
 const UNSTABLE: ReadonlySet<Equilibrium["classification"]> = new Set(["unstable_node", "unstable_spiral"]);
 
@@ -100,6 +112,8 @@ export function VectorFieldCanvas({
       ctx.lineJoin = "round";
       for (const t of overlay) {
         if (t.points.length < 2) continue;
+        // A preview through a point where uniqueness fails is dashed, like a kept curve.
+        ctx.setLineDash(t.nonUnique ? NON_UNIQUE_DASH : []);
         ctx.beginPath();
         t.points.forEach((p, i) => {
           const s = worldToScreen(v, p);
@@ -108,6 +122,7 @@ export function VectorFieldCanvas({
         });
         ctx.stroke();
       }
+      ctx.setLineDash([]);
     }
     if (overlayHint) {
       const s = worldToScreen(v, overlayHint.at);
@@ -348,6 +363,7 @@ function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Sce
   for (const t of scene.trajectories ?? []) {
     if (t.points.length < 2) continue;
     ctx.strokeStyle = t.direction === "forward" ? COLORS.forward : COLORS.backward;
+    ctx.setLineDash(t.nonUnique ? NON_UNIQUE_DASH : []);
     ctx.beginPath();
     t.points.forEach((p, i) => {
       const s = worldToScreen(v, p);
@@ -356,6 +372,7 @@ function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Sce
     });
     ctx.stroke();
   }
+  ctx.setLineDash([]);
   if (scene.start) {
     const s = worldToScreen(v, scene.start);
     ctx.fillStyle = COLORS.start;
@@ -365,23 +382,56 @@ function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Sce
   }
 }
 
+/** The "!" badge marking a point or line where uniqueness fails. */
+function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, color: string): void {
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = COLORS.background;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(x, y, BADGE_RADIUS, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = color;
+  ctx.font = "bold 11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("!", x, y + 0.5);
+}
+
 function drawFirstOrderLines(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene): void {
   for (const sol of scene.firstOrder?.solutions ?? []) {
     const s = worldToScreen(v, { x: v.box.x.min, y: sol.y });
+    const approached = sol.stability === "stable" || sol.stability === "edge_approach";
+    const left = sol.stability === "unstable" || sol.stability === "edge_leave";
+    const color = approached ? COLORS.stable : left ? COLORS.unstable : sol.stability === "varies" ? COLORS.uncertain : COLORS.backward;
+    const nonUnique = sol.uniqueness?.verdict === "unbounded";
     ctx.lineWidth = 2;
-    ctx.strokeStyle =
-      sol.stability === "stable" ? COLORS.stable : sol.stability === "unstable" ? COLORS.unstable : sol.stability === "varies" ? COLORS.uncertain : COLORS.backward;
-    ctx.setLineDash(sol.stability === "stable" ? [] : sol.stability === "unstable" ? [8, 5] : [2, 4]);
+    ctx.strokeStyle = color;
+    // Domain-edge lines have their own dash-dot pattern; interior lines keep solid / dashed / dotted.
+    ctx.setLineDash(sol.domainEdge ? DOMAIN_EDGE_DASH : sol.stability === "stable" ? [] : sol.stability === "unstable" ? [8, 5] : [2, 4]);
     ctx.beginPath();
     ctx.moveTo(0, s.y);
     ctx.lineTo(v.width, s.y);
     ctx.stroke();
+    if (nonUnique) {
+      // Double line: a dotted companion on each side, then the badge at the left end.
+      ctx.lineWidth = 1;
+      ctx.setLineDash(NON_UNIQUE_COMPANION_DASH);
+      for (const dy of [-NON_UNIQUE_COMPANION_OFFSET, NON_UNIQUE_COMPANION_OFFSET]) {
+        ctx.beginPath();
+        ctx.moveTo(0, s.y + dy);
+        ctx.lineTo(v.width, s.y + dy);
+        ctx.stroke();
+      }
+      drawBadge(ctx, 2 * BADGE_RADIUS + 4, s.y, color);
+    }
     ctx.setLineDash([]);
-    ctx.fillStyle = ctx.strokeStyle;
+    ctx.fillStyle = color;
     ctx.font = "11px system-ui, sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText(`y = ${Number(sol.y.toFixed(4))} (${sol.stability})`, v.width - 6, s.y - 3);
+    ctx.fillText(`y = ${Number(sol.y.toFixed(4))} (${sol.stability})${nonUnique ? " !" : ""}`, v.width - 6, s.y - (nonUnique ? 6 : 3));
   }
 }
 
@@ -430,6 +480,7 @@ function drawEquilibria(ctx: CanvasRenderingContext2D, v: Viewport, equilibria: 
       ctx.moveTo(s.x - r, s.y + r);
       ctx.lineTo(s.x + r, s.y - r);
       ctx.stroke();
+      if (e.uniqueness?.verdict === "unbounded") drawBadge(ctx, s.x + r + BADGE_RADIUS + 2, s.y - r - 2, COLORS.saddle);
       continue;
     }
     const uncertain = e.classification === "center_or_weak_spiral" || e.classification === "non_hyperbolic";
@@ -449,5 +500,6 @@ function drawEquilibria(ctx: CanvasRenderingContext2D, v: Viewport, equilibria: 
       ctx.textBaseline = "middle";
       ctx.fillText("?", s.x, s.y + 0.5);
     }
+    if (e.uniqueness?.verdict === "unbounded") drawBadge(ctx, s.x + r + BADGE_RADIUS + 2, s.y - r - 2, color);
   }
 }

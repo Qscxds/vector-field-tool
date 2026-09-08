@@ -12,6 +12,7 @@ import type { OdeForm } from "./core/detect-form";
 import type { IntegrationStatus } from "./core/integrate";
 import type { EquilibriumSolution } from "./core/slope-field";
 import type { Complex, Locale } from "./core/types";
+import type { UniquenessVerdict } from "./core/uniqueness";
 
 export type { Locale };
 export const LOCALES: readonly Locale[] = ["zh", "en"];
@@ -381,6 +382,24 @@ export function labels(locale: Locale): LabelTable {
 /** Fills `{name}` placeholders. Missing names are left as-is so mistakes stay visible. */
 export function fill(template: string, values: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (m, key: string) => (key in values ? String(values[key]) : m));
+}
+
+/**
+ * The uniqueness sentence for a constant solution (`{ y }`) or an equilibrium (`{ point }`), or
+ * null when there is nothing to say: only the "unbounded" and "borderline" verdicts speak. A
+ * bounded result is a measurement at the tested scales, not a proof of the Lipschitz condition,
+ * so it stays silent (the structured result still carries it). Shared by the tool summaries and
+ * both shells so the wording exists once.
+ */
+export function uniquenessSentence(
+  L: LabelTable,
+  u: { verdict: UniquenessVerdict; exponent: number } | undefined,
+  subject: { y: number } | { point: { x: number; y: number } },
+): string | null {
+  if (!u || (u.verdict !== "unbounded" && u.verdict !== "borderline")) return null;
+  const alpha = formatNumber(u.exponent, 2);
+  if ("y" in subject) return fill(u.verdict === "unbounded" ? L.uniqueness.unbounded : L.uniqueness.borderline, { y: formatNumber(subject.y, 6), alpha });
+  return fill(u.verdict === "unbounded" ? L.uniqueness.unboundedPoint : L.uniqueness.borderlinePoint, { point: formatPoint(subject.point), alpha });
 }
 
 /** Picks a locale from a BCP 47 tag (navigator.language): Chinese -> zh, everything else -> en. */

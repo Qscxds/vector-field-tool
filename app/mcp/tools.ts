@@ -22,8 +22,8 @@ import {
   type FirstOrderSpec,
 } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
-import { EXACT_PATH_TOL } from "@/lib/interactive";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, type Locale } from "@/lib/labels";
+import { EXACT_PATH_TOL, markNonUnique, withUniqueness } from "@/lib/interactive";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
@@ -187,6 +187,9 @@ function describeEquilibria(scene: Scene, locale: Locale): string {
         determinant: fmt(p.determinant, 5),
       }) + (p.caveat ? fill(L.tool.note, { caveat: L.caveat[p.caveat] }) : ""),
     );
+    // Right after the point it belongs to; silent when the quotients stayed bounded (no proof).
+    const uniqueness = uniquenessSentence(L, p.uniqueness, { point: p.at });
+    if (uniqueness) lines.push(uniqueness);
   });
   return lines.join("\n");
 }
@@ -310,7 +313,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const sys = compileOrExplain(spec);
         const eq = findEquilibria(sys, box, { checkpoint });
         const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
-        const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: eq.points, warning: eq.warning, truncated: eq.truncated };
+        const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: withUniqueness(sys, eq.points, box, checkpoint), warning: eq.warning, truncated: eq.truncated };
         const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
         const singular = field.singularCount ? " " + fill(L.tool.singularSamples, { count: field.singularCount }) : "";
         return ok(`${header}${singular}\n${describeEquilibria(scene, input.locale)}`, scene);
@@ -355,7 +358,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const start = { x: input.x0, y: input.y0 };
         const integrate = input.method === "rk4" ? integrateRK4 : integrateAdaptive;
         const directions: Array<1 | -1> = input.direction === "both" ? [1, -1] : input.direction === "forward" ? [1] : [-1];
-        const trajectories: TrajectoryView[] = directions.map((dir) => {
+        const traced: TrajectoryView[] = directions.map((dir) => {
           // rk4 has a fixed step of 0.01; give it enough steps to reach any accepted tSpan (<= 1000)
           // instead of truncating silently at t = 200.
           const opts: IntegrateOptions =
@@ -371,16 +374,21 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             tEnd: tr.times[tr.times.length - 1],
           };
         });
+        // A curve through an equilibrium where uniqueness fails (x' = sqrt(|x|) at the origin) is
+        // one of infinitely many: find the equilibria, probe them, and flag such curves.
+        const eq = findEquilibria(sys, box, { checkpoint });
+        const trajectories = markNonUnique(traced, { equilibria: withUniqueness(sys, eq.points, box, checkpoint) }, box);
         const scene: Scene = { kind: "trace_trajectory", locale: input.locale, system: spec, box, start, trajectories };
-        const lines = trajectories.map((t) => {
+        const lines = trajectories.flatMap((t) => {
           const end = t.points[t.points.length - 1];
-          return fill(L.tool.trajectoryLine, {
+          const line = fill(L.tool.trajectoryLine, {
             direction: t.direction === "forward" ? L.tool.forward : L.tool.backward,
             tEnd: fmt(t.tEnd, 3),
             end: formatPoint(end),
             status: L.status[t.status],
             steps: t.steps,
           });
+          return t.nonUnique ? [line, L.tool.nonUniqueTrajectory] : [line];
         });
         return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: spec.g })}\n${lines.join("\n")}`, scene);
       }),
@@ -433,7 +441,11 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "differential form M(t, y) dt + N(t, y) dy = 0 (parameters `M` and `N`, the natural form of exact " +
         "equations). Returns: the slope/direction field inside the viewing box (undirected segments for the " +
         "differential form, which has no natural direction); constant solutions y = c with their stability " +
-        "(stable / unstable / semi-stable / varies with t); points where the direction is undefined (M = N = 0); " +
+        "(stable / unstable / semi-stable / varies with t; a line on the edge of the equation's domain, such as " +
+        "y = 0 for dy/dt = sqrt(y), is judged on its defined side only: approached or left), each with a " +
+        "uniqueness check (whether the Lipschitz condition fails there, as it does for sqrt(y) at y = 0: then " +
+        "infinitely many solutions pass through the line, and the sentence saying so must be read to the student); " +
+        "points where the direction is undefined (M = N = 0); " +
         "a list of standard forms the equation is NUMERICALLY CONSISTENT WITH (separable, autonomous, linear in y, " +
         "homogeneous, Bernoulli, exact, integrating factor in t or y), each with its evidence and a caveat; and, " +
         "for exact equations, the implicit solution F(t, y) = C drawn as level curves. " +
@@ -541,7 +553,12 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           if (singular.truncated) lines.push(fill(L.ui.singularitiesTruncated, { max: singular.points.length }));
         }
         if (eq.solutions.length) {
-          for (const s of eq.solutions) lines.push(fill(L.tool.constantSolution, { y: fmt(s.y, 6), stability: L.stability[s.stability] }));
+          for (const s of eq.solutions) {
+            lines.push(fill(L.tool.constantSolution, { y: fmt(s.y, 6), stability: L.stability[s.stability] }));
+            // The uniqueness sentence follows its line; nothing is printed for a bounded result.
+            const uniqueness = uniquenessSentence(L, s.uniqueness, { y: s.y });
+            if (uniqueness) lines.push(uniqueness);
+          }
         } else {
           lines.push(eq.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);
         }

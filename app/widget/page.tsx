@@ -17,7 +17,7 @@ import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type Locale } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, uniquenessSentence, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
@@ -172,6 +172,11 @@ export default function WidgetPage() {
             })}{" "}
             · {L.ui.interactionHint}
           </p>
+          {live.overlay.some((t) => t.nonUnique) ? (
+            <p role="status" data-non-unique-preview style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
+              {L.ui.nonUniqueTrajectory}
+            </p>
+          ) : null}
           <SceneSummary scene={live.scene} />
         </>
       ) : scene?.box ? (
@@ -218,7 +223,12 @@ function SceneSummary({ scene }: { scene: Scene }) {
   const fo = scene.firstOrder;
   if (fo) {
     if (fo.solutions.length === 0) items.push(fo.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);
-    for (const s of fo.solutions) items.push(fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] }));
+    for (const s of fo.solutions) {
+      items.push(fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] }));
+      // Uniqueness right under its line; silent for a bounded result.
+      const uniqueness = uniquenessSentence(L, s.uniqueness, { y: s.y });
+      if (uniqueness) items.push(uniqueness);
+    }
     if (fo.singularities?.length) {
       items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: fo.singularitiesTruncated ? L.tool.truncated : "" }));
       if (fo.singularitiesTruncated) items.push(fill(L.ui.singularitiesTruncated, { max: fo.singularities.length }));
@@ -260,6 +270,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
             <li key={i} style={{ margin: "2px 0" }}>
               <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}; λ = {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable}
               {p.caveat ? <span style={{ color: "#92400e" }}> {L.caveat[p.caveat]}</span> : null}
+              {uniquenessSentence(L, p.uniqueness, { point: p.at }) ? <span style={{ color: "#92400e" }}> {uniquenessSentence(L, p.uniqueness, { point: p.at })}</span> : null}
             </li>
           ))}
         </ol>

@@ -12,12 +12,13 @@
  *   was cut where the old view ended. The view only clips what is drawn.
  */
 import { detectForms, NO_FORM_NOTE, reportedForms } from "./core/detect-form";
-import { findEquilibria } from "./core/equilibria";
+import { findEquilibria, type Equilibrium } from "./core/equilibria";
 import { exactPotential, potentialLevelsFromValues } from "./core/exact";
 import { integrateAdaptive } from "./core/integrate";
 import type { CompiledSystem } from "./core/parse";
 import { firstOrderEquilibria, firstOrderSingularities, type FirstOrderSpec } from "./core/slope-field";
 import type { Box, Locale, Vec2 } from "./core/types";
+import { equilibriaUniqueness } from "./core/uniqueness";
 import { contourSegmentsFromGrid, sampleGrid } from "./render/contours";
 import { worldToScreen, type Viewport } from "./render/viewport";
 import type { FirstOrderView, Scene, TrajectoryView } from "./scene";
@@ -47,6 +48,12 @@ export const HOVER_PIXEL_THRESHOLD = 3;
 export const SINGULAR_PIXEL_RADIUS = 8;
 /** Recompute equilibria for the visible box this long after the last zoom/pan (ms). */
 export const FEATURE_DEBOUNCE_MS = 250;
+/**
+ * A trajectory point this close to a non-unique constant solution or equilibrium, relative to the
+ * longer side of the box, is "on" it. The integrator ends a curve that reaches a domain edge or an
+ * equilibrium far closer than this (sqrt(y) from (0, 0.25) backward ends at y ≈ 5e-21).
+ */
+export const NON_UNIQUE_REL_TOL = 1e-9;
 
 /**
  * The box the features (equilibria, constant solutions, singular points, forms, level curves) are
@@ -68,7 +75,7 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
   try {
     if (!firstOrder) {
       const eq = findEquilibria(sys, box);
-      return { equilibria: eq.points, warning: eq.warning, truncated: eq.truncated };
+      return { equilibria: withUniqueness(sys, eq.points, box), warning: eq.warning, truncated: eq.truncated };
     }
     const spec = firstOrder;
     const eq = firstOrderEquilibria(spec, box.y, { tRange: box.x });
@@ -103,6 +110,51 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
   } catch {
     return {};
   }
+}
+
+/** The equilibria with their uniqueness probes attached (see uniqueness.ts). */
+export function withUniqueness(sys: CompiledSystem, points: Equilibrium[], box: Box, checkpoint?: () => void): Equilibrium[] {
+  const u = equilibriaUniqueness(sys, points.map((p) => p.at), box, { checkpoint });
+  return points.map((p, i) => ({ ...p, uniqueness: u[i] }));
+}
+
+/** Distance from q to the segment ab. */
+function segmentDistance(a: Vec2, b: Vec2, q: Vec2): number {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len2 = dx * dx + dy * dy;
+  const t = len2 > 0 ? Math.max(0, Math.min(1, ((q.x - a.x) * dx + (q.y - a.y) * dy) / len2)) : 0;
+  return Math.hypot(a.x + t * dx - q.x, a.y + t * dy - q.y);
+}
+
+/** Smallest |y - c| along the segment ab: zero when the segment crosses or touches the line y = c. */
+function segmentLineGap(a: Vec2, b: Vec2, c: number): number {
+  return (a.y - c) * (b.y - c) <= 0 ? 0 : Math.min(Math.abs(a.y - c), Math.abs(b.y - c));
+}
+
+/**
+ * Flags the trajectories that pass through a point where uniqueness fails: the start point, any
+ * point of the curve, or any segment between consecutive points comes within NON_UNIQUE_REL_TOL of
+ * the box scale of a constant solution y = c, or of a system equilibrium, whose uniqueness verdict
+ * is "unbounded". Segments count because an adaptive step can cross such a point without landing
+ * on it (x' = sqrt|x| through the origin). Pure: returns the same array when nothing is flagged,
+ * new TrajectoryView objects otherwise.
+ */
+export function markNonUnique(trajectories: TrajectoryView[], features: Pick<Scene, "equilibria" | "firstOrder">, box: Box): TrajectoryView[] {
+  const tol = NON_UNIQUE_REL_TOL * Math.max(box.x.max - box.x.min, box.y.max - box.y.min);
+  const lines = (features.firstOrder?.solutions ?? []).filter((s) => s.uniqueness?.verdict === "unbounded").map((s) => s.y);
+  const points = (features.equilibria ?? []).filter((e) => e.uniqueness?.verdict === "unbounded").map((e) => e.at);
+  if (lines.length === 0 && points.length === 0) return trajectories;
+  const touches = (t: TrajectoryView): boolean => {
+    const pts = t.points;
+    if (pts.length === 0) return false;
+    if (lines.some((c) => Math.abs(pts[0].y - c) <= tol) || points.some((q) => Math.hypot(pts[0].x - q.x, pts[0].y - q.y) <= tol)) return true;
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1], b = pts[i];
+      if (lines.some((c) => segmentLineGap(a, b, c) <= tol) || points.some((q) => segmentDistance(a, b, q) <= tol)) return true;
+    }
+    return false;
+  };
+  return trajectories.map((t) => (touches(t) ? { ...t, nonUnique: true } : t));
 }
 
 /** Grows a box by `factor` of its own size on every side (factor 1 → three times as wide and tall). */

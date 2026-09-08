@@ -25,6 +25,12 @@ export type TrajectoryView = {
    * of a clicked trajectory in the shells ("far", 20x the entered range). Labels differ.
    */
   stop?: "view" | "far";
+  /**
+   * The curve passes through a point where uniqueness fails (a constant solution or an equilibrium
+   * whose uniqueness verdict is "unbounded"): it is one of infinitely many solutions through that
+   * point, and the picture shows only the one the integrator followed. Set by markNonUnique.
+   */
+  nonUnique?: boolean;
 };
 
 export type FirstOrderView = {
