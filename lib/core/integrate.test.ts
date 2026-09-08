@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { integrateAdaptive, integrateRK4, type Trajectory } from "./integrate";
 import { compileSystem } from "./parse";
+import { toSystem } from "./slope-field";
 
 const harmonic = compileSystem({ f: "y", g: "-x" });
 const dist = (a: { x: number; y: number }, b: { x: number; y: number }) => Math.hypot(a.x - b.x, a.y - b.y);
@@ -321,12 +322,12 @@ describe("edge of the field's domain (review C13)", () => {
     expect(last(ad).x).toBeLessThan(1e-3);
   });
 
-  it("an explicit slope field with a vertical tangent, dy/dx = -x/y, is 'singular' at y = 0: the field explodes there", () => {
-    const sys = compileSystem({ f: "1", g: "-x/y" });
+  it("an explicit slope field with a vertical tangent, dy/dt = -t/y as the reduced system x' = 1, y' = -t/y, is 'singular' at y = 0: the field explodes there", () => {
+    const sys = compileSystem(toSystem({ kind: "explicit", g: "-t/y" }));
     const tr = integrateAdaptive(sys, { x: 0, y: 1 }, 5, { box: { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } } });
     expect(tr.status).toBe("singular");
     expect(Math.abs(last(tr).y)).toBeLessThan(1e-3);
-    expect(Math.abs(last(tr).x - 1)).toBeLessThan(1e-3); // the circle x² + y² = 1 meets y = 0 at x = 1
+    expect(Math.abs(last(tr).x - 1)).toBeLessThan(1e-3); // the circle t² + y² = 1 meets y = 0 at t = 1
   });
 });
 

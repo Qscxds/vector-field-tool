@@ -1,13 +1,17 @@
 /**
- * First-order equations.
+ * First-order equations, in the student's notation: the independent variable is t.
  *
- * The general representation is the differential form  M(x, y) dx + N(x, y) dy = 0. Its solution
- * curves are the trajectories of the planar system  x' = N, y' = -M  (so dy/dx = -M/N), which
- * lets slope fields reuse every other module. The explicit form dy/dx = g(x, y) is the special
+ * The general representation is the differential form  M(t, y) dt + N(t, y) dy = 0. Its solution
+ * curves are the trajectories of the planar system  x' = N, y' = -M  (so dy/dt = -M/N), which
+ * lets slope fields reuse every other module. The explicit form dy/dt = g(t, y) is the special
  * case M = -g, N = 1, giving x' = 1, y' = g.
  *
+ * The kernel coordinate x IS the student's t: expressions are compiled in variable mode "ty"
+ * (see VariableMode in types.ts), where t is bound to the horizontal coordinate Vec2.x and the
+ * symbol x is rejected. Everything below keeps the kernel's {x, y} for points and boxes.
+ *
  * Why the differential form is the base and not a branch: textbook exact equations arrive as
- * M dx + N dy = 0, and solution curves with vertical tangents (N = 0) are perfectly finite there,
+ * M dt + N dy = 0, and solution curves with vertical tangents (N = 0) are perfectly finite there,
  * whereas g = -M/N blows up and would be mistaken for a singularity. The direction field is only
  * genuinely undefined where M = N = 0; those points are reported separately.
  */
@@ -19,10 +23,14 @@ export type FirstOrderSpec =
   | { kind: "explicit"; g: string; params?: Record<string, number> }
   | { kind: "differential"; M: string; N: string; params?: Record<string, number> };
 
-/** x' = N, y' = -M. For the explicit form this is x' = 1, y' = g. */
+/**
+ * x' = N, y' = -M. For the explicit form this is x' = 1, y' = g. The returned SystemSpec carries
+ * variables: "ty", so t in the expressions is the horizontal coordinate (and x is rejected);
+ * consumers compile it with compileSystem unchanged.
+ */
 export function toSystem(spec: FirstOrderSpec): SystemSpec {
   const base: SystemSpec =
-    spec.kind === "explicit" ? { f: "1", g: spec.g } : { f: spec.N, g: `-(${spec.M})` };
+    spec.kind === "explicit" ? { f: "1", g: spec.g, variables: "ty" } : { f: spec.N, g: `-(${spec.M})`, variables: "ty" };
   return spec.params ? { ...base, params: spec.params } : base;
 }
 
@@ -31,15 +39,21 @@ export function toDifferential(spec: FirstOrderSpec): { M: string; N: string } {
   return spec.kind === "explicit" ? { M: `-(${spec.g})`, N: "1" } : { M: spec.M, N: spec.N };
 }
 
-/** Backwards-compatible helper: dy/dx = expr as a system. */
+/** Backwards-compatible helper: dy/dt = expr as a system. */
 export function firstOrderToSystem(expr: string, params?: Record<string, number>): SystemSpec {
   return toSystem(params ? { kind: "explicit", g: expr, params } : { kind: "explicit", g: expr });
 }
 
-/** Compiled M and N with the shared parameter set. */
+/**
+ * Compiled M and N with the shared parameter set, in variable mode "ty". The evaluators take a
+ * kernel point {x, y} whose x is the student's t. Every first-order module (constant solutions,
+ * form detection, the exact potential) compiles through here, so this is the single choke point
+ * for the variable mode.
+ */
 export function compileDifferential(spec: FirstOrderSpec): { M: (p: Vec2) => number; N: (p: Vec2) => number } {
   const { M, N } = toDifferential(spec);
-  return { M: compileScalar(M, spec.params), N: compileScalar(N, spec.params) };
+  const opts = { variables: "ty" as const };
+  return { M: compileScalar(M, spec.params, opts), N: compileScalar(N, spec.params, opts) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -71,14 +85,14 @@ export function firstOrderSingularities(spec: FirstOrderSpec, box: Box, opts: { 
 export type EquilibriumSolution = {
   y: number;
   /**
-   * Sign pattern of dy/dx just below and above y = c, at every x probe: stable if solutions
-   * approach the line from both sides everywhere, 'varies' if the pattern changes with x.
+   * Sign pattern of dy/dt just below and above y = c, at every t probe: stable if solutions
+   * approach the line from both sides everywhere, 'varies' if the pattern changes with t.
    */
   stability: "stable" | "unstable" | "semi_stable" | "varies";
 };
 
 export type FirstOrderEquilibria = {
-  /** Whether g = -M/N is independent of x (informational; constant solutions no longer require it). */
+  /** Whether g = -M/N is independent of t (informational; constant solutions no longer require it). */
   autonomous: boolean;
   solutions: EquilibriumSolution[];
 };
@@ -88,23 +102,26 @@ export type FirstOrderEquilibriaOptions = {
   checkpoint?: () => void;
   /** Scan resolution in y. Default 400. */
   samples?: number;
-  /** x interval used for the "for all x" checks; defaults to a fixed spread around the origin. */
+  /** t interval (the horizontal axis, box.x) used for the "for all t" checks; defaults to a fixed spread around the origin. */
+  tRange?: Range;
+  /** @deprecated Former name of `tRange` (the horizontal axis); `tRange` wins when both are given. */
   xRange?: Range;
   /** Relative residual tolerance for a root. Default 1e-9. */
   tol?: number;
 };
 
-/** Irrational-looking fractions so that a polynomial in x chosen to vanish on "nice" points is still caught. */
+/** Irrational-looking fractions so that a polynomial in t chosen to vanish on "nice" points is still caught. */
 const PROBE_FRACTIONS = [0.0729, 0.2137, 0.3819, 0.5, 0.6181, 0.7863, 0.9271];
 const DEFAULT_PROBES = [-1.7, -0.61, 0.37, 1.23, 2.91];
 
 /**
- * Constant solutions of M dx + N dy = 0: y = c such that M(x, c) = 0 for every x while N(x, c) != 0.
- * (For dy/dx = g this is g(x, c) = 0 for every x.) Candidates come from the zeros of c -> M(x_ref, c)
+ * Constant solutions of M dt + N dy = 0: y = c such that M(t, c) = 0 for every t while N(t, c) != 0.
+ * (For dy/dt = g this is g(t, c) = 0 for every t.) Candidates come from the zeros of c -> M(t_ref, c)
  * on a scan of the y range (sign changes bisected, tangential zeros Newton-polished), then each is
- * verified at every other x probe.
+ * verified at every other t probe.
  *
- * Accepts the legacy (expr, yRange, { params }) call as well: a bare string is dy/dx = expr.
+ * Accepts the legacy (expr, yRange, { params }) call as well: a bare string is dy/dt = expr.
+ * Local variables named x below are the kernel's horizontal coordinate, i.e. the student's t.
  */
 export function firstOrderEquilibria(
   specOrExpr: FirstOrderSpec | string,
@@ -124,8 +141,9 @@ export function firstOrderEquilibria(
   const samples = opts.samples ?? 400;
   const tol = opts.tol ?? 1e-9;
   const span = yRange.max - yRange.min;
-  const xProbe = opts.xRange
-    ? PROBE_FRACTIONS.map((t) => opts.xRange!.min + t * (opts.xRange!.max - opts.xRange!.min))
+  const tRange = opts.tRange ?? opts.xRange;
+  const xProbe = tRange
+    ? PROBE_FRACTIONS.map((fr) => tRange.min + fr * (tRange.max - tRange.min))
     : DEFAULT_PROBES;
 
   const ys = Array.from({ length: samples + 1 }, (_, i) => yRange.min + (i * span) / samples);
@@ -135,7 +153,7 @@ export function firstOrderEquilibria(
     return n === 0 ? (m === 0 ? NaN : (m > 0 ? -Infinity : Infinity)) : -m / n;
   };
 
-  // Reference column for the scan: the probe x with the most finite M values.
+  // Reference column for the scan: the probe t with the most finite M values.
   const table = xProbe.map((x) => {
     opts.checkpoint?.();
     return ys.map((y) => M({ x, y }));
@@ -231,7 +249,7 @@ export function firstOrderEquilibria(
     }
   }
 
-  // Verify "for all x": M(x, c) = 0 and N(x, c) != 0 at every probe.
+  // Verify "for all t": M(t, c) = 0 and N(t, c) != 0 at every probe.
   const probe = Math.max(1e-6 * span, 1e-9);
   const solutions: EquilibriumSolution[] = [];
   for (const c of candidates.sort((u, v) => u - v)) {
@@ -241,7 +259,7 @@ export function firstOrderEquilibria(
     for (const x of xProbe) {
       const m = M({ x, y: c });
       const n = N({ x, y: c });
-      // M or N undefined at this probe (dy/dx = y/x at x = 0): the line may still be a solution on
+      // M or N undefined at this probe (dy/dt = y/t at t = 0): the line may still be a solution on
       // either side; skip the probe rather than reject the line, like the singular case below.
       if (!Number.isFinite(m) || !Number.isFinite(n)) continue;
       if (Math.abs(m) > fTol) {

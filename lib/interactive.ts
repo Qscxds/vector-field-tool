@@ -60,7 +60,7 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
       return { equilibria: eq.points, warning: eq.warning };
     }
     const spec = firstOrder;
-    const eq = firstOrderEquilibria(spec, box.y, { xRange: box.x });
+    const eq = firstOrderEquilibria(spec, box.y, { tRange: box.x });
     const singular = firstOrderSingularities(spec, box);
     const forms = detectForms(spec, box, locale);
     const reported = reportedForms(forms);
@@ -77,7 +77,7 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
     }
     return {
       firstOrder: {
-        expr: spec.kind === "explicit" ? `dy/dx = ${spec.g}` : `(${spec.M}) dx + (${spec.N}) dy = 0`,
+        expr: spec.kind === "explicit" ? `dy/dt = ${spec.g}` : `(${spec.M}) dt + (${spec.N}) dy = 0`,
         spec,
         autonomous: eq.autonomous,
         solutions: eq.solutions,

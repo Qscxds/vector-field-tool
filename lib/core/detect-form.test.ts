@@ -21,33 +21,33 @@ const explicit = (g: string): FirstOrderSpec => ({ kind: "explicit", g });
 const diff = (M: string, N: string): FirstOrderSpec => ({ kind: "differential", M, N });
 
 describe("detectForms: textbook positives (hand-derived)", () => {
-  it("dy/dx = x*y is separable and linear in y, not autonomous, not homogeneous", () => {
-    // g = x·y: f(x)h(y) with f = x, h = y -> separable. g is affine in y -> linear in y.
-    // g depends on x -> not autonomous. g(tx,ty) = t² xy -> not homogeneous of degree 0.
-    const f = forms(explicit("x*y"));
+  it("dy/dt = t*y is separable and linear in y, not autonomous, not homogeneous", () => {
+    // g = t·y: f(t)h(y) with f = t, h = y -> separable. g is affine in y -> linear in y.
+    // g depends on t -> not autonomous. g(kt,ky) = k² ty -> not homogeneous of degree 0.
+    const f = forms(explicit("t*y"));
     expect(f).toContain("separable");
     expect(f).toContain("linear_in_y");
     expect(f).not.toContain("autonomous");
     expect(f).not.toContain("homogeneous");
-    expect(one(explicit("x*y"), "autonomous").verdict).toBe("inconsistent");
-    expect(one(explicit("x*y"), "homogeneous").verdict).toBe("inconsistent");
+    expect(one(explicit("t*y"), "autonomous").verdict).toBe("inconsistent");
+    expect(one(explicit("t*y"), "homogeneous").verdict).toBe("inconsistent");
   });
 
-  it("dy/dx = x + y is NOT separable but is linear in y", () => {
-    // (x+y)(x₀+y₀) ≠ (x+y₀)(x₀+y) in general: e.g. (1+2)(3+4) = 21 vs (1+4)(3+2) = 25.
-    const f = forms(explicit("x + y"));
+  it("dy/dt = t + y is NOT separable but is linear in y", () => {
+    // (t+y)(t₀+y₀) ≠ (t+y₀)(t₀+y) in general: e.g. (1+2)(3+4) = 21 vs (1+4)(3+2) = 25.
+    const f = forms(explicit("t + y"));
     expect(f).not.toContain("separable");
     expect(f).toContain("linear_in_y");
   });
 
-  it("dy/dx = x*y + sin(x) is linear in y", () => {
-    const f = forms(explicit("x*y + sin(x)"));
+  it("dy/dt = t*y + sin(t) is linear in y", () => {
+    const f = forms(explicit("t*y + sin(t)"));
     expect(f).toContain("linear_in_y");
-    expect(f).not.toContain("separable"); // (xy + sin x) does not factor
+    expect(f).not.toContain("separable"); // (ty + sin t) does not factor
   });
 
-  it("2xy dx + (x² + y²) dy = 0 is exact: ∂M/∂y = 2x = ∂N/∂x", () => {
-    const ds = detectForms(diff("2*x*y", "x^2 + y^2"), box, "en");
+  it("2ty dt + (t² + y²) dy = 0 is exact: ∂M/∂y = 2t = ∂N/∂t", () => {
+    const ds = detectForms(diff("2*t*y", "t^2 + y^2"), box, "en");
     const exact = ds.find((d) => d.form === "exact")!;
     expect(exact.verdict).toBe("consistent");
     expect(exact.maxRelDeviation).toBeLessThan(1e-10); // polynomial: the high-order stencil is exact up to rounding
@@ -58,23 +58,23 @@ describe("detectForms: textbook positives (hand-derived)", () => {
     expect(ifx.evidence).toMatch(/trivially/);
   });
 
-  it("y dx - x dy = 0: (∂M/∂y - ∂N/∂x)/N = (1 - (-1))/(-x) = -2/x depends on x only (and -2/y on y only)", () => {
-    const f = forms(diff("y", "-x"));
+  it("y dt - t dy = 0: (∂M/∂y - ∂N/∂t)/N = (1 - (-1))/(-t) = -2/t depends on t only (and -2/y on y only)", () => {
+    const f = forms(diff("y", "-t"));
     expect(f).toContain("integrating_factor_x");
     expect(f).toContain("integrating_factor_y");
-    expect(f).not.toContain("exact"); // ∂M/∂y = 1 ≠ -1 = ∂N/∂x
-    expect(one(diff("y", "-x"), "exact").verdict).toBe("inconsistent");
-    expect(one(diff("y", "-x"), "exact").maxRelDeviation).toBeCloseTo(2, 6); // |1 - (-1)| / max(1, 1)
+    expect(f).not.toContain("exact"); // ∂M/∂y = 1 ≠ -1 = ∂N/∂t
+    expect(one(diff("y", "-t"), "exact").verdict).toBe("inconsistent");
+    expect(one(diff("y", "-t"), "exact").maxRelDeviation).toBeCloseTo(2, 6); // |1 - (-1)| / max(1, 1)
   });
 
-  it("dy/dx = (x + y)/x is homogeneous of degree 0", () => {
-    // g(tx, ty) = (tx + ty)/(tx) = (x + y)/x. Also linear in y: g = 1 + y/x.
-    const f = forms(explicit("(x + y)/x"));
+  it("dy/dt = (t + y)/t is homogeneous of degree 0", () => {
+    // g(kt, ky) = (kt + ky)/(kt) = (t + y)/t. Also linear in y: g = 1 + y/t.
+    const f = forms(explicit("(t + y)/t"));
     expect(f).toContain("homogeneous");
     expect(f).toContain("linear_in_y");
   });
 
-  it("dy/dx = y*(1-y) is autonomous, separable and Bernoulli with n = 2 (an integer, so 'snapped')", () => {
+  it("dy/dt = y*(1-y) is autonomous, separable and Bernoulli with n = 2 (an integer, so 'snapped')", () => {
     const ds = detectForms(explicit("y*(1-y)"), box, "en");
     const f = consistentForms(ds).map((d) => d.form);
     expect(f).toContain("autonomous");
@@ -87,8 +87,8 @@ describe("detectForms: textbook positives (hand-derived)", () => {
     expect(b.evidence).toMatch(/n = 2/);
   });
 
-  it("dy/dx = x*y + x*y^3 is Bernoulli with n = 3 and separable (x·(y + y³)), not linear", () => {
-    const ds = detectForms(explicit("x*y + x*y^3"), box, "zh");
+  it("dy/dt = t*y + t*y^3 is Bernoulli with n = 3 and separable (t·(y + y³)), not linear", () => {
+    const ds = detectForms(explicit("t*y + t*y^3"), box, "zh");
     const f = consistentForms(ds).map((d) => d.form);
     expect(f).toContain("bernoulli");
     expect(f).toContain("separable");
@@ -108,7 +108,7 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
   });
 
   it("returns every form with a verdict, in a fixed order, always with a deviation unless untestable", () => {
-    const ds = detectForms(explicit("x^2 + y^2"), box, "en");
+    const ds = detectForms(explicit("t^2 + y^2"), box, "en");
     expect(ds.map((d) => d.form)).toEqual([...ALL_FORMS]);
     for (const d of ds) {
       expect(["consistent", "borderline", "inconsistent", "untestable"]).toContain(d.verdict);
@@ -122,11 +122,11 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
     }
   });
 
-  it("separable: a perturbation of size ε moves the deviation to about ε·|Δx·Δy| — three tiers, derived", () => {
-    // g = xy(1 + εxy). To first order in ε the identity g(p)g(b) - g(x,y_b)g(x_b,y) equals
-    // ε·(xy)(x_b y_b)(x - x_b)(y - y_b), so the relative deviation is ε·|(x - x_b)(y - y_b)|,
+  it("separable: a perturbation of size ε moves the deviation to about ε·|Δt·Δy| — three tiers, derived", () => {
+    // g = ty(1 + εty). To first order in ε the identity g(p)g(b) - g(t,y_b)g(t_b,y) equals
+    // ε·(ty)(t_b y_b)(t - t_b)(y - y_b), so the relative deviation is ε·|(t - t_b)(y - y_b)|,
     // between ε·1 and ε·2.7² ≈ 7.3ε on this box (the base point is the sample where |g| is largest).
-    const dev = (eps: string) => one(explicit(`x*y*(1 + ${eps}*x*y)`), "separable");
+    const dev = (eps: string) => one(explicit(`t*y*(1 + ${eps}*t*y)`), "separable");
     const tiny = dev("1e-12"); // ≤ 7.3e-12 < 1e-9
     expect(tiny.verdict).toBe("consistent");
     expect(tiny.maxRelDeviation).toBeLessThan(1e-9);
@@ -140,14 +140,14 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
     expect(big.maxRelDeviation).toBeGreaterThan(1e-6);
   });
 
-  it("autonomous: g = y + ε·x deviates by about ε·|x - x₀| / |g|", () => {
-    // |x - x₀| ≤ 2.7 and |g| ≥ 0.3 on this box: deviation ≤ 9ε; ≥ ε·|Δx| / 3.
-    expect(one(explicit("y + 1e-12*x"), "autonomous").verdict).toBe("consistent");
-    const mid = one(explicit("y + 1e-8*x"), "autonomous");
+  it("autonomous: g = y + ε·t deviates by about ε·|t - t₀| / |g|", () => {
+    // |t - t₀| ≤ 2.7 and |g| ≥ 0.3 on this box: deviation ≤ 9ε; ≥ ε·|Δt| / 3.
+    expect(one(explicit("y + 1e-12*t"), "autonomous").verdict).toBe("consistent");
+    const mid = one(explicit("y + 1e-8*t"), "autonomous");
     expect(mid.verdict).toBe("borderline");
     expect(mid.maxRelDeviation).toBeGreaterThan(1e-9);
     expect(mid.maxRelDeviation).toBeLessThan(1e-7);
-    expect(one(explicit("y + 1e-4*x"), "autonomous").verdict).toBe("inconsistent");
+    expect(one(explicit("y + 1e-4*t"), "autonomous").verdict).toBe("inconsistent");
   });
 
   it("linear in y: g = y + ε·y² is caught at large separations (a second difference at a tiny step would not see it)", () => {
@@ -162,12 +162,12 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
   });
 
   it("scaling g by a constant changes none of the algebraic verdicts (deviations are relative to the compared terms)", () => {
-    // dy/dx = c·g keeps separability, autonomy, linearity, homogeneity and the Bernoulli exponent.
-    // (Exactness is a property of M dx + N dy = 0, and c·g changes M without N: a different equation.)
+    // dy/dt = c·g keeps separability, autonomy, linearity, homogeneity and the Bernoulli exponent.
+    // (Exactness is a property of M dt + N dy = 0, and c·g changes M without N: a different equation.)
     const algebraic = ["separable", "autonomous", "linear_in_y", "homogeneous", "bernoulli"];
-    const a = detectForms(explicit("x*y + x*y^3"), box, "en");
-    const b = detectForms(explicit("1e-9*(x*y + x*y^3)"), box, "en");
-    const c = detectForms(explicit("1e9*(x*y + x*y^3)"), box, "en");
+    const a = detectForms(explicit("t*y + t*y^3"), box, "en");
+    const b = detectForms(explicit("1e-9*(t*y + t*y^3)"), box, "en");
+    const c = detectForms(explicit("1e9*(t*y + t*y^3)"), box, "en");
     for (let i = 0; i < a.length; i++) {
       if (!algebraic.includes(a[i].form)) continue;
       expect(b[i].verdict, a[i].form).toBe(a[i].verdict);
@@ -176,11 +176,11 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
   });
 
   it("scaling M and N together changes none of the verdicts, exactness included", () => {
-    const a = detectForms(diff("2*x*y", "x^2 + y^2"), box, "en");
-    const b = detectForms(diff("1e-9*2*x*y", "1e-9*(x^2 + y^2)"), box, "en");
-    const c = detectForms(diff("1e9*2*x*y", "1e9*(x^2 + y^2)"), box, "en");
-    const d = detectForms(diff("y", "-x"), box, "en");
-    const e = detectForms(diff("1e7*y", "-1e7*x"), box, "en");
+    const a = detectForms(diff("2*t*y", "t^2 + y^2"), box, "en");
+    const b = detectForms(diff("1e-9*2*t*y", "1e-9*(t^2 + y^2)"), box, "en");
+    const c = detectForms(diff("1e9*2*t*y", "1e9*(t^2 + y^2)"), box, "en");
+    const d = detectForms(diff("y", "-t"), box, "en");
+    const e = detectForms(diff("1e7*y", "-1e7*t"), box, "en");
     for (let i = 0; i < a.length; i++) {
       expect(b[i].verdict, a[i].form).toBe(a[i].verdict);
       expect(c[i].verdict, a[i].form).toBe(a[i].verdict);
@@ -189,52 +189,52 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
   });
 
   it("exact test: rounding at huge field values is detected and those points are dropped, not misjudged", () => {
-    // M = exp(10x) + y, N = x + 0.5 y²: ∂M/∂y = 1 = ∂N/∂x, exact. Where M ≈ e^{10x} is huge, a
+    // M = exp(10t) + y, N = t + 0.5 y²: ∂M/∂y = 1 = ∂N/∂t, exact. Where M ≈ e^{10t} is huge, a
     // difference quotient in y loses everything below the ulp of M: the rounding floor
     // 8·eps·1.5·|M|/h exceeds 0.1·tol even with the largest step (0.15 of the box), i.e. once
-    // e^{10x} ≳ 0.1·1e-6·0.4/(2.7e-15) ≈ 1.5e7, x ≳ 1.65. Those points must be dropped, not judged;
-    // on [0.3, 3] the samples with x ≤ 1.65 (fractions ≤ 0.5) are 0.0729, 0.1618, 0.2137, 0.3183,
+    // e^{10t} ≳ 0.1·1e-6·0.4/(2.7e-15) ≈ 1.5e7, t ≳ 1.65. Those points must be dropped, not judged;
+    // on [0.3, 3] the samples with t ≤ 1.65 (fractions ≤ 0.5) are 0.0729, 0.1618, 0.2137, 0.3183,
     // 0.3819, 0.4472: six, enough for a verdict.
-    const d = one(diff("exp(10*x) + y", "x + 0.5*y^2"), "exact");
+    const d = one(diff("exp(10*t) + y", "t + 0.5*y^2"), "exact");
     expect(d.verdict).toBe("consistent");
     expect(d.dropped).toBeGreaterThan(0);
     expect(d.samples).toBeGreaterThanOrEqual(MIN_SAMPLES);
     expect(d.evidence).toMatch(/unusable/);
     // and a non-exact equation at the same scale is still recognised as such on the usable points:
-    // N = x + 2xy gives ∂N/∂x = 1 + 2y ≠ 1.
-    const bad = one(diff("exp(10*x) + y", "x + 2*x*y"), "exact");
+    // N = t + 2ty gives ∂N/∂t = 1 + 2y ≠ 1.
+    const bad = one(diff("exp(10*t) + y", "t + 2*t*y"), "exact");
     expect(bad.verdict).toBe("inconsistent");
     // on a box where every sample is unusable the verdict is untestable, not a guess
-    const far = one(diff("exp(10*x) + y", "x + 0.5*y^2"), "exact", { x: { min: 3, max: 6 }, y: { min: 0.3, max: 3 } });
+    const far = one(diff("exp(10*t) + y", "t + 0.5*y^2"), "exact", { x: { min: 3, max: 6 }, y: { min: 0.3, max: 3 } });
     expect(far.verdict).toBe("untestable");
     expect(far.maxRelDeviation).toBeNull();
   });
 
   it("exact test at a moderate scale: the high-order stencil handles a cubic exactly, sin(10y) within tolerance", () => {
-    // M = y³ + sin(10y)·x: ∂M/∂y = 3y² + 10 cos(10y) x ; N = x·y³ - x cos(10y)... choose an exact pair:
-    // F = x y³ - (x/10) cos(10 y) -> M = F_x = y³ - cos(10y)/10, N = F_y = 3 x y² + x sin(10 y).
-    const d = one(diff("y^3 - cos(10*y)/10", "3*x*y^2 + x*sin(10*y)"), "exact");
+    // M = y³ + sin(10y)·t: ∂M/∂y = 3y² + 10 cos(10y) t ; N = t·y³ - t cos(10y)... choose an exact pair:
+    // F = t y³ - (t/10) cos(10 y) -> M = F_t = y³ - cos(10y)/10, N = F_y = 3 t y² + t sin(10 y).
+    const d = one(diff("y^3 - cos(10*y)/10", "3*t*y^2 + t*sin(10*y)"), "exact");
     expect(d.verdict).toBe("consistent");
     expect(d.dropped).toBe(0);
   });
 
-  it("sample points avoid y = x and y = -x on centred boxes: (x - y)/(x + y) is judged the same on every box (review C1)", () => {
-    // g = (x - y)/(x + y) is homogeneous of degree 0 (g(tx, ty) = g(x, y)) and NOT linear in y
-    // (a Möbius function of y). Poles on x + y = 0 must not corrupt the verdicts.
+  it("sample points avoid y = t and y = -t on centred boxes: (t - y)/(t + y) is judged the same on every box (review C1)", () => {
+    // g = (t - y)/(t + y) is homogeneous of degree 0 (g(kt, ky) = g(t, y)) and NOT linear in y
+    // (a Möbius function of y). Poles on t + y = 0 must not corrupt the verdicts.
     for (const a of [1.5, 2, 2.5, 3, 5, 6, 10]) {
       const b = { x: { min: -a, max: a }, y: { min: -a, max: a } };
-      const ds = detectForms(explicit("(x - y)/(x + y)"), b, "en");
+      const ds = detectForms(explicit("(t - y)/(t + y)"), b, "en");
       expect(ds.find((d) => d.form === "homogeneous")!.verdict, `homogeneous on ±${a}`).toBe("consistent");
       expect(ds.find((d) => d.form === "linear_in_y")!.verdict, `linear on ±${a}`).toBe("inconsistent");
     }
-    // (x² - y)/(x + y) is neither homogeneous nor linear
-    const ds2 = detectForms(explicit("(x^2 - y)/(x + y)"), { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } }, "en");
+    // (t² - y)/(t + y) is neither homogeneous nor linear
+    const ds2 = detectForms(explicit("(t^2 - y)/(t + y)"), { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } }, "en");
     expect(ds2.find((d) => d.form === "homogeneous")!.verdict).toBe("inconsistent");
     expect(ds2.find((d) => d.form === "linear_in_y")!.verdict).toBe("inconsistent");
   });
 
-  it("derivative estimates do not alias a periodic field: sin(2πy) dx + 2πx cos(2πy) dy = 0 is exact on every box (review C2)", () => {
-    // ∂M/∂y = 2π cos(2πy) = ∂N/∂x. A difference step equal to the period would read ∂M/∂y = 0.
+  it("derivative estimates do not alias a periodic field: sin(2πy) dt + 2πt cos(2πy) dy = 0 is exact on every box (review C2)", () => {
+    // ∂M/∂y = 2π cos(2πy) = ∂N/∂t. A difference step equal to the period would read ∂M/∂y = 0.
     for (const b of [
       { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } },
       { x: { min: -10, max: 10 }, y: { min: -10, max: 10 } },
@@ -242,15 +242,15 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
       { x: { min: 0, max: 10 }, y: { min: 0, max: 20 } },
       { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } },
     ]) {
-      const d = one(diff("sin(2*pi*y)", "2*pi*x*cos(2*pi*y)"), "exact", b);
+      const d = one(diff("sin(2*pi*y)", "2*pi*t*cos(2*pi*y)"), "exact", b);
       expect(d.verdict, JSON.stringify(b)).toBe("consistent");
     }
-    // and y' = x cos(2πy) (M = -x cos 2πy, N = 1: ∂M/∂y = 2πx sin 2πy ≠ 0) is NOT exact on the same boxes
+    // and y' = t cos(2πy) (M = -t cos 2πy, N = 1: ∂M/∂y = 2πt sin 2πy ≠ 0) is NOT exact on the same boxes
     for (const b of [
       { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } },
       { x: { min: -10, max: 10 }, y: { min: -10, max: 10 } },
     ]) {
-      const d = one(explicit("x*cos(2*pi*y)"), "exact", b);
+      const d = one(explicit("t*cos(2*pi*y)"), "exact", b);
       expect(d.verdict, JSON.stringify(b)).toBe("inconsistent");
     }
   });
@@ -258,8 +258,8 @@ describe("detectForms: three-tier verdicts with the measured deviation (H2.4)", 
   it("thresholds are the documented constants", () => {
     expect(TOL_ALGEBRAIC).toBe(1e-8);
     expect(TOL_DERIVATIVE).toBe(1e-6);
-    expect(one(explicit("x*y"), "separable").threshold).toBe(TOL_ALGEBRAIC);
-    expect(one(diff("y", "-x"), "exact").threshold).toBe(TOL_DERIVATIVE);
+    expect(one(explicit("t*y"), "separable").threshold).toBe(TOL_ALGEBRAIC);
+    expect(one(diff("y", "-t"), "exact").threshold).toBe(TOL_DERIVATIVE);
   });
 });
 
@@ -274,8 +274,8 @@ describe("Bernoulli: exponent search and snapping to simple fractions (H2.5)", (
     expect(snapToRational(1 / 7)).toBeNull(); // needs denominator 7
   });
 
-  it("dy/dx = y + x·√y is Bernoulli with n = 1/2, reported as the exact fraction", () => {
-    const d = one(explicit("y + x*sqrt(y)"), "bernoulli");
+  it("dy/dt = y + t·√y is Bernoulli with n = 1/2, reported as the exact fraction", () => {
+    const d = one(explicit("y + t*sqrt(y)"), "bernoulli");
     expect(d.verdict).toBe("consistent");
     expect(d.exponent).toBe("1/2");
     expect(d.details?.n).toBe(0.5);
@@ -283,20 +283,20 @@ describe("Bernoulli: exponent search and snapping to simple fractions (H2.5)", (
     expect(d.evidence).toMatch(/snapped/);
   });
 
-  it("dy/dx = y + y^(3/2) has n = 3/2; dy/dx = x/y + y has n = -1", () => {
+  it("dy/dt = y + y^(3/2) has n = 3/2; dy/dt = t/y + y has n = -1", () => {
     expect(one(explicit("y + y^1.5"), "bernoulli").exponent).toBe("3/2");
-    // g/y = x/y² + 1 = a + b·y^m with m = -2 -> n = -1.
-    expect(one(explicit("x/y + y"), "bernoulli").exponent).toBe("-1");
+    // g/y = t/y² + 1 = a + b·y^m with m = -2 -> n = -1.
+    expect(one(explicit("t/y + y"), "bernoulli").exponent).toBe("-1");
   });
 
-  it("an exponent outside the old ±6 window is found: dy/dx = y + y^7 has n = 7", () => {
+  it("an exponent outside the old ±6 window is found: dy/dt = y + y^7 has n = 7", () => {
     const d = one(explicit("y + y^7"), "bernoulli");
     expect(d.verdict).toBe("consistent");
     expect(d.exponent).toBe("7");
   });
 
   it("an irrational exponent is reported as a numerical estimate, not snapped", () => {
-    const d = one(explicit("y + x*y^1.41421356"), "bernoulli");
+    const d = one(explicit("y + t*y^1.41421356"), "bernoulli");
     expect(d.verdict).toBe("consistent");
     expect(d.exponent).toBeUndefined();
     expect(d.details?.n).toBeCloseTo(1.41421356, 5);
@@ -304,9 +304,9 @@ describe("Bernoulli: exponent search and snapping to simple fractions (H2.5)", (
   });
 
   it("a linear equation fits the Bernoulli template with n = 0 (or 1) but is reported as linear, not Bernoulli", () => {
-    // g/y = x + sin(x)/y = a(x) + b(x)·y^{-1}: exponent m = -1, n = 0. The textbook Bernoulli
+    // g/y = t + sin(t)/y = a(t) + b(t)·y^{-1}: exponent m = -1, n = 0. The textbook Bernoulli
     // equation requires n ≠ 0, 1; n = 0 and n = 1 are the linear equation itself.
-    const d = one(explicit("x*y + sin(x)"), "bernoulli");
+    const d = one(explicit("t*y + sin(t)"), "bernoulli");
     expect(d.verdict).toBe("inconsistent");
     expect(d.details?.n).toBe(0);
     expect(d.evidence).toMatch(/n = 0/);
@@ -323,7 +323,7 @@ describe("Bernoulli: exponent search and snapping to simple fractions (H2.5)", (
   });
 
   it("an exponent estimate a few 1e-7 off still snaps (the re-verification decides, not the gate)", () => {
-    // y + y^3 * (1 + 1e-9 x) is not exactly Bernoulli; the estimate n ≈ 3 + O(1e-9) must snap to 3 iff the
+    // y + y^3 * (1 + 1e-9 t) is not exactly Bernoulli; the estimate n ≈ 3 + O(1e-9) must snap to 3 iff the
     // snapped identity holds within tolerance — here it does (deviation ~1e-9 < 1e-9? borderline!) so
     // use a clean case: y + 1.0000001*y^3 has exact n = 3 with a different b; must snap to 3.
     const d = one(explicit("y + 1.0000001*y^3"), "bernoulli");
@@ -332,13 +332,13 @@ describe("Bernoulli: exponent search and snapping to simple fractions (H2.5)", (
   });
 });
 
-describe("detectForms: the Riccati equation dy/dx = x² + y² matches nothing", () => {
+describe("detectForms: the Riccati equation dy/dt = t² + y² matches nothing", () => {
   it("nothing is consistent or borderline, and the note is positive", () => {
-    // Not separable ((x²+y²)(x₀²+y₀²) ≠ (x²+y₀²)(x₀²+y²)), depends on x, quadratic in y, degree 2
-    // not 0, g/y = x²/y + y has two power terms so no single Bernoulli exponent, and as
-    // -(x²+y²) dx + dy = 0: ∂M/∂y = -2y ≠ 0 = ∂N/∂x, (M_y - N_x)/N = -2y depends on y,
-    // (N_x - M_y)/M = 2y/(x²+y²) depends on x.
-    const ds = detectForms(explicit("x^2 + y^2"), box, "zh");
+    // Not separable ((t²+y²)(t₀²+y₀²) ≠ (t²+y₀²)(t₀²+y²)), depends on t, quadratic in y, degree 2
+    // not 0, g/y = t²/y + y has two power terms so no single Bernoulli exponent, and as
+    // -(t²+y²) dt + dy = 0: ∂M/∂y = -2y ≠ 0 = ∂N/∂t, (M_y - N_t)/N = -2y depends on y,
+    // (N_t - M_y)/M = 2y/(t²+y²) depends on t.
+    const ds = detectForms(explicit("t^2 + y^2"), box, "zh");
     expect(reportedForms(ds)).toEqual([]);
     expect(ds.every((d) => d.verdict === "inconsistent")).toBe(true);
     expect(NO_FORM_NOTE.zh).toMatch(/Riccati/);
@@ -349,7 +349,7 @@ describe("detectForms: the Riccati equation dy/dx = x² + y² matches nothing", 
 describe("detectForms: honesty rules", () => {
   it("every detection carries a non-empty caveat and 'consistent with' wording, in both locales", () => {
     for (const locale of ["zh", "en"] as const) {
-      const ds = consistentForms(detectForms(diff("2*x*y", "x^2 + y^2"), box, locale));
+      const ds = consistentForms(detectForms(diff("2*t*y", "t^2 + y^2"), box, locale));
       expect(ds.length).toBeGreaterThan(0);
       for (const d of ds) {
         expect(d.caveat.length).toBeGreaterThan(40);
@@ -368,7 +368,7 @@ describe("detectForms: honesty rules", () => {
   });
 
   it("uses the sample count in the evidence and never claims exactness", () => {
-    const [d] = detectForms(explicit("x*y"), box, "en").filter((d) => d.form === "separable");
+    const [d] = detectForms(explicit("t*y"), box, "en").filter((d) => d.form === "separable");
     expect(d.evidence).toMatch(/sample points/);
     expect(d.evidence).not.toMatch(/\bis a\b/);
     expect(d.samples).toBeGreaterThanOrEqual(12);
@@ -387,8 +387,8 @@ describe("detectForms: honesty rules", () => {
 
   it("all form names exist in both locales (no missing translations)", () => {
     const all: OdeForm[] = ["separable", "autonomous", "linear_in_y", "homogeneous", "bernoulli", "exact", "integrating_factor_x", "integrating_factor_y"];
-    const zh = detectForms(diff("y", "-x"), box, "zh");
-    const en = detectForms(diff("y", "-x"), box, "en");
+    const zh = detectForms(diff("y", "-t"), box, "zh");
+    const en = detectForms(diff("y", "-t"), box, "en");
     expect(zh.map((d) => [d.form, d.verdict])).toEqual(en.map((d) => [d.form, d.verdict]));
     expect(all.length).toBe(8);
   });

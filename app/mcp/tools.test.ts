@@ -86,7 +86,7 @@ describe("cost controls", () => {
     for (const [name, args] of [
       ["analyze_system", { f: "x", g: "-y" }],
       ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0 }],
-      ["analyze_first_order", { M: "2*x*y", N: "x^2 + y^2" }],
+      ["analyze_first_order", { M: "2*t*y", N: "t^2 + y^2" }],
     ] as const) {
       const r = await call(name, { ...args, locale: "en" }, c);
       expect(r.isError, name).toBe(true);
@@ -112,7 +112,7 @@ describe("cost controls", () => {
     const long = "x+".repeat(101) + "1"; // 203 characters
     for (const [name, args, field] of [
       ["analyze_first_order", { M: long, N: "y" }, "M"],
-      ["analyze_first_order", { M: "x", N: long }, "N"],
+      ["analyze_first_order", { M: "t", N: long }, "N"],
       ["analyze_first_order", { expr: long }, "expr"],
       ["analyze_system", { f: long, g: "y" }, "f"],
       ["analyze_system", { f: "x", g: long }, "g"],
@@ -126,7 +126,7 @@ describe("cost controls", () => {
   it("a transcendental textbook exact equation (Zill §2.4 Ex. 3) finishes inside the budget at default parameters (review C9)", async () => {
     // (e^{2y} - y cos xy) dx + (2x e^{2y} - x cos xy + 2y) dy = 0: ∂M/∂y = 2e^{2y} - cos xy + xy sin xy = ∂N/∂x.
     const t0 = performance.now();
-    const r = await call("analyze_first_order", { M: "exp(2*y) - y*cos(x*y)", N: "2*x*exp(2*y) - x*cos(x*y) + 2*y", locale: "en" });
+    const r = await call("analyze_first_order", { M: "exp(2*y) - y*cos(t*y)", N: "2*t*exp(2*y) - t*cos(t*y) + 2*y", locale: "en" });
     const elapsed = performance.now() - t0;
     expect(r.isError).toBeFalsy();
     expect(r.scene.firstOrder!.forms!.find((f) => f.form === "exact")!.verdict).toBe("consistent");
@@ -135,7 +135,7 @@ describe("cost controls", () => {
   });
 
   it("a parse error in N is attributed to N even when N's text contains M's text", async () => {
-    const r = await call("analyze_first_order", { M: "x", N: "x +", locale: "en" });
+    const r = await call("analyze_first_order", { M: "t", N: "t +", locale: "en" });
     expect(r.isError).toBe(true);
     expect(r.text).toMatch(/Cannot parse N/);
     const m = await call("analyze_first_order", { M: "y +", N: "y + 1", locale: "en" });
@@ -144,7 +144,7 @@ describe("cost controls", () => {
 
   it("the most expensive legal call (exact equation with level curves) finishes well inside the budget", async () => {
     const t0 = performance.now();
-    const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", density: 60, xMin: -50, xMax: 50, yMin: -50, yMax: 50, locale: "en" });
+    const r = await call("analyze_first_order", { M: "2*t*y", N: "t^2 + y^2", density: 60, xMin: -50, xMax: 50, yMin: -50, yMax: 50, locale: "en" });
     const elapsed = performance.now() - t0;
     expect(r.isError).toBeFalsy();
     expect(r.scene.firstOrder?.implicit).toBeTruthy();
@@ -199,7 +199,7 @@ describe("locale", () => {
     const logistic = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2 });
     expect(logistic.text).toContain("Constant solution y = 1: stable");
     expect(logistic.text).toContain("Numerically behaves like a separable equation");
-    const riccati = await call("analyze_first_order", { expr: "x^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3 });
+    const riccati = await call("analyze_first_order", { expr: "t^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3 });
     expect(riccati.scene.firstOrder?.formsNote).toBe(NO_FORM_NOTE.en);
     expect(riccati.text).toContain(NO_FORM_NOTE.en);
   });
@@ -354,11 +354,11 @@ describe("sample_field", () => {
 });
 
 describe("analyze_first_order", () => {
-  it("logistic dy/dx = y(1-y): y=0 unstable, y=1 stable, with a slope field and detected forms", async () => {
+  it("logistic dy/dt = y(1-y): y=0 unstable, y=1 stable, with a slope field and detected forms", async () => {
     const r = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.kind).toBe("analyze_first_order");
-    expect(r.scene.system).toEqual({ f: "1", g: "y*(1-y)" });
+    expect(r.scene.system).toEqual({ f: "1", g: "y*(1-y)", variables: "ty" });
     expect(r.scene.fieldStyle).toBe("arrows");
     expect(r.scene.firstOrder?.spec).toEqual({ kind: "explicit", g: "y*(1-y)" });
     expect(r.scene.firstOrder?.autonomous).toBe(true);
@@ -377,24 +377,24 @@ describe("analyze_first_order", () => {
   });
 
   it("finds constant solutions of a non-autonomous equation and reports 'varies'", async () => {
-    const r = await call("analyze_first_order", { expr: "x*(y-1)", xMin: -2, xMax: 2, yMin: -2, yMax: 3, locale: "zh" });
+    const r = await call("analyze_first_order", { expr: "t*(y-1)", xMin: -2, xMax: 2, yMin: -2, yMax: 3, locale: "zh" });
     expect(r.scene.firstOrder?.autonomous).toBe(false);
     expect(r.scene.firstOrder?.solutions.map((s) => [Math.round(s.y * 1e6) / 1e6, s.stability])).toEqual([[1, "varies"]]);
     expect(r.text).toContain("常数解 y = 1");
   });
 
   it("says when there are no constant solutions", async () => {
-    const r = await call("analyze_first_order", { expr: "x - y", locale: "zh" });
+    const r = await call("analyze_first_order", { expr: "t - y", locale: "zh" });
     expect(r.scene.firstOrder?.solutions).toEqual([]);
     expect(r.text).toContain("没有常数解");
   });
 
   it("accepts the differential form: y dx - x dy = 0 has undirected segments and a singular origin", async () => {
-    const r = await call("analyze_first_order", { M: "y", N: "-x", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
+    const r = await call("analyze_first_order", { M: "y", N: "-t", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.fieldStyle).toBe("segments");
-    expect(r.scene.system).toEqual({ f: "-x", g: "-(y)" });
-    expect(r.scene.firstOrder?.spec).toEqual({ kind: "differential", M: "y", N: "-x" });
+    expect(r.scene.system).toEqual({ f: "-t", g: "-(y)", variables: "ty" });
+    expect(r.scene.firstOrder?.spec).toEqual({ kind: "differential", M: "y", N: "-t" });
     const sing = r.scene.firstOrder!.singularities!;
     expect(sing).toHaveLength(1);
     expect(Math.hypot(sing[0].x, sing[0].y)).toBeLessThan(1e-6);
@@ -406,7 +406,7 @@ describe("analyze_first_order", () => {
   });
 
   it("draws the implicit solution of an exact equation: 2xy dx + (x² + y²) dy = 0", async () => {
-    const r = await call("analyze_first_order", { M: "2*x*y", N: "x^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
+    const r = await call("analyze_first_order", { M: "2*t*y", N: "t^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.firstOrder!.forms!.filter((f) => f.verdict === "consistent").map((f) => f.form)).toContain("exact");
     expect(r.scene.firstOrder!.implicitCheck).toEqual({ pathDeviation: expect.any(Number), tol: 1e-6, passed: true });
@@ -425,8 +425,8 @@ describe("analyze_first_order", () => {
     expect(r.text).toContain("隐式解");
   });
 
-  it("the Riccati equation dy/dx = x² + y² matches no form and gets the positive note", async () => {
-    const r = await call("analyze_first_order", { expr: "x^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3, locale: "zh" });
+  it("the Riccati equation dy/dt = t² + y² matches no form and gets the positive note", async () => {
+    const r = await call("analyze_first_order", { expr: "t^2 + y^2", xMin: 0.3, xMax: 3, yMin: 0.3, yMax: 3, locale: "zh" });
     expect(r.scene.firstOrder?.forms?.filter((f) => f.verdict === "consistent" || f.verdict === "borderline")).toEqual([]);
     expect(r.scene.firstOrder?.forms?.every((f) => f.verdict === "inconsistent")).toBe(true);
     expect(r.scene.firstOrder?.formsNote).toMatch(/Riccati/);
@@ -439,7 +439,7 @@ describe("analyze_first_order", () => {
     // origin, so the local criterion holds; but the form is dθ, whose integral around the origin is
     // 2π, so a potential on a box containing the origin cannot exist: the two integration paths
     // disagree wherever they wind differently around the origin.
-    const r = await call("analyze_first_order", { M: "-y/(x^2 + y^2)", N: "x/(x^2 + y^2)", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "en" });
+    const r = await call("analyze_first_order", { M: "-y/(t^2 + y^2)", N: "t/(t^2 + y^2)", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "en" });
     expect(r.isError).toBeFalsy();
     const exact = r.scene.firstOrder!.forms!.find((f) => f.form === "exact")!;
     expect(["consistent", "borderline"]).toContain(exact.verdict);
@@ -457,9 +457,9 @@ describe("analyze_first_order", () => {
     const neither = await call("analyze_first_order", {});
     expect(neither.isError).toBe(true);
     expect(neither.text).toMatch(/exactly one form/);
-    const both = await call("analyze_first_order", { expr: "y", M: "x", N: "y" });
+    const both = await call("analyze_first_order", { expr: "y", M: "t", N: "y" });
     expect(both.isError).toBe(true);
-    const half = await call("analyze_first_order", { M: "x" });
+    const half = await call("analyze_first_order", { M: "t" });
     expect(half.isError).toBe(true);
     expect(half.text).toMatch(/both `M` and `N`/);
   });

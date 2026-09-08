@@ -30,16 +30,16 @@ describe("computeFeatures", () => {
   });
 
   it("returns first-order features including the implicit curves of an exact equation", () => {
-    const spec = { kind: "differential" as const, M: "2*x*y", N: "x^2 + y^2" };
+    const spec = { kind: "differential" as const, M: "2*t*y", N: "t^2 + y^2" };
     const f = computeFeatures(compileSystem(toSystem(spec)), spec, box, "zh");
     expect(f.firstOrder?.forms?.map((x) => x.form)).toContain("exact");
     expect(f.firstOrder?.implicit?.levels.length).toBeGreaterThan(3);
     expect(f.firstOrder?.singularities).toHaveLength(1);
-    expect(f.firstOrder?.expr).toBe("(2*x*y) dx + (x^2 + y^2) dy = 0");
+    expect(f.firstOrder?.expr).toBe("(2*t*y) dt + (t^2 + y^2) dy = 0");
   });
 
   it("uses the locale for the no-form note", () => {
-    const spec = { kind: "explicit" as const, g: "x^2 + y^2" };
+    const spec = { kind: "explicit" as const, g: "t^2 + y^2" };
     const sys = compileSystem(toSystem(spec));
     const b = { x: { min: 0.3, max: 3 }, y: { min: 0.3, max: 3 } };
     expect(computeFeatures(sys, spec, b, "en").firstOrder?.formsNote).toMatch(/Riccati/);
