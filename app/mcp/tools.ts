@@ -175,6 +175,7 @@ function describeEquilibria(scene: Scene, locale: Locale): string {
   const lines: string[] = [];
   const eq = scene.equilibria ?? [];
   if (scene.warning) lines.push(L.warning[scene.warning]);
+  if (scene.truncated) lines.push(fill(L.ui.equilibriaTruncated, { max: eq.length }));
   eq.forEach((p, i) => {
     lines.push(
       fill(L.tool.equilibriumLine, {
@@ -309,7 +310,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const sys = compileOrExplain(spec);
         const eq = findEquilibria(sys, box, { checkpoint });
         const field = sampleField(sys, box, input.density, input.density, 0, checkpoint);
-        const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: eq.points, warning: eq.warning };
+        const scene: Scene = { kind: "analyze_system", locale: input.locale, system: spec, box, field, equilibria: eq.points, warning: eq.warning, truncated: eq.truncated };
         const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
         const singular = field.singularCount ? " " + fill(L.tool.singularSamples, { count: field.singularCount }) : "";
         return ok(`${header}${singular}\n${describeEquilibria(scene, input.locale)}`, scene);
@@ -518,6 +519,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             autonomous: eq.autonomous,
             solutions: eq.solutions,
             singularities: singular.points,
+            singularitiesTruncated: singular.truncated,
             forms,
             formsNote: reported.length === 0 ? NO_FORM_NOTE[locale] : undefined,
             implicit,
@@ -533,9 +535,10 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           lines.push(
             fill(L.tool.directionSingular, {
               points: singular.points.map((p) => formatPoint(p)).join(L.tool.listSeparator),
-              truncated: singular.warning ? L.tool.truncated : "",
+              truncated: singular.truncated ? L.tool.truncated : "",
             }),
           );
+          if (singular.truncated) lines.push(fill(L.ui.singularitiesTruncated, { max: singular.points.length }));
         }
         if (eq.solutions.length) {
           for (const s of eq.solutions) lines.push(fill(L.tool.constantSolution, { y: fmt(s.y, 6), stability: L.stability[s.stability] }));

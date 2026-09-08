@@ -531,3 +531,24 @@ describe("analyze_first_order", () => {
     expect(r.scene.system).toEqual({ f: "1", g: "exp(t) + max(t, y)", variables: "ty" });
   });
 });
+
+describe("truncated lists are said in full sentences (J.5b)", () => {
+  it("analyze_system: 121 lattice equilibria against the default cap of 30", async () => {
+    const r = await call("analyze_system", { f: "sin(pi*x)", g: "sin(pi*y)", xMin: -5, xMax: 5, yMin: -5, yMax: 5, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.truncated).toBe(true);
+    expect(r.scene.equilibria).toHaveLength(30);
+    expect(r.scene.warning).toBe("hit_limit");
+    expect(r.text).toContain(labels("en").ui.equilibriaTruncated.replace(/\{max\}/g, "30"));
+  });
+
+  it("analyze_first_order: a continuum of singular points is truncated but still called a continuum", async () => {
+    // M = -y, N = 0: x' = 0, y' = y, every point of the t-axis is singular; the cap is 20.
+    const r = await call("analyze_first_order", { M: "-y", N: "0", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.firstOrder?.singularitiesTruncated).toBe(true);
+    expect(r.scene.firstOrder?.singularities).toHaveLength(20);
+    expect(r.text).toContain(labels("zh").tool.truncated);
+    expect(r.text).toContain(labels("zh").ui.singularitiesTruncated.replace(/\{max\}/g, "20"));
+  });
+});

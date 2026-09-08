@@ -36,6 +36,8 @@ export type FirstOrderView = {
   solutions: EquilibriumSolution[];
   /** Points where M = N = 0: the direction is undefined there. */
   singularities?: Vec2[];
+  /** True when more singular points were found than are listed (the list holds the first maxPoints, sorted by t). */
+  singularitiesTruncated?: boolean;
   /** Numerically detected standard forms (never proofs; each carries a caveat). */
   forms?: FormDetection[];
   /** Positive statement shown when no standard form was detected. */
@@ -79,6 +81,8 @@ export type Scene = {
   start?: Vec2;
   equilibria?: Equilibrium[];
   warning?: EquilibriaResult["warning"];
+  /** True when more equilibria were found than are listed in `equilibria` (the first maxPoints, sorted by x). Independent of `warning`. */
+  truncated?: EquilibriaResult["truncated"];
   firstOrder?: FirstOrderView;
   /** ping only */
   message?: string;

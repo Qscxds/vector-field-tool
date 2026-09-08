@@ -22,7 +22,7 @@ import { contourSegmentsFromGrid, sampleGrid } from "./render/contours";
 import { worldToScreen, type Viewport } from "./render/viewport";
 import type { FirstOrderView, Scene, TrajectoryView } from "./scene";
 
-export type Features = Pick<Scene, "equilibria" | "warning" | "firstOrder">;
+export type Features = Pick<Scene, "equilibria" | "warning" | "truncated" | "firstOrder">;
 
 /** Path-independence tolerance of the numerical potential (exactPotential's default). */
 export const EXACT_PATH_TOL = 1e-6;
@@ -68,7 +68,7 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
   try {
     if (!firstOrder) {
       const eq = findEquilibria(sys, box);
-      return { equilibria: eq.points, warning: eq.warning };
+      return { equilibria: eq.points, warning: eq.warning, truncated: eq.truncated };
     }
     const spec = firstOrder;
     const eq = firstOrderEquilibria(spec, box.y, { tRange: box.x });
@@ -93,6 +93,7 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
         autonomous: eq.autonomous,
         solutions: eq.solutions,
         singularities: singular.points,
+        singularitiesTruncated: singular.truncated,
         forms,
         formsNote: reported.length === 0 ? NO_FORM_NOTE[locale] : undefined,
         implicit,

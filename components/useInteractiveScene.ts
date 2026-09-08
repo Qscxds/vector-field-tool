@@ -140,6 +140,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       fieldStyle,
       equilibria: features.equilibria,
       warning: features.warning,
+      truncated: features.truncated,
       firstOrder: features.firstOrder,
       trajectories,
       start,

@@ -45,7 +45,8 @@ export type LabelTable = {
     | "featuresBox" | "leftFarBox"
     | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression"
     | "equalScale" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled"
-    | "lhsInExpressionSystem" | "towardT" | "trajectorySides",
+    | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
+    | "equilibriaTruncated" | "singularitiesTruncated",
     string
   >;
 };
@@ -193,6 +194,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       lhsInExpressionSystem: "只需输入方程的右端，「x' =」「y' =」这一部分是默认的。",
       towardT: "到 t = {t}，{status}",
       trajectorySides: "一侧：{first}；另一侧：{second}",
+      equilibriaTruncated: "平衡点数量超过上限 {max}，只列出前 {max} 个（按 x 坐标排序）；上面的连续解集判断仍然基于全部找到的点。",
+      singularitiesTruncated: "方向场奇点数量超过上限 {max}，只列出前 {max} 个（按 t 坐标排序）；连续解集的判断仍然基于全部找到的点。",
     },
   },
   en: {
@@ -337,6 +340,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       lhsInExpressionSystem: "Enter only the right-hand side of each equation; the “x' =” / “y' =” part is implied.",
       towardT: "to t = {t}, {status}",
       trajectorySides: "one side: {first}; other side: {second}",
+      equilibriaTruncated: "More than {max} equilibria were found; only the first {max} are listed (sorted by x). The continuum verdict above is still based on all the points found.",
+      singularitiesTruncated: "More than {max} singular points of the direction field were found; only the first {max} are listed (sorted by t). The continuum verdict is still based on all the points found.",
     },
   },
 };

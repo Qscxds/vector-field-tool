@@ -212,6 +212,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
   if (scene.warning) items.push(L.warning[scene.warning]);
+  if (scene.truncated) items.push(fill(L.ui.equilibriaTruncated, { max: scene.equilibria?.length ?? 0 }));
   // Mode-aware (planar / explicit first order / differential form): see lib/labels-trajectory.
   for (const group of groupTrajectories(scene.trajectories ?? [])) items.push(...trajectoryLines(scene, group, L));
   const fo = scene.firstOrder;
@@ -219,7 +220,8 @@ function SceneSummary({ scene }: { scene: Scene }) {
     if (fo.solutions.length === 0) items.push(fo.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);
     for (const s of fo.solutions) items.push(fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] }));
     if (fo.singularities?.length) {
-      items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: "" }));
+      items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: fo.singularitiesTruncated ? L.tool.truncated : "" }));
+      if (fo.singularitiesTruncated) items.push(fill(L.ui.singularitiesTruncated, { max: fo.singularities.length }));
     }
     const all = fo.forms ?? [];
     const reported = reportedForms(all);

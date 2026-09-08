@@ -338,6 +338,7 @@ function EquilibriaList({ scene, L }: { scene: Scene; L: LabelTable }) {
     <section style={{ marginTop: 14 }}>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.equilibriaHeading}</h2>
       {scene.warning ? <p style={{ margin: "0 0 6px", color: "#92400e" }}>{L.warning[scene.warning]}</p> : null}
+      {scene.truncated ? <p style={{ margin: "0 0 6px", color: "#92400e" }}>{fill(L.ui.equilibriaTruncated, { max: eq.length })}</p> : null}
       <ol style={{ margin: 0, paddingLeft: 20 }}>
         {eq.map((p, i) => (
           <li key={i} style={{ marginBottom: 6 }}>
@@ -372,6 +373,7 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
         <div>
           <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.singularHeading}</h2>
           <p style={{ margin: 0 }}>{fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator)}</p>
+          {fo.singularitiesTruncated ? <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.ui.singularitiesTruncated, { max: fo.singularities.length })}</p> : null}
         </div>
       ) : null}
       <FormsList fo={fo} L={L} />
