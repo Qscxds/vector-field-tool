@@ -366,3 +366,24 @@ describe("constant solutions through a singular point", () => {
     expect(r.solutions).toEqual([]);
   });
 });
+
+describe("firstOrderSingularities: truncated flag independent of the warning (J.5b)", () => {
+  it("a truncated continuum keeps possible_continuum: -y dt + 0 dy = 0 (x' = 0, y' = y)", () => {
+    const r = firstOrderSingularities({ kind: "differential", M: "-y", N: "0" }, box(-2, 2), { maxPoints: 3 });
+    expect(r.points).toHaveLength(3);
+    expect(r.truncated).toBe(true);
+    expect(r.warning).toBe("possible_continuum");
+  });
+
+  it("a truncated lattice of isolated points is hit_limit: -sin(πy) dt + sin(πt) dy = 0", () => {
+    // x' = sin(πt), y' = sin(πy): 49 integer pairs on [-3.5, 3.5]², all isolated.
+    const r = firstOrderSingularities({ kind: "differential", M: "-sin(pi*y)", N: "sin(pi*t)" }, box(-3.5, 3.5), { maxPoints: 10 });
+    expect(r.points).toHaveLength(10);
+    expect(r.truncated).toBe(true);
+    expect(r.warning).toBe("hit_limit");
+    const whole = firstOrderSingularities({ kind: "differential", M: "-sin(pi*y)", N: "sin(pi*t)" }, box(-3.5, 3.5), { maxPoints: 100 });
+    expect(whole.points).toHaveLength(49);
+    expect(whole.truncated).toBeUndefined();
+    expect(whole.warning).toBeUndefined();
+  });
+});

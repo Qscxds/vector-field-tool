@@ -82,6 +82,8 @@ export function compileDifferential(spec: FirstOrderSpec): { M: (p: Vec2) => num
 export type SingularPoints = {
   points: Vec2[];
   warning?: "possible_continuum" | "hit_limit";
+  /** True when more singular points were found than maxPoints; independent of `warning` (a truncated continuum keeps 'possible_continuum'). */
+  truncated?: boolean;
 };
 
 /**
@@ -93,7 +95,9 @@ export function firstOrderSingularities(spec: FirstOrderSpec, box: Box, opts: { 
   if (spec.kind === "explicit") return { points: [] };
   const eq = findEquilibria(compileSystem(toSystem(spec)), box, { seedGrid: opts.seedGrid, maxPoints: opts.maxPoints ?? 20, checkpoint: opts.checkpoint });
   const out: SingularPoints = { points: eq.points.map((p) => p.at) };
-  if (eq.warning === "possible_continuum" || eq.warning === "hit_limit") out.warning = eq.warning;
+  if (eq.warning === "possible_continuum") out.warning = eq.warning;
+  else if (eq.truncated) out.warning = "hit_limit";
+  if (eq.truncated) out.truncated = true;
   return out;
 }
 

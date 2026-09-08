@@ -30,8 +30,16 @@
  * - no seed converges                    -> warning 'none_found'
  * - the found points look like a curve    -> warning 'possible_continuum'
  * - many non-hyperbolic points that do not form a curve -> warning 'multiple_non_hyperbolic'
- * - more isolated points than maxPoints   -> warning 'hit_limit' (list truncated)
+ * - more points than maxPoints            -> `truncated` true; the warning keeps its geometric value,
+ *                                            and is 'hit_limit' when there is no other
  * - a seed that diverges or stalls        -> silently dropped
+ *
+ * A continuum of equilibria needs a count signal (many non-hyperbolic points), connectedness (the
+ * field vanishes between neighbours: a chord-midpoint Newton polish lands strictly between them)
+ * and a shape signal (a line or a curve). Connectedness comes first: the non-hyperbolic points are
+ * grouped into connected components (union-find over each point's nearest neighbours), then the
+ * shape test runs per component, so two parallel lines of equilibria are two continuum components
+ * and not a scattered cloud.
  */
 import { classify, type ClassifyResult } from "./classify";
 import { assertBox } from "./field";
@@ -61,13 +69,17 @@ export type SeedingReport = {
 export type EquilibriaResult = {
   points: Equilibrium[];
   warning?: EquilibriaWarning;
+  /** True when more equilibria were found than `maxPoints`; `points` holds the first maxPoints (sorted by x, then y). Independent of `warning`. */
+  truncated?: boolean;
   /**
    * Geometry of the non-hyperbolic points when there are enough of them to ask (>= 3 and >= 60%):
-   * `collinearity` is the ratio of the covariance eigenvalues (0 = a perfect line), `curveLike`
-   * the fraction of points whose nearest neighbours are locally collinear. Both are what decided
-   * between 'possible_continuum' and 'multiple_non_hyperbolic'.
+   * `collinearity` is the ratio of the covariance eigenvalues of ALL of them (0 = a perfect line),
+   * `curveLike` the fraction whose nearest neighbours are locally collinear, `connected` the
+   * fraction that is joined to at least one neighbour by equilibria (the field vanishes between
+   * them), `components` the number of connected components and `continuumComponents` how many of
+   * those (with >= 3 points) pass the shape test. 'possible_continuum' iff continuumComponents >= 1.
    */
-  geometry?: { collinearity: number; curveLike: number; connected: number };
+  geometry?: { collinearity: number; curveLike: number; connected: number; components: number; continuumComponents: number };
   /** How the search was seeded, including whether the scan cap was hit. */
   seeding: SeedingReport;
 };
@@ -77,7 +89,10 @@ export const COLLINEAR_RATIO = 1e-6;
 export const CURVE_LOCAL_RATIO = 0.02;
 export const CURVE_FRACTION = 0.8;
 export const CURVE_MIN_POINTS = 6;
+/** @deprecated Connectedness is now decided per component; kept for callers that read the old threshold. */
 export const CONNECTED_FRACTION = 0.8;
+/** Neighbours per point considered for connectedness edges. */
+export const COMPONENT_NEIGHBOURS = 4;
 
 /** Seeding rule constants (see the file header). */
 export const SEED_GRID_MIN = 12;
@@ -129,31 +144,112 @@ export function curveLikeFraction(points: Vec2[], k = 4): number {
   return locallyLinear / points.length;
 }
 
-/**
- * Fraction of points whose nearest neighbour is CONNECTED to them by equilibria: a Newton polish
- * from the chord midpoint must land on an equilibrium strictly between the two (not at either end).
- * True for a line or curve of equilibria (the field vanishes all along it), false for isolated
- * roots that merely happen to be collinear (the field is non-zero between them).
- */
-function connectedFraction(sys: CompiledSystem, pts: Vec2[], box: Box, scale: number, fTol: number, maxIterations: number): number {
-  if (pts.length < 2) return 0;
-  let connected = 0;
-  for (const p of pts) {
-    let q: Vec2 | null = null;
-    let best = Infinity;
-    for (const r of pts) {
-      if (r === p) continue;
-      const d = Math.hypot(r.x - p.x, r.y - p.y);
-      if (d < best) { best = d; q = r; }
+/** Shape test of one connected component: a line, or (with enough points) a smooth curve. */
+function componentIsCurve(pts: Vec2[]): boolean {
+  if (pts.length < 3) return false;
+  return collinearity(pts) <= COLLINEAR_RATIO || (pts.length >= CURVE_MIN_POINTS && curveLikeFraction(pts) >= CURVE_FRACTION);
+}
+
+/** Edges of the Euclidean minimum spanning tree of `pts` (Prim, O(n²)), as index pairs. */
+function spanningTreeEdges(pts: Vec2[]): [number, number][] {
+  const n = pts.length;
+  if (n < 2) return [];
+  const inTree = new Array<boolean>(n).fill(false);
+  const best = new Array<number>(n).fill(Infinity);
+  const from = new Array<number>(n).fill(0);
+  inTree[0] = true;
+  for (let j = 1; j < n; j++) { best[j] = Math.hypot(pts[j].x - pts[0].x, pts[j].y - pts[0].y); from[j] = 0; }
+  const edges: [number, number][] = [];
+  for (let k = 1; k < n; k++) {
+    let next = -1;
+    for (let j = 0; j < n; j++) if (!inTree[j] && (next < 0 || best[j] < best[next])) next = j;
+    inTree[next] = true;
+    edges.push([from[next], next]);
+    for (let j = 0; j < n; j++) {
+      if (inTree[j]) continue;
+      const d = Math.hypot(pts[j].x - pts[next].x, pts[j].y - pts[next].y);
+      if (d < best[j]) { best[j] = d; from[j] = next; }
     }
-    if (!q) continue;
+  }
+  return edges;
+}
+
+/**
+ * Connected components of a point set under the relation "the field vanishes between them": a
+ * pair of points is joined when a Newton polish from their chord midpoint lands on an equilibrium
+ * strictly between the two (not at either end) that is NOT one of the equilibria already listed
+ * (`known`, with the dedupe distance): the edge is evidence that the field vanishes at a point
+ * nobody had found. True along a line or curve of equilibria, false for isolated roots that
+ * merely happen to be collinear (the field is non-zero between them, review C5), including
+ * evenly spaced ones whose second neighbour's midpoint is simply the first neighbour.
+ *
+ * Pairs tested: each point with its COMPONENT_NEIGHBOURS nearest neighbours, plus the edges of
+ * the Euclidean minimum spanning tree. The tree matters when the sampling is uneven (a circle
+ * sampled in clusters): every cut of the point set is crossed by a tree edge, so a genuine
+ * continuum can never be split into several components merely because all four nearest
+ * neighbours of the points on each side of a gap lie on their own side. Union-find; every pair
+ * is polished at most once.
+ */
+function connectedComponents(
+  sys: CompiledSystem,
+  pts: Vec2[],
+  known: Vec2[],
+  dedupe: number,
+  box: Box,
+  scale: number,
+  fTol: number,
+  maxIterations: number,
+  checkpoint: (() => void) | undefined,
+): { component: number[]; count: number; connected: number } {
+  const n = pts.length;
+  const parent = Array.from({ length: n }, (_, i) => i);
+  const find = (i: number): number => {
+    while (parent[i] !== i) {
+      parent[i] = parent[parent[i]];
+      i = parent[i];
+    }
+    return i;
+  };
+  const union = (i: number, j: number) => {
+    const a = find(i), b = find(j);
+    if (a !== b) parent[Math.max(a, b)] = Math.min(a, b);
+  };
+  const pairs: [number, number][] = [];
+  for (let i = 0; i < n; i++) {
+    const p = pts[i];
+    pts
+      .map((q, j) => ({ j, d: Math.hypot(q.x - p.x, q.y - p.y) }))
+      .filter((e) => e.j !== i)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, COMPONENT_NEIGHBOURS)
+      .forEach(({ j }) => pairs.push([i, j]));
+  }
+  pairs.push(...spanningTreeEdges(pts));
+  const tested = new Set<number>();
+  const hasEdge = new Array<boolean>(n).fill(false);
+  for (const [i, j] of pairs) {
+    const key = Math.min(i, j) * n + Math.max(i, j);
+    if (tested.has(key)) continue;
+    tested.add(key);
+    const p = pts[i], q = pts[j];
+    checkpoint?.();
     const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
     const polished = newton(sys, mid, box, scale, fTol, maxIterations);
     if (!polished) continue;
     const gap = Math.hypot(q.x - p.x, q.y - p.y);
-    if (Math.hypot(polished.x - p.x, polished.y - p.y) < 0.9 * gap && Math.hypot(polished.x - q.x, polished.y - q.y) < 0.9 * gap) connected++;
+    const between = Math.hypot(polished.x - p.x, polished.y - p.y) < 0.9 * gap && Math.hypot(polished.x - q.x, polished.y - q.y) < 0.9 * gap;
+    if (between && !known.some((r) => Math.hypot(r.x - polished.x, r.y - polished.y) <= dedupe)) {
+      union(i, j);
+      hasEdge[i] = hasEdge[j] = true;
+    }
   }
-  return connected / pts.length;
+  const roots = new Map<number, number>();
+  const component = pts.map((_, i) => {
+    const r = find(i);
+    if (!roots.has(r)) roots.set(r, roots.size);
+    return roots.get(r)!;
+  });
+  return { component, count: roots.size, connected: n ? hasEdge.filter(Boolean).length / n : 0 };
 }
 
 export type FindEquilibriaOptions = {
@@ -414,26 +510,31 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
 
   if (equilibria.length === 0) return { points: [], warning: "none_found", seeding };
 
-  // A continuum of equilibria needs BOTH a counting signal (many non-hyperbolic points) and a
-  // geometric one (they lie on a line or, more generally, on a curve). Counting alone would call
-  // four isolated degenerate points a continuum (H2.7).
+  // A continuum of equilibria needs a counting signal (many non-hyperbolic points), connectedness
+  // (the field vanishes between neighbours) and a geometric one (a line or a curve) per connected
+  // component. Counting alone would call four isolated degenerate points a continuum (H2.7);
+  // shape alone would call isolated double roots on a line a continuum (review C5).
   const nonHyperbolic = equilibria.filter((e) => e.classification === "non_hyperbolic");
   const manyNonHyperbolic = equilibria.length >= 3 && nonHyperbolic.length >= Math.ceil(0.6 * equilibria.length);
   let geometry: EquilibriaResult["geometry"];
   let continuum = false;
   if (manyNonHyperbolic) {
     const pts = nonHyperbolic.map((e) => e.at);
-    const shape = collinearity(pts) <= COLLINEAR_RATIO || (pts.length >= CURVE_MIN_POINTS && curveLikeFraction(pts) >= CURVE_FRACTION);
-    // Shape is not enough: isolated double roots on a line have the shape of a continuum. The field
-    // must also vanish BETWEEN neighbouring points (review C5).
-    const connected = shape ? connectedFraction(sys, pts, box, scale, fTol, maxIterations) : 0;
-    geometry = { collinearity: collinearity(pts), curveLike: curveLikeFraction(pts), connected };
-    continuum = shape && connected >= CONNECTED_FRACTION;
+    const cc = connectedComponents(sys, pts, found, dedupe, box, scale, fTol, maxIterations, opts.checkpoint);
+    const members: Vec2[][] = Array.from({ length: cc.count }, () => []);
+    pts.forEach((p, i) => members[cc.component[i]].push(p));
+    const continuumComponents = members.filter(componentIsCurve).length;
+    geometry = { collinearity: collinearity(pts), curveLike: curveLikeFraction(pts), connected: cc.connected, components: cc.count, continuumComponents };
+    continuum = continuumComponents >= 1;
   }
-  const warning: EquilibriaWarning | undefined = continuum ? "possible_continuum" : manyNonHyperbolic ? "multiple_non_hyperbolic" : undefined;
+  const truncated = equilibria.length > maxPoints;
+  const warning: EquilibriaWarning | undefined = continuum ? "possible_continuum" : manyNonHyperbolic ? "multiple_non_hyperbolic" : truncated ? "hit_limit" : undefined;
 
-  if (equilibria.length > maxPoints) {
-    return { points: equilibria.slice(0, maxPoints), warning: warning ?? "hit_limit", geometry, seeding };
-  }
-  return warning ? { points: equilibria, warning, geometry, seeding } : { points: equilibria, seeding };
+  return {
+    points: truncated ? equilibria.slice(0, maxPoints) : equilibria,
+    ...(warning ? { warning } : {}),
+    ...(truncated ? { truncated: true } : {}),
+    ...(geometry ? { geometry } : {}),
+    seeding,
+  };
 }

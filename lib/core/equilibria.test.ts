@@ -332,7 +332,72 @@ describe("missed equilibria (J.1): adaptive seeds and the |F| local-minimum self
     expect(r.seeding.candidates).toBeGreaterThanOrEqual(529);
     expect(r.seeding.seeds).toBe(400);
     expect(r.seeding.capped).toBe(true);
+    expect(r.truncated).toBe(true);
     expect(r.warning).toBe("hit_limit");
     expect(r.points).toHaveLength(30);
+  });
+});
+
+describe("connected components before the continuum test (J.5a)", () => {
+  it("two parallel lines of equilibria are two continuum components: x' = 0, y' = y² - 1", () => {
+    // Every point of y = 1 and of y = -1 is an equilibrium, J = diag(0, 2y) there (det 0).
+    const r = findEquilibria(compileSystem({ f: "0", g: "y^2 - 1" }), box(-2, 2));
+    expect(r.warning).toBe("possible_continuum");
+    expect(r.geometry!.components).toBe(2);
+    expect(r.geometry!.continuumComponents).toBe(2);
+    for (const p of r.points) {
+      expect(Math.abs(Math.abs(p.at.y) - 1)).toBeLessThan(1e-6);
+      expect(p.classification).toBe("non_hyperbolic");
+    }
+  });
+
+  it("the x-axis is one component: x' = 0, y' = y", () => {
+    const r = findEquilibria(compileSystem({ f: "0", g: "y" }), box(-2, 2));
+    expect(r.warning).toBe("possible_continuum");
+    expect(r.geometry!.components).toBe(1);
+    expect(r.geometry!.continuumComponents).toBe(1);
+  });
+
+  it("four isolated degenerate points are four components of one point each: (x² - 1)², (y² - 1)²", () => {
+    const r = findEquilibria(compileSystem({ f: "(x^2 - 1)^2", g: "(y^2 - 1)^2" }), box(-2, 2));
+    expect(r.points).toHaveLength(4);
+    expect(r.warning).toBe("multiple_non_hyperbolic");
+    expect(r.geometry!.components).toBe(4);
+    expect(r.geometry!.continuumComponents).toBe(0);
+    expect(r.geometry!.connected).toBe(0);
+  });
+
+  it("a circle of equilibria sampled unevenly is still one component (spanning-tree edges)", () => {
+    const r = findEquilibria(compileSystem({ f: "x*(1 - x^2 - y^2)", g: "y*(1 - x^2 - y^2)" }), box(-2, 2));
+    expect(r.warning).toBe("possible_continuum");
+    expect(r.geometry!.components).toBe(1);
+    expect(r.geometry!.continuumComponents).toBe(1);
+  });
+});
+
+describe("independent truncated flag (J.5b)", () => {
+  it("more isolated hyperbolic equilibria than maxPoints: truncated with warning hit_limit", () => {
+    // sin(πx), sin(πy) on [-5, 5]²: 121 integer pairs, each with J = diag(±π, ±π): all hyperbolic,
+    // so there is neither a continuum nor multiple_non_hyperbolic; the only thing to say is the cap.
+    const r = findEquilibria(compileSystem({ f: "sin(pi*x)", g: "sin(pi*y)" }), box(-5, 5), { maxPoints: 10 });
+    expect(r.truncated).toBe(true);
+    expect(r.warning).toBe("hit_limit");
+    expect(r.points).toHaveLength(10);
+    expect(r.geometry).toBeUndefined();
+  });
+
+  it("a truncated continuum keeps its geometric warning: x' = 0, y' = y with maxPoints 3", () => {
+    const r = findEquilibria(compileSystem({ f: "0", g: "y" }), box(-2, 2), { maxPoints: 3 });
+    expect(r.truncated).toBe(true);
+    expect(r.warning).toBe("possible_continuum");
+    expect(r.points).toHaveLength(3);
+    // The verdict was made on all points found, not on the three listed.
+    expect(r.geometry!.continuumComponents).toBe(1);
+  });
+
+  it("is absent when nothing was cut", () => {
+    const r = findEquilibria(compileSystem({ f: "x^2 - 1", g: "y" }), box(-2, 2));
+    expect(r.truncated).toBeUndefined();
+    expect(r.warning).toBeUndefined();
   });
 });
