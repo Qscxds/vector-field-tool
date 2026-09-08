@@ -14,7 +14,10 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 - `lib/core/` pure math kernel: `parse` (mathjs AST whitelist -> compiled system, eval never throws;
   `variables: "xy" | "ty"` — in "ty" mode t is the horizontal coordinate and x is rejected with
-  ParseError code `x_in_first_order`; a pasted left-hand side gives `lhs_in_expression`),
+  ParseError code `x_in_first_order`; a pasted left-hand side gives `lhs_in_expression` with a
+  mode-aware message ("dy/dt =" in "ty", "x' =" / "y' =" in "xy"), checked on the RAW g / M / N by
+  `assertNoLeftHandSide` before slope-field wraps them; a bare "y =" followed by "?" is a
+  comparison typo and gets a "write ==" hint instead),
   `field` (grid sampling), `integrate` (RK4 + adaptive Dormand-Prince, shared stop rules; blow-up
   is decided by the POSITION only, never by speed; 'reached_equilibrium' is relative to the
   problem's reference speed; the adaptive step is capped at h*L <= 1 so sinks are actually
@@ -34,23 +37,38 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   relative deviation, the threshold, sample counts; Bernoulli exponents snap to fractions with
   denominator <= 6 when the identity still holds), `exact` (potential by two-path Simpson with a
   path-independence check whose failure is reported, level values).
-- `lib/render/` pure geometry: `viewport` (equal-scale `fitViewport`, cursor-anchored `zoomAt`,
-  `panBy`, `resetViewport`), `arrows`, `ticks`, `axis-names` (where the axis names go without
-  covering the tick numbers), `color`, `contours` (marching squares).
+- `lib/render/` pure geometry: `viewport` (`fitViewport` equal-scale by default, `equalScale: false`
+  returns the entered box unchanged so it fills the canvas; cursor-anchored `zoomAt`, `panBy`,
+  `resetViewport`), `arrows`, `ticks`, `axis-names` (where the axis names go without covering the
+  tick numbers), `color`, `contours` (marching squares).
 - `lib/scene.ts` the data contract: every visual tool returns a `Scene` as structuredContent (with
   `locale`, `system`, `firstOrder.spec` so clients can recompute); the widget and the web shell only
   ever consume a Scene.
 - `lib/labels.ts` ALL student/user-facing text as keyed tables `LABELS.zh` / `LABELS.en` with an
   identical key set (tested), `labels(locale)`, `fill()`, `localeFromLanguageTag()`, number
   formatting. English is American spelling. The kernel returns keys; presentation looks them up.
-- `lib/interactive.ts` pure helpers for the interactive shells: features for the visible box,
-  `tracePreview` (hover: fixed ON-SCREEN length, 2 canvas diagonals, steps only a safety cap) and
-  `traceFixed` (click: stops at 20x the original problem domain, never at the view edge).
+  Placeholder convention `{hv}`: the range templates (`shownRange*`, `featuresBox`, `xRangeError`,
+  `equalScale`) take `{hv}`, the student-facing name of the horizontal coordinate: "x" for a planar
+  system, "t" for a first-order scene (`system.variables === "ty"`); both shells fill it via
+  `horizontalName()`.
+- `lib/labels-trajectory.ts` the mode-aware "last trajectory" text shared by both shells:
+  planar = direction + tEnd; explicit first order = direction + the END POINT's t (tEnd is the
+  parameter of the reduced system, not the t coordinate); differential form = the two sides by
+  status only (no natural direction, no t number).
+- `lib/interactive.ts` pure helpers for the interactive shells: `computeFeatures` for a box,
+  `featuresBoxFor` (the features-box rule below), `tracePreview` (hover: fixed ON-SCREEN length,
+  2 canvas diagonals, steps only a safety cap) and `traceFixed` (click: stops at 20x the original
+  problem domain, never at the view edge).
 - `components/VectorFieldCanvas.tsx` draws a Scene on a base + overlay canvas; data props only,
   never calls lib/core; draws the axis names (t or x from `scene.system.variables`, and y);
   reports pointer/wheel as world/screen coordinates.
   `components/useInteractiveScene.ts` the interaction state shared by both shells (home box,
-  viewport, resampled field, debounced features, rAF hover preview, click-to-keep).
+  viewport with `equalScale` (default true; false fills the canvas with the entered box and the
+  web shell shows a persistent not-to-scale warning), resampled field, debounced features, rAF
+  hover preview, click-to-keep). Features-box rule: at the home view (not zoomed or panned) the
+  features are computed for the ENTERED range in both equal-scale modes, so the toggle or a canvas
+  of another aspect ratio never changes what is listed (the equal-scale margin only carries
+  arrows); after a zoom or pan they are computed for the visible box. `Scene.featuresBox` says which.
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
