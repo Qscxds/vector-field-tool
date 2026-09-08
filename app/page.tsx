@@ -14,7 +14,7 @@ export default function HomePage() {
         </Link>
       </p>
       <p style={{ color: "#52606d" }}>
-        输入 x&apos; = f(x, y)、y&apos; = g(x, y) 或一阶方程 dy/dx = g(x, y) / M dx + N dy = 0，看方向场、平衡点、解曲线；滚轮缩放、拖动平移、悬停预览、点击固定。
+        输入 x&apos; = f(x, y)、y&apos; = g(x, y) 或一阶方程 dy/dt = g(t, y) / M dt + N dy = 0，看方向场、平衡点、解曲线；滚轮缩放、拖动平移、悬停预览、点击固定。
         Enter a planar system or a first-order equation and explore its direction field, equilibria and solution curves.
       </p>
 
