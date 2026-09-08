@@ -17,7 +17,7 @@
  * seven-character expression).
  */
 import { all, create, type MathNode } from "mathjs";
-import type { SystemSpec, Vec2 } from "./types";
+import type { SystemSpec, VariableMode, Vec2 } from "./types";
 
 // predictable: true makes sqrt(-1), log(-1), ... return NaN instead of a Complex number.
 // relTol 1e-15 / absTol 0: comparisons are exact up to machine precision (mathjs defaults to a
@@ -38,7 +38,25 @@ export const ALLOWED_FUNCTIONS: ReadonlyMap<string, readonly [number, number]> =
 ]);
 
 export const ALLOWED_CONSTANTS: ReadonlySet<string> = new Set(["pi", "e"]);
+/** Reserved variable names in every mode: a parameter may never be called x, y or t. */
 export const VARIABLES: ReadonlySet<string> = new Set(["x", "y", "t"]);
+/** Variable symbols an expression may use, per mode (see VariableMode in types.ts). */
+export const MODE_VARIABLES: Readonly<Record<VariableMode, readonly string[]>> = {
+  xy: ["x", "y", "t"],
+  ty: ["t", "y"],
+};
+
+/** Readable messages behind the ParseError codes; the web shell shows its own bilingual text. */
+export const X_IN_FIRST_ORDER_MESSAGE =
+  "In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.";
+export const LHS_IN_EXPRESSION_MESSAGE = 'Enter only the right-hand side of the equation; the "dy/dt =" part is implied.';
+
+/**
+ * A left-hand side at the start of the text: dy/dx =, dy/dt =, y' =, x' =, y′ = (unicode prime) or
+ * y =. A comparison "y == 0" is not a left-hand side. Group 1 is the differential's variable
+ * (x or t) when the text starts with dy/d?.
+ */
+const LHS_PATTERN = /^(?:d\s*y\s*\/\s*d\s*([xt])|[xy]\s*['′]|y)\s*=(?!=)/;
 
 /** Names that mathjs or JavaScript would interpret before our scope does. */
 const RESERVED_NAMES: ReadonlySet<string> = new Set([
@@ -58,14 +76,29 @@ const ALLOWED_NODE_TYPES: ReadonlySet<string> = new Set([
 
 export const MAX_EXPRESSION_LENGTH = 500;
 
+/**
+ * Machine-readable reason for the ParseErrors a shell may want to explain in its own words:
+ * - "x_in_first_order": the symbol x in "ty" mode (the student meant t).
+ * - "lhs_in_expression": the text starts with a left-hand side such as "dy/dt =" or "y' =".
+ * Every other ParseError has no code.
+ */
+export type ParseErrorCode = "x_in_first_order" | "lhs_in_expression";
+
 export class ParseError extends Error {
   readonly expr: string;
-  constructor(expr: string, message: string) {
+  readonly code?: ParseErrorCode;
+  constructor(expr: string, message: string, code?: ParseErrorCode) {
     super(message);
     this.name = "ParseError";
     this.expr = expr;
+    if (code) this.code = code;
   }
 }
+
+export type CompileOptions = {
+  /** Symbol set of the expression; default "xy". See VariableMode in types.ts. */
+  variables?: VariableMode;
+};
 
 export interface CompiledSystem {
   /** Evaluates (f, g) at a point; `t` defaults to 0 for autonomous use. Never throws. */
@@ -101,12 +134,24 @@ function toParseError(expr: string, cause: unknown, fallback: string): ParseErro
   return new ParseError(expr, `${fallback}: ${reason}`);
 }
 
-function parseChecked(expr: string, paramNames: string[]): MathNode {
+/** In "ty" mode a symbol made of x, y, t letters that contains x (x, xy, xt ...) was meant with x. */
+function isXSymbol(name: string, mode: VariableMode): boolean {
+  return mode === "ty" && /^[xyt]*x[xyt]*$/.test(name);
+}
+
+function parseChecked(expr: string, paramNames: string[], mode: VariableMode): MathNode {
   if (typeof expr !== "string" || expr.trim() === "") {
     throw new ParseError(expr, "Expression is empty.");
   }
   if (expr.length > MAX_EXPRESSION_LENGTH) {
     throw new ParseError(expr, `Expression is too long (${expr.length} characters, maximum ${MAX_EXPRESSION_LENGTH}).`);
+  }
+  // Before mathjs: "y' = t" and "dy/dx = x" are mathjs syntax errors and "y = t" is an assignment;
+  // all three must be reported as a left-hand side, not as a generic parse failure.
+  const lhs = LHS_PATTERN.exec(expr.trim());
+  if (lhs) {
+    const message = lhs[1] === "x" ? `${LHS_IN_EXPRESSION_MESSAGE} ${X_IN_FIRST_ORDER_MESSAGE}` : LHS_IN_EXPRESSION_MESSAGE;
+    throw new ParseError(expr, message, "lhs_in_expression");
   }
   let node: MathNode;
   try {
@@ -114,12 +159,12 @@ function parseChecked(expr: string, paramNames: string[]): MathNode {
   } catch (cause) {
     throw toParseError(expr, cause, "Could not parse expression");
   }
-  const allowedSymbols = new Set([...VARIABLES, ...ALLOWED_CONSTANTS, ...paramNames]);
+  const allowedSymbols = new Set([...MODE_VARIABLES[mode], ...ALLOWED_CONSTANTS, ...paramNames]);
 
   try {
     node.traverse((n: MathNode, path: string | null, parent: MathNode | null) => {
       if (!ALLOWED_NODE_TYPES.has(n.type)) {
-        throw new ParseError(expr, describeForbiddenNode(n));
+        throw new ParseError(expr, describeForbiddenNode(n, mode));
       }
       if (math.isConstantNode(n)) {
         if (typeof n.value !== "number" || !Number.isFinite(n.value)) {
@@ -129,7 +174,8 @@ function parseChecked(expr: string, paramNames: string[]): MathNode {
         // The callee symbol of a function call is validated at the FunctionNode.
         if (path === "fn" && parent !== null && math.isFunctionNode(parent)) return;
         if (!allowedSymbols.has(n.name)) {
-          throw new ParseError(expr, unknownSymbolMessage(n.name, paramNames));
+          if (isXSymbol(n.name, mode)) throw new ParseError(expr, X_IN_FIRST_ORDER_MESSAGE, "x_in_first_order");
+          throw new ParseError(expr, unknownSymbolMessage(n.name, paramNames, mode));
         }
       } else if (math.isFunctionNode(n)) {
         const fn = n.fn;
@@ -138,6 +184,8 @@ function parseChecked(expr: string, paramNames: string[]): MathNode {
         }
         const arity = ALLOWED_FUNCTIONS.get(fn.name);
         if (!arity) {
+          // "x(t+1)" in first-order mode: the student used x as a variable, not as a function.
+          if (isXSymbol(fn.name, mode)) throw new ParseError(expr, X_IN_FIRST_ORDER_MESSAGE, "x_in_first_order");
           const hint = allowedSymbols.has(fn.name)
             ? ` "${fn.name}" is a variable or parameter; write "${fn.name}*(...)" for multiplication.`
             : ` Allowed functions: ${[...ALLOWED_FUNCTIONS.keys()].join(", ")}.`;
@@ -161,11 +209,12 @@ function parseChecked(expr: string, paramNames: string[]): MathNode {
   return node;
 }
 
-function describeForbiddenNode(n: MathNode): string {
+function describeForbiddenNode(n: MathNode, mode: VariableMode): string {
+  const vars = mode === "ty" ? "t and y" : "x and y";
   switch (n.type) {
     case "AssignmentNode":
     case "FunctionAssignmentNode":
-      return "Assignments are not allowed; write an expression in x and y only.";
+      return `Assignments are not allowed; write an expression in ${vars} only.`;
     case "BlockNode":
       return "Multiple statements are not allowed; write a single expression.";
     case "AccessorNode":
@@ -176,18 +225,19 @@ function describeForbiddenNode(n: MathNode): string {
     case "RangeNode":
       return "Arrays, objects and ranges are not allowed; the expression must be a scalar.";
     case "RelationalNode":
-      return "Chained comparisons like 0 < x < 1 are not allowed; combine two comparisons with a conditional instead.";
+      return `Chained comparisons like 0 < ${mode === "ty" ? "t" : "x"} < 1 are not allowed; combine two comparisons with a conditional instead.`;
     default:
       return `Syntax "${n.type}" is not allowed.`;
   }
 }
 
-function unknownSymbolMessage(name: string, paramNames: string[]): string {
+function unknownSymbolMessage(name: string, paramNames: string[], mode: VariableMode): string {
+  const letters = mode === "ty" ? /^[ty]+$/ : /^[xyt]+$/;
   const hint =
-    name.length > 1 && /^[xyt]+$/.test(name)
+    name.length > 1 && letters.test(name)
       ? ` Did you mean "${name.split("").join("*")}"? Multiplication must be written explicitly.`
       : "";
-  const known = ["x", "y", "t", "pi", "e", ...paramNames].join(", ");
+  const known = [...MODE_VARIABLES[mode], "pi", "e", ...paramNames].join(", ");
   return `Unknown symbol "${name}".${hint} Allowed symbols: ${known}.`;
 }
 
@@ -197,18 +247,38 @@ function toNumber(value: unknown): number {
   return NaN;
 }
 
-/** Compiles a scalar expression of x, y (and optionally t) into a fast evaluator. */
+/**
+ * Compiles a scalar expression into a fast evaluator of a kernel point {x, y}.
+ * - "xy" (default): symbols x, y and the time t; the evaluator's second argument is t.
+ * - "ty": symbols t and y only; t is bound to p.x (the horizontal coordinate), y to p.y, and the
+ *   time argument is ignored. x is not in the scope at all, so a stray x can never evaluate.
+ * In both modes the returned function never throws.
+ */
 export function compileScalar(
   expr: string,
   params?: Record<string, number>,
+  opts: CompileOptions = {},
 ): (p: Vec2, t?: number) => number {
+  const mode: VariableMode = opts.variables ?? "xy";
   const paramNames = validateParams(expr, params);
-  const node = parseChecked(expr, paramNames);
+  const node = parseChecked(expr, paramNames, mode);
   let code: { evaluate: (scope: Scope) => unknown };
   try {
     code = node.compile();
   } catch (cause) {
     throw toParseError(expr, cause, "Could not compile expression");
+  }
+  if (mode === "ty") {
+    const scope: Scope = { ...(params ?? {}), t: 0, y: 0 };
+    return (p: Vec2) => {
+      scope.t = p.x;
+      scope.y = p.y;
+      try {
+        return toNumber(code.evaluate(scope));
+      } catch {
+        return NaN;
+      }
+    };
   }
   const scope: Scope = { ...(params ?? {}), x: 0, y: 0, t: 0 };
   return (p: Vec2, t = 0) => {
@@ -223,10 +293,11 @@ export function compileScalar(
   };
 }
 
-/** Compiles a planar system; both expressions share the parameter set. */
+/** Compiles a planar system; both expressions share the parameter set and the variable mode. */
 export function compileSystem(spec: SystemSpec): CompiledSystem {
-  const f = compileScalar(spec.f, spec.params);
-  const g = compileScalar(spec.g, spec.params);
+  const opts: CompileOptions = { variables: spec.variables };
+  const f = compileScalar(spec.f, spec.params, opts);
+  const g = compileScalar(spec.g, spec.params, opts);
   return {
     spec,
     eval(p: Vec2, t = 0): Vec2 {

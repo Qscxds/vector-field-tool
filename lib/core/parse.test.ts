@@ -190,3 +190,123 @@ describe("hardening (public endpoint)", () => {
     expect(() => compileScalar("x(x+1)")).toThrow(/x\*\(\.\.\.\)/);
   });
 });
+
+describe('first-order variable mode { variables: "ty" }', () => {
+  const ty = (expr: string, params?: Record<string, number>) => compileScalar(expr, params, { variables: "ty" });
+  const codeOf = (fn: () => unknown): { code?: string; message: string } => {
+    try {
+      fn();
+    } catch (error) {
+      expect(error).toBeInstanceOf(ParseError);
+      return { code: (error as ParseError).code, message: (error as ParseError).message };
+    }
+    throw new Error("expected a ParseError");
+  };
+
+  it("binds t to the horizontal coordinate p.x and ignores the time argument", () => {
+    const f = ty("t*y");
+    expect(f({ x: 2, y: 3 })).toBe(6);
+    expect(f({ x: 2, y: 3 }, 99)).toBe(6);
+    expect(ty("t")({ x: 5, y: 0 }, 7)).toBe(5);
+  });
+
+  it("leaves the default xy mode unchanged: t is still the time there", () => {
+    expect(compileScalar("t")({ x: 5, y: 0 }, 3)).toBe(3);
+    expect(compileScalar("t", undefined, { variables: "xy" })({ x: 5, y: 0 }, 3)).toBe(3);
+    expect(compileScalar("x*y")({ x: 2, y: 3 })).toBe(6);
+  });
+
+  it('rejects the symbol x with code "x_in_first_order" and a readable hint', () => {
+    for (const expr of ["x", "x + y", "sin(x)", "x*y", "2x", "x(t+1)", "xy", "xt"]) {
+      const e = codeOf(() => ty(expr));
+      expect(e.code, expr).toBe("x_in_first_order");
+      expect(e.message, expr).toContain("write t instead of x");
+      expect(e.message, expr).toBe("In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.");
+    }
+  });
+
+  it("accepts function names that contain the letter x", () => {
+    expect(ty("exp(t)")({ x: 0, y: 0 })).toBe(1);
+    expect(ty("max(t, y)")({ x: 2, y: 5 })).toBe(5);
+    expect(ty("atan2(y, t)")({ x: 1, y: 1 })).toBeCloseTo(Math.PI / 4, 12);
+  });
+
+  it("lists t, y as the allowed symbols and hints at t*y, never at x*y", () => {
+    const e = codeOf(() => ty("ty"));
+    expect(e.code).toBeUndefined();
+    expect(e.message).toMatch(/t\*y/);
+    expect(e.message).toContain("Allowed symbols: t, y, pi, e.");
+    expect(codeOf(() => ty("ty", { k: 1 })).message).toContain("Allowed symbols: t, y, pi, e, k.");
+    expect(codeOf(() => ty("xy")).message).not.toMatch(/x\*y/);
+    expect(codeOf(() => ty("a + b")).message).toContain('Unknown symbol "a"');
+    // xy mode keeps its own list
+    expect(codeOf(() => compileScalar("a")).message).toContain("Allowed symbols: x, y, t, pi, e.");
+  });
+
+  it("still reserves x, y and t as parameter names", () => {
+    expect(() => ty("y", { x: 1 })).toThrow(/reserved/);
+    expect(() => ty("y", { t: 1 })).toThrow(/reserved/);
+    expect(() => ty("y", { y: 1 })).toThrow(/reserved/);
+    expect(ty("k*t", { k: 3 })({ x: 2, y: 0 })).toBe(6);
+  });
+
+  it("words the assignment and chained-comparison messages in t and y", () => {
+    expect(codeOf(() => ty("f(a) = a")).message).toContain("in t and y only");
+    expect(codeOf(() => compileScalar("f(a) = a")).message).toContain("in x and y only");
+    expect(codeOf(() => ty("0 < t < 1")).message).toContain("0 < t < 1");
+  });
+
+  it("compileSystem forwards the mode: the reduced system x' = 1, y' = t*y", () => {
+    const sys = compileSystem({ f: "1", g: "t*y", variables: "ty" });
+    expect(sys.eval({ x: 2, y: 3 })).toEqual({ x: 1, y: 6 });
+    expect(compileSystem({ f: "1", g: "t", variables: "ty" }).eval({ x: 2, y: 0 }, 99)).toEqual({ x: 1, y: 2 });
+    expect(() => compileSystem({ f: "1", g: "x*y", variables: "ty" })).toThrow(/write t instead of x/);
+    // without the field the system is an ordinary xy system and t is the time
+    expect(compileSystem({ f: "1", g: "t" }).eval({ x: 2, y: 0 }, 99)).toEqual({ x: 1, y: 99 });
+  });
+
+  it("an ordinary ParseError carries no code", () => {
+    expect(codeOf(() => compileScalar("a + b")).code).toBeUndefined();
+    expect(codeOf(() => ty("(t + y")).code).toBeUndefined();
+  });
+});
+
+describe("a left-hand side in the expression", () => {
+  const LHS = 'Enter only the right-hand side of the equation; the "dy/dt =" part is implied.';
+  const check = (expr: string, opts?: { variables: "xy" | "ty" }) => {
+    try {
+      compileScalar(expr, undefined, opts);
+    } catch (error) {
+      expect(error, expr).toBeInstanceOf(ParseError);
+      return error as ParseError;
+    }
+    throw new Error(`expected a ParseError for ${JSON.stringify(expr)}`);
+  };
+
+  it('is reported with code "lhs_in_expression" and the exact message, in both modes', () => {
+    for (const expr of ["dy/dt = t", "dy / dt = y", "y' = t", "y′ = t", "y = t", "x' = y", "  y' = y  ", "y=y"]) {
+      for (const opts of [undefined, { variables: "xy" as const }, { variables: "ty" as const }]) {
+        const e = check(expr, opts);
+        expect(e.code, expr).toBe("lhs_in_expression");
+        expect(e.message, expr).toBe(LHS);
+      }
+    }
+  });
+
+  it("dy/dx = ... also gets the t-instead-of-x sentence", () => {
+    for (const opts of [undefined, { variables: "ty" as const }]) {
+      const e = check("dy/dx = x", opts);
+      expect(e.code).toBe("lhs_in_expression");
+      expect(e.message).toBe(`${LHS} In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.`);
+    }
+    expect(check("dy/dx = y").message).toContain("write t instead of x");
+    expect(check("dy/dt = y").message).not.toContain("write t instead of x");
+  });
+
+  it("does not mistake comparisons for a left-hand side", () => {
+    expect(compileScalar("y == 0")({ x: 0, y: 0 })).toBe(1);
+    expect(compileScalar("y >= 1")({ x: 0, y: 2 })).toBe(1);
+    expect(compileScalar("y == 0 ? 1 : 2", undefined, { variables: "ty" })({ x: 0, y: 3 })).toBe(2);
+    expect(compileScalar("y")({ x: 0, y: 4 })).toBe(4);
+  });
+});
