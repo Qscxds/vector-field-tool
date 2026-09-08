@@ -63,6 +63,20 @@ describe("label tables", () => {
     expect(LABELS.zh.ui.xInFirstOrder).toContain("把 x 写成 t");
   });
 
+  it("the planar left-hand-side hint names x' = / y' = and never dy/dt or t-instead-of-x", () => {
+    for (const locale of LOCALES) {
+      const text = LABELS[locale].ui.lhsInExpressionSystem;
+      expect(text, locale).toMatch(/x' =/);
+      expect(text, locale).toMatch(/y' =/);
+      expect(text, locale).not.toMatch(/dy\/dt|dx/);
+      expect(text, locale).not.toBe(LABELS[locale].ui.lhsInExpression);
+    }
+    expect(LABELS.en.ui.lhsInExpressionSystem).not.toMatch(/instead of x/);
+    expect(LABELS.zh.ui.lhsInExpressionSystem).not.toMatch(/写成 t/);
+    // the first-order hint stays in dy/dt
+    for (const locale of LOCALES) expect(LABELS[locale].ui.lhsInExpression, locale).toMatch(/dy\/dt/);
+  });
+
   it("caveats read as full sentences in both languages", () => {
     for (const locale of LOCALES) {
       for (const text of Object.values(labels(locale).caveat)) {

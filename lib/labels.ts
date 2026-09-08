@@ -44,7 +44,8 @@ export type LabelTable = {
     | "notRenderedByHost" | "localComputeUnavailable" | "rangeError" | "xRangeError" | "yRangeError" | "exprError"
     | "featuresBox" | "leftFarBox"
     | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression"
-    | "equalScale" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled",
+    | "equalScale" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled"
+    | "lhsInExpressionSystem",
     string
   >;
 };
@@ -188,6 +189,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       equalScaleWarning: "横纵比例不同，图上的角度不代表真实斜率。",
       shownRangeEqual: "实际显示范围（等比缩放后）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
       shownRangeFilled: "实际显示范围（填满输入范围）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
+      lhsInExpressionSystem: "只需输入方程的右端，「x' =」「y' =」这一部分是默认的。",
     },
   },
   en: {
@@ -328,6 +330,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       equalScaleWarning: "Axes are not to the same scale: angles in the picture do not represent true slopes.",
       shownRangeEqual: "Displayed range (equal scale): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
       shownRangeFilled: "Displayed range (filled to the entered range): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
+      lhsInExpressionSystem: "Enter only the right-hand side of each equation; the “x' =” / “y' =” part is implied.",
     },
   },
 };

@@ -10,7 +10,7 @@ import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
-import { toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
+import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, type LabelTable, type Locale } from "@/lib/labels";
 import type { ArrowMode } from "@/lib/render/arrows";
@@ -68,14 +68,23 @@ function parseBox(form: Form, L: LabelTable): Box {
   return { x: { min: xMin, max: xMax }, y: { min: yMin, max: yMax } };
 }
 
-function explain(error: unknown, L: LabelTable): string {
+/**
+ * Readable text for a compile failure. The ParseError codes get the bilingual sentence of the mode
+ * the student is in instead of the generic "problem in the expression" wrapper around the kernel's
+ * English text: in a planar system a pasted left-hand side is "x' =" / "y' =" and x is a state
+ * variable, so the t-instead-of-x sentence is never shown there; the two first-order modes name
+ * "dy/dt =" and add the t sentence when the kernel's message carries it (a pasted dy/dx).
+ */
+function explain(error: unknown, L: LabelTable, mode: PresetMode): string {
   if (error instanceof ParseError) {
-    // The two first-order mistakes with a machine-readable code get the readable bilingual sentence
-    // instead of the generic "problem in the expression" wrapper around the kernel's English text.
-    if (error.code === "x_in_first_order") return L.ui.xInFirstOrder;
-    if (error.code === "lhs_in_expression") {
-      const wroteDx = error.message.includes(X_IN_FIRST_ORDER_MESSAGE);
-      return wroteDx ? `${L.ui.lhsInExpression} ${L.ui.xInFirstOrder}` : L.ui.lhsInExpression;
+    if (mode === "system") {
+      if (error.code === "lhs_in_expression") return L.ui.lhsInExpressionSystem;
+    } else {
+      if (error.code === "x_in_first_order") return L.ui.xInFirstOrder;
+      if (error.code === "lhs_in_expression") {
+        const wroteDx = error.message.includes(X_IN_FIRST_ORDER_MESSAGE);
+        return wroteDx ? `${L.ui.lhsInExpression} ${L.ui.xInFirstOrder}` : L.ui.lhsInExpression;
+      }
     }
     return fill(L.ui.exprError, { expr: error.expr, message: error.message });
   }
@@ -93,11 +102,15 @@ function compile(form: Form, L: LabelTable): Compiled {
     } else {
       firstOrder = form.mode === "explicit" ? { kind: "explicit", g: form.g } : { kind: "differential", M: form.M, N: form.N };
       spec = toSystem(firstOrder);
+      // Differential form: compile M and N separately first (as the MCP tool does), so a ParseError's
+      // expr and code refer to exactly the field text the student typed rather than to the reduced
+      // system's "-(M)".
+      if (firstOrder.kind === "differential") compileDifferential(firstOrder);
     }
     const sys = compileSystem(spec);
     return { sys, spec, firstOrder, box, error: null };
   } catch (error) {
-    return { sys: null, spec: null, firstOrder: null, box: null, error: explain(error, L) };
+    return { sys: null, spec: null, firstOrder: null, box: null, error: explain(error, L, form.mode) };
   }
 }
 
