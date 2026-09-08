@@ -401,3 +401,37 @@ describe("independent truncated flag (J.5b)", () => {
     expect(r.warning).toBeUndefined();
   });
 });
+
+describe("ill-scaled linear systems through findEquilibria (J.5c)", () => {
+  it("x' = 1e10 x, y' = -y is a saddle with eigenvalues 1e10 and -1", () => {
+    // Only the origin. J = diag(1e10, -1). The Jacobian's error at the origin is dominated by the
+    // rounding term 4 eps |f| / (2h) with |f| = 1e10 · 1e-6 = 1e4 and h = 1e-6: ~4.4e-6, times the
+    // 10x margin: e ~ 4.4e-5. |det| = 1e10 against e (|a| + |d|) ~ 4.4e5: resolvable, not zero.
+    // The relative rule would have called |det| / scale² = 1e-10 zero and hidden the eigenvalue -1.
+    // The small eigenvalue comes out of the normalized matrix as (tr - sqrt(disc)) / 2 with
+    // absolute rounding ~1e-16, i.e. ~1e-6 relative once multiplied back by 1e10.
+    const r = findEquilibria(compileSystem({ f: "1e10*x", g: "-y" }), box(-1, 1));
+    expect(r.points).toHaveLength(1);
+    expect(r.points[0].classification).toBe("saddle");
+    expect(r.points[0].caveat).toBeUndefined();
+    const eig = r.points[0].eigenvalues.map((e) => e.re).sort((a, b) => a - b);
+    expect(Math.abs(eig[1] / 1e10 - 1)).toBeLessThan(1e-9);
+    expect(Math.abs(eig[0] + 1)).toBeLessThan(1e-5);
+  });
+
+  it("x' = 1e10 x, y' = 1e-10 y: the small eigenvalue is below the Jacobian's error and is honestly not resolved", () => {
+    // Same error e ~ 4.4e-5 (the 1e10 entry sets the rounding floor of the whole matrix). The
+    // determinant 1 is below e (|a| + |d|) ~ 4.4e5, so det is zero to this precision: non_hyperbolic
+    // with the nonHyperbolic caveat, although in exact arithmetic the eigenvalue 1e-10 is positive.
+    const r = findEquilibria(compileSystem({ f: "1e10*x", g: "1e-10*y" }), box(-1, 1));
+    expect(r.points).toHaveLength(1);
+    expect(r.points[0].classification).toBe("non_hyperbolic");
+    expect(r.points[0].caveat).toBe("nonHyperbolic");
+  });
+
+  it("a genuine centre and a double root keep their honest verdicts", () => {
+    expect(findEquilibria(compileSystem({ f: "y", g: "-x" }), box(-2, 2)).points[0].classification).toBe("center_or_weak_spiral");
+    const r = findEquilibria(compileSystem({ f: "(x^2 - 1)^2", g: "(y^2 - 1)^2" }), box(-2, 2));
+    for (const p of r.points) expect(p.classification).toBe("non_hyperbolic");
+  });
+});

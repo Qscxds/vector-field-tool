@@ -11,6 +11,16 @@
  * All decisions are made on the matrix normalised by its largest entry: the classification is
  * invariant under positive scaling, the tolerance becomes purely relative, and no intermediate
  * product can overflow (entries up to Number.MAX_VALUE stay classifiable).
+ *
+ * Two regimes for "det ~ 0" and "trace ~ 0" (J.5c):
+ * - zeroFloor undefined (a bare matrix): purely relative, |det| <= tol on the normalised matrix.
+ *   That is the resolution we CLAIM for a matrix we know nothing else about.
+ * - zeroFloor = e given (the local numerical error of each entry, from findEquilibria): decisions
+ *   are error-based, by first-order propagation of an entry error e: det = ad - bc moves by at most
+ *   e (|a| + |b| + |c| + |d|), the trace by at most 2e. J = diag(1e10, -1) with e ~ 1e-6 then has a
+ *   resolvable determinant (-1e10 against an error of ~1e4) and is a saddle, whereas the relative
+ *   rule would call |det| / scale² = 1e-10 zero and hide the perfectly good eigenvalue -1.
+ * The repeated-root band (H2.8) stays on the normalised matrix in both regimes.
  */
 import { determinant, eigenvalues2, trace } from "./jacobian";
 import type { Complex, Matrix2 } from "./types";
@@ -53,7 +63,8 @@ export type ClassifyOptions = {
    * ~1e-12 x I with an error of the same size, which a purely relative classification would call
    * a perfectly good star node. Never derive this from a box-wide statistic (review C4): an O(1)
    * saddle in a field whose median over a huge box is 1e9 is still a saddle. Without this option
-   * the classification is purely relative.
+   * the classification is purely relative; with it, the determinant and trace zero decisions are
+   * error-based (see the file header), so an ill-scaled Jacobian keeps its resolvable eigenvalues.
    */
   zeroFloor?: number;
 };
@@ -76,7 +87,8 @@ export function classify(J: Matrix2, tol = 1e-9, opts: ClassifyOptions = {}): Cl
   if (!(scale > 0)) {
     return { classification: "non_hyperbolic", trace: tr, determinant: det, eigenvalues: [{ re: 0, im: 0 }, { re: 0, im: 0 }], caveat: CAVEATS.nonHyperbolic };
   }
-  if (opts.zeroFloor !== undefined && Number.isFinite(opts.zeroFloor) && opts.zeroFloor >= 0 && scale <= opts.zeroFloor) {
+  const entryError = opts.zeroFloor !== undefined && Number.isFinite(opts.zeroFloor) && opts.zeroFloor >= 0 ? opts.zeroFloor : undefined;
+  if (entryError !== undefined && scale <= entryError) {
     // Every entry is within the numerical error of zero: both eigenvalues vanish to precision.
     return { classification: "non_hyperbolic", trace: tr, determinant: det, eigenvalues: eigenvalues2(J), caveat: CAVEATS.nonHyperbolic };
   }
@@ -93,13 +105,20 @@ export function classify(J: Matrix2, tol = 1e-9, opts: ClassifyOptions = {}): Cl
   const eigenvalues = eigenvalues2(N).map((e) => ({ re: e.re * scale, im: e.im * scale })) as [Complex, Complex];
   const base = { trace: tr, determinant: det, eigenvalues };
 
-  if (Math.abs(detN) <= tol) {
+  // Zero decisions, on the normalised matrix (e / scale is the normalised entry error): relative
+  // without an error estimate, error-propagated with one. |det| <= e (|a| + |b| + |c| + |d|) and
+  // |tr| <= 2e in the original units are the same inequalities divided by scale² and scale.
+  const eN = entryError !== undefined ? entryError / scale : undefined;
+  const detIsZero = eN === undefined ? Math.abs(detN) <= tol : Math.abs(detN) <= eN * (Math.abs(a) + Math.abs(b) + Math.abs(c) + Math.abs(d));
+  const traceIsZero = eN === undefined ? Math.abs(trN) <= tol : Math.abs(trN) <= 2 * eN;
+
+  if (detIsZero) {
     return { classification: "non_hyperbolic", ...base, caveat: CAVEATS.nonHyperbolic };
   }
 
   if (discN < -tol) {
     // complex pair
-    if (Math.abs(trN) <= tol) {
+    if (traceIsZero) {
       return { classification: "center_or_weak_spiral", ...base, caveat: CAVEATS.center };
     }
     return { classification: trN < 0 ? "stable_spiral" : "unstable_spiral", ...base };

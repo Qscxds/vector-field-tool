@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { classify, type Classification } from "./classify";
+import { classify, type CaveatKey, type Classification } from "./classify";
 import type { Matrix2 } from "./types";
 
 // Textbook table for x' = A x. Expectations follow from trace/determinant/discriminant by hand.
@@ -194,5 +194,47 @@ describe("repeated roots inside the tolerance band carry a caveat (H2.8)", () =>
     expect(r.classification).toBe("star_node");
     expect(r.caveat).toBe("repeatedRoot");
     expect(classify([[2, 0], [0, 2]]).caveat).toBeUndefined();
+  });
+});
+
+describe("error-based zero decisions for ill-scaled Jacobians (J.5c)", () => {
+  it("diag(1e10, -1) with an entry error of 4.4e-5 is a saddle with eigenvalues 1e10 and -1", () => {
+    // |det| = 1e10; first-order propagation of an entry error e gives an error of at most
+    // e (|a| + |b| + |c| + |d|) = 4.4e-5 · (1e10 + 1) ~ 4.4e5 on det: not zero. Without an error
+    // estimate the purely relative rule (|det| / scale² = 1e-10 < 1e-9) calls it non_hyperbolic,
+    // which is all one can claim about a bare matrix.
+    const r = classify([[1e10, 0], [0, -1]], 1e-9, { zeroFloor: 4.4e-5 });
+    expect(r.classification).toBe("saddle");
+    expect(r.caveat).toBeUndefined();
+    // Eigenvalues come from the normalized matrix diag(1, -1e-10): (tr ± sqrt(disc)) / 2 with
+    // absolute rounding ~1e-16, scaled back by 1e10, so the small one is -1 to about 1e-6.
+    const eig = r.eigenvalues.map((e) => e.re).sort((a, b) => a - b);
+    expect(Math.abs(eig[1] / 1e10 - 1)).toBeLessThan(1e-9);
+    expect(Math.abs(eig[0] + 1)).toBeLessThan(1e-5);
+    expect(classify([[1e10, 0], [0, -1]]).classification).toBe("non_hyperbolic");
+  });
+
+  it("the boundary is where the small eigenvalue meets the entry error", () => {
+    // e = 4.4e-5: det = 1e10 · d is zero iff 1e10 |d| <= 4.4e-5 · (1e10 + |d|), i.e. |d| <~ 4.4e-5.
+    expect(classify([[1e10, 0], [0, 1e-7]], 1e-9, { zeroFloor: 4.4e-5 }).classification).toBe("non_hyperbolic");
+    expect(classify([[1e10, 0], [0, 1e-3]], 1e-9, { zeroFloor: 4.4e-5 }).classification).toBe("unstable_node");
+  });
+
+  it("the trace is zero when |tr| <= 2e", () => {
+    // [[1e-13, -1], [1, 1e-13]]: complex pair with real part 1e-13, trace 2e-13.
+    expect(classify([[1e-13, -1], [1, 1e-13]], 1e-9, { zeroFloor: 1e-12 }).classification).toBe("center_or_weak_spiral");
+    expect(classify([[1e-13, -1], [1, 1e-13]], 1e-9, { zeroFloor: 1e-14 }).classification).toBe("unstable_spiral");
+  });
+
+  it("the repeated-root band stays on the normalized matrix", () => {
+    const r = classify([[1 + 1e-6, 0], [0, 1 - 1e-6]], 1e-9, { zeroFloor: 1e-12 });
+    expect(r.classification).toBe("star_node");
+    expect(r.caveat).toBe("repeatedRoot");
+  });
+
+  it("domainEdge is a caveat key consumers can look up", () => {
+    // Attached by findEquilibria; classify itself never produces it (it does not see the field).
+    const keys: CaveatKey[] = ["center", "nonHyperbolic", "notFinite", "repeatedRoot", "domainEdge"];
+    expect(keys).toHaveLength(5);
   });
 });
