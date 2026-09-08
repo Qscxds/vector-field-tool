@@ -46,8 +46,10 @@ import { assertBox } from "./field";
 import { determinant, jacobianAt, jacobianSensitivity, jacobianWithError } from "./jacobian";
 import type { CompiledSystem } from "./parse";
 import type { Box, Matrix2, Vec2 } from "./types";
+import type { UniquenessResult } from "./uniqueness";
 
-export type Equilibrium = { at: Vec2; jacobian: Matrix2 } & ClassifyResult;
+/** `uniqueness` is attached by the callers that ask for it (equilibriaUniqueness in uniqueness.ts); findEquilibria leaves it unset. */
+export type Equilibrium = { at: Vec2; jacobian: Matrix2; uniqueness?: UniquenessResult } & ClassifyResult;
 
 export type EquilibriaWarning = "none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit";
 

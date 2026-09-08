@@ -23,6 +23,12 @@ export type LabelTable = {
   warning: Record<"none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit", string>;
   caveat: Record<CaveatKey, string>;
   form: Record<OdeForm, string>;
+  /**
+   * Uniqueness of solutions at a constant solution ({y}, {alpha}) or an equilibrium ({point},
+   * {alpha}). There is deliberately NO sentence for a bounded result: the probe cannot prove the
+   * Lipschitz condition, so nothing is claimed; the structured result still carries the verdict.
+   */
+  uniqueness: Record<"unbounded" | "borderline" | "unboundedPoint" | "borderlinePoint", string>;
   /** Tool summary fragments. `{name}` placeholders are filled by `fill`. */
   tool: Record<
     | "systemHeader" | "singularSamples" | "equilibriumLine" | "eigenvaluesUnavailable" | "note"
@@ -30,7 +36,8 @@ export type LabelTable = {
     | "firstOrderHeader" | "differentialUndirected" | "directionSingular" | "truncated" | "constantSolution"
     | "noConstantAutonomous" | "noConstantGeneral" | "formsHeader" | "formLine" | "formBorderlineLine" | "formsCaveat"
     | "formsInconsistentLine" | "formsUntestableLine" | "exactImplicit" | "exactPathCheckFailed" | "listSeparator"
-    | "parenOpen" | "parenClose",
+    | "parenOpen" | "parenClose"
+    | "nonUniqueTrajectory",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -46,7 +53,8 @@ export type LabelTable = {
     | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression"
     | "equalScale" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled"
     | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
-    | "equilibriaTruncated" | "singularitiesTruncated",
+    | "equilibriaTruncated" | "singularitiesTruncated"
+    | "nonUniqueTrajectory",
     string
   >;
 };
@@ -69,6 +77,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable: "不稳定（两侧的解都离开它）",
       semi_stable: "半稳定（一侧趋向、一侧离开）",
       varies: "稳定性随 t 变化（在观察范围内两侧解的走向不一致）",
+      edge_approach: "定义域边界上的常数解：方程只在这条线的一侧有定义；该侧的解趋向它",
+      edge_leave: "定义域边界上的常数解：方程只在这条线的一侧有定义；该侧的解离开它",
     },
     status: {
       completed: "积分到指定时间结束",
@@ -103,6 +113,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       integrating_factor_x: "有只依赖 t 的积分因子 μ(t) 的方程",
       integrating_factor_y: "有只依赖 y 的积分因子 μ(y) 的方程",
     },
+    uniqueness: {
+      unbounded: "在 y = {y} 处 ∂g/∂y 无界（差商随靠近该点按 δ^−{alpha} 增长），Lipschitz 条件不成立，解的唯一性不能保证——经过这一点可能有不止一条解曲线。",
+      borderline: "在 y = {y} 处差商的增长指数约为 {alpha}，落在阈值附近：这一点的唯一性不能担保（可能只是数值噪声，也可能 Lipschitz 条件确实不成立）。",
+      unboundedPoint: "在平衡点 {point} 处向量场的导数无界（差商随靠近该点按 δ^−{alpha} 增长），Lipschitz 条件不成立，解的唯一性不能保证——经过这一点可能有不止一条轨线。",
+      borderlinePoint: "在平衡点 {point} 处差商的增长指数约为 {alpha}，落在阈值附近：这一点的唯一性不能担保（可能只是数值噪声，也可能 Lipschitz 条件确实不成立）。",
+    },
     tool: {
       systemHeader: "系统 x' = {f}，y' = {g}，观察范围 x∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]。",
       singularSamples: "向量场在 {count} 个采样点上无定义或无穷大。",
@@ -133,6 +149,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       listSeparator: "、",
       parenOpen: "（",
       parenClose: "）",
+      nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -196,6 +213,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       trajectorySides: "一侧：{first}；另一侧：{second}",
       equilibriaTruncated: "平衡点数量超过上限 {max}，只列出前 {max} 个（按 x 坐标排序）；上面的连续解集判断仍然基于全部找到的点。",
       singularitiesTruncated: "方向场奇点数量超过上限 {max}，只列出前 {max} 个（按 t 坐标排序）；连续解集的判断仍然基于全部找到的点。",
+      nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
     },
   },
   en: {
@@ -215,6 +233,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable: "unstable (solutions leave it on both sides)",
       semi_stable: "semi-stable (approached on one side, left on the other)",
       varies: "stability varies with t (the sign pattern differs across the viewing range)",
+      edge_approach: "a constant solution on the edge of the domain: the equation is defined on one side of this line only, and the solutions on that side approach it",
+      edge_leave: "a constant solution on the edge of the domain: the equation is defined on one side of this line only, and the solutions on that side leave it",
     },
     status: {
       completed: "integrated to the requested time",
@@ -249,6 +269,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       integrating_factor_x: "an equation with an integrating factor μ(t) depending on t only",
       integrating_factor_y: "an equation with an integrating factor μ(y) depending on y only",
     },
+    uniqueness: {
+      unbounded: "At y = {y} the derivative ∂g/∂y is unbounded (the difference quotients grow like δ^−{alpha} as the point is approached), so the Lipschitz condition fails and uniqueness of solutions is not guaranteed: more than one solution curve may pass through this point.",
+      borderline: "At y = {y} the growth exponent of the difference quotients is about {alpha}, near the threshold: uniqueness cannot be vouched for at this point (this may be numerical noise, or the Lipschitz condition may genuinely fail).",
+      unboundedPoint: "At the equilibrium {point} the derivative of the vector field is unbounded (the difference quotients grow like δ^−{alpha} as the point is approached), so the Lipschitz condition fails and uniqueness of solutions is not guaranteed: more than one trajectory may pass through this point.",
+      borderlinePoint: "At the equilibrium {point} the growth exponent of the difference quotients is about {alpha}, near the threshold: uniqueness cannot be vouched for at this point (this may be numerical noise, or the Lipschitz condition may genuinely fail).",
+    },
     tool: {
       systemHeader: "System x' = {f}, y' = {g}; viewing box x ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}].",
       singularSamples: "The vector field is undefined or infinite at {count} sample points.",
@@ -279,6 +305,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       listSeparator: ", ",
       parenOpen: " (",
       parenClose: ")",
+      nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -342,6 +369,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       trajectorySides: "one side: {first}; other side: {second}",
       equilibriaTruncated: "More than {max} equilibria were found; only the first {max} are listed (sorted by x). The continuum verdict above is still based on all the points found.",
       singularitiesTruncated: "More than {max} singular points of the direction field were found; only the first {max} are listed (sorted by t). The continuum verdict is still based on all the points found.",
+      nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
     },
   },
 };

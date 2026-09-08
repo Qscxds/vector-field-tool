@@ -18,6 +18,7 @@
 import { findEquilibria } from "./equilibria";
 import { assertNoLeftHandSide, compileScalar, compileSystem } from "./parse";
 import type { Box, Range, SystemSpec, Vec2 } from "./types";
+import { lipschitzProbe, type UniquenessVerdict } from "./uniqueness";
 
 export type FirstOrderSpec =
   | { kind: "explicit"; g: string; params?: Record<string, number> }
@@ -105,13 +106,38 @@ export function firstOrderSingularities(spec: FirstOrderSpec, box: Box, opts: { 
 // Constant solutions y = c.
 // ---------------------------------------------------------------------------------------------
 
+/**
+ * Uniqueness of solutions through the line y = c (see uniqueness.ts): the growth of the
+ * difference quotients |g(t, c + d) - g(t, c)| / d, probed at every usable t.
+ */
+export type SolutionUniqueness = {
+  /** The worst verdict over the t probes ("unbounded" as soon as one probe is). */
+  verdict: UniquenessVerdict;
+  /** Growth exponent α of the worst probe (D ~ δ^-α); NaN when untestable. */
+  exponent: number;
+  /** How many t probes gave "unbounded". */
+  probesFailing: number;
+  probesTotal: number;
+  /** Which side of the line the worst verdict was found on. */
+  side: "above" | "below";
+};
+
 export type EquilibriumSolution = {
   y: number;
   /**
    * Sign pattern of dy/dt just below and above y = c, at every t probe: stable if solutions
    * approach the line from both sides everywhere, 'varies' if the pattern changes with t.
+   * A DOMAIN-EDGE solution (`domainEdge` set) is examined on its defined side only:
+   * 'edge_approach' when the solutions on that side approach the line, 'edge_leave' when they
+   * leave it; never 'semi_stable', which would describe a side that does not exist.
    */
-  stability: "stable" | "unstable" | "semi_stable" | "varies";
+  stability: "stable" | "unstable" | "semi_stable" | "varies" | "edge_approach" | "edge_leave";
+  /**
+   * Set when the line is the edge of the region where the equation is defined (dy/dt = sqrt(y)
+   * at y = 0): the side named is the one where the equation IS defined.
+   */
+  domainEdge?: "above" | "below";
+  uniqueness?: SolutionUniqueness;
 };
 
 export type FirstOrderEquilibria = {
@@ -238,17 +264,47 @@ export function firstOrderEquilibria(
     return y;
   };
 
-  const candidates: number[] = [];
-  const pushCandidate = (y: number) => {
+  // A candidate carries the domain edges it was found at: "above" means the equation is defined
+  // above the line (undefined below), "below" the reverse. A candidate that is an edge from both
+  // sides is an isolated undefined point on a line that is otherwise defined on both sides
+  // (y·log|y| at y = 0 when 0 is a grid point), not a domain edge.
+  type Candidate = { y: number; edges: Set<"above" | "below"> };
+  const candidates: Candidate[] = [];
+  const pushCandidate = (y: number, edge?: "above" | "below") => {
     if (!isRootAtRef(y)) return;
     if (y < yRange.min - 1e-12 * span || y > yRange.max + 1e-12 * span) return;
-    if (candidates.some((r) => Math.abs(r - y) <= 1e-6 * span)) return;
-    candidates.push(y);
+    const existing = candidates.find((r) => Math.abs(r.y - y) <= 1e-6 * span);
+    if (existing) {
+      if (edge) existing.edges.add(edge);
+      return;
+    }
+    candidates.push({ y: y + 0, edges: new Set(edge ? [edge] : []) }); // + 0 turns -0 into 0
+  };
+
+  /**
+   * The last y at which M(t_ref, ·) is finite between a finite sample and a non-finite neighbour:
+   * bisection on finiteness until the two ends are adjacent doubles (near 0 that takes ~1100 halvings,
+   * one evaluation each). sqrt(y) gives exactly 0, sqrt(y - a) exactly the double a: the residual
+   * test |M| <= fTol then decides whether the edge is a constant solution.
+   */
+  const domainEdgeAt = (finiteY: number, undefinedY: number): number => {
+    let fin = finiteY, und = undefinedY;
+    for (let k = 0; k < 1200; k++) {
+      const mid = (fin + und) / 2;
+      if (mid === fin || mid === und) break;
+      if (Number.isFinite(mAt(mid))) fin = mid;
+      else und = mid;
+    }
+    return fin;
   };
 
   for (let i = 0; i < ys.length; i++) {
     const v = ref[i];
     if (!Number.isFinite(v)) continue;
+    // Domain edge (c): a finite sample next to a non-finite one. The equation is defined on the
+    // side of the finite sample: an undefined neighbour below means "defined above".
+    if (i > 0 && !Number.isFinite(ref[i - 1])) pushCandidate(domainEdgeAt(ys[i], ys[i - 1]), "above");
+    if (i + 1 < ys.length && !Number.isFinite(ref[i + 1])) pushCandidate(domainEdgeAt(ys[i], ys[i + 1]), "below");
     if (Math.abs(v) <= fTol) {
       pushCandidate(polish(ys[i]));
       continue;
@@ -275,8 +331,9 @@ export function firstOrderEquilibria(
   // Verify "for all t": M(t, c) = 0 and N(t, c) != 0 at every probe.
   const probe = Math.max(1e-6 * span, 1e-9);
   const solutions: EquilibriumSolution[] = [];
-  for (const c of candidates.sort((u, v) => u - v)) {
+  for (const { y: c, edges } of candidates.sort((u, v) => u.y - v.y)) {
     opts.checkpoint?.();
+    const domainEdge: EquilibriumSolution["domainEdge"] = edges.size === 1 ? [...edges][0] : undefined;
     let ok = true;
     const goodX: number[] = [];
     for (const x of xProbe) {
@@ -301,19 +358,61 @@ export function firstOrderEquilibria(
 
     let stability: EquilibriumSolution["stability"] | undefined;
     for (const x of goodX) {
-      const below = slope(x, c - probe);
-      const above = slope(x, c + probe);
-      let s: EquilibriumSolution["stability"];
-      if (below > 0 && above < 0) s = "stable";
-      else if (below < 0 && above > 0) s = "unstable";
-      else s = "semi_stable";
+      let s: EquilibriumSolution["stability"] | undefined;
+      if (domainEdge) {
+        // Only the defined side exists: the sign of dy/dt there says whether solutions approach
+        // the line or leave it. A probe with no sign (slope 0 or undefined) decides nothing.
+        const s1 = domainEdge === "above" ? slope(x, c + probe) : slope(x, c - probe);
+        const toward = domainEdge === "above" ? s1 < 0 : s1 > 0;
+        const away = domainEdge === "above" ? s1 > 0 : s1 < 0;
+        if (toward) s = "edge_approach";
+        else if (away) s = "edge_leave";
+        else continue;
+      } else {
+        const below = slope(x, c - probe);
+        const above = slope(x, c + probe);
+        if (below > 0 && above < 0) s = "stable";
+        else if (below < 0 && above > 0) s = "unstable";
+        else s = "semi_stable";
+      }
       if (stability === undefined) stability = s;
       else if (stability !== s) {
         stability = "varies";
         break;
       }
     }
-    solutions.push({ y: c, stability: stability ?? "semi_stable" });
+    // A domain edge whose defined side gave no sign at any probe cannot be placed: 'varies' is the
+    // only value that makes no claim about approach or departure.
+    const fallback: EquilibriumSolution["stability"] = domainEdge ? "varies" : "semi_stable";
+    const solution: EquilibriumSolution = { y: c, stability: stability ?? fallback };
+    if (domainEdge) solution.domainEdge = domainEdge;
+    solution.uniqueness = solutionUniqueness(slope, c, goodX, span, opts.checkpoint);
+    solutions.push(solution);
   }
   return { autonomous, solutions };
+}
+
+const UNIQUENESS_RANK: Record<UniquenessVerdict, number> = { unbounded: 3, borderline: 2, untestable: 1, bounded_at_tested_scales: 0 };
+
+/**
+ * Uniqueness at y = c: the Lipschitz probe on d -> g(t, c + d) - g(t, c) at every usable t (the
+ * residual g(t, c), at most fTol, is subtracted so a root located to 1e-9 does not read as a 1/δ
+ * growth; an undefined value at d = 0 counts as 0). The worst probe decides; the scale is the y span.
+ */
+function solutionUniqueness(slope: (x: number, y: number) => number, c: number, goodX: number[], span: number, checkpoint?: () => void): SolutionUniqueness {
+  let worst: SolutionUniqueness | undefined;
+  let failing = 0;
+  for (const x of goodX) {
+    const s0 = slope(x, c);
+    const base = Number.isFinite(s0) ? s0 : 0;
+    const r = lipschitzProbe((d) => slope(x, c + d) - base, span, { checkpoint });
+    if (r.verdict === "unbounded") failing++;
+    const side: SolutionUniqueness["side"] = r.sides.above.verdict === r.verdict || r.sides.below.verdict !== r.verdict ? "above" : "below";
+    if (!worst || UNIQUENESS_RANK[r.verdict] > UNIQUENESS_RANK[worst.verdict]) {
+      worst = { verdict: r.verdict, exponent: r.exponent, probesFailing: 0, probesTotal: goodX.length, side };
+    }
+  }
+  const out = worst ?? { verdict: "untestable" as const, exponent: NaN, probesFailing: 0, probesTotal: goodX.length, side: "above" as const };
+  out.probesFailing = failing;
+  return out;
 }

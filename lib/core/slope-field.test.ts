@@ -387,3 +387,164 @@ describe("firstOrderSingularities: truncated flag independent of the warning (J.
     expect(whole.warning).toBeUndefined();
   });
 });
+
+describe("domain-edge constant solutions, one-sided stability and uniqueness (J.2)", () => {
+  const tRange = { min: -3, max: 3 };
+
+  it("dy/dt = sqrt(y) on y in [-0.31, 1.2]: y = 0 is a domain edge, defined above, left by the solutions, with uniqueness failing at α = 1/2", () => {
+    // Sample points -0.31 + i·1.51/400 hit 0 only for i = 0.31·400/1.51 = 82.12, not an integer, so
+    // 0 is NOT a sample point: the line can only come from the edge bisection between the last NaN
+    // sample and the first finite one, which ends at the double 0 exactly (sqrt(0) = 0 is finite).
+    // Above the line sqrt(y) > 0, so solutions move up, away from it: edge_leave. The derivative
+    // 1/(2 sqrt y) is unbounded and the quotients are δ^-1/2: α = 1/2 at every one of the 7 t probes.
+    const r = firstOrderEquilibria("sqrt(y)", { min: -0.31, max: 1.2 }, { tRange });
+    expect(r.solutions).toHaveLength(1);
+    const s = r.solutions[0];
+    expect(s.y).toBe(0);
+    expect(Object.is(s.y, -0)).toBe(false);
+    expect(s.domainEdge).toBe("above");
+    expect(s.stability).toBe("edge_leave");
+    expect(s.uniqueness).toMatchObject({ verdict: "unbounded", probesTotal: 7, probesFailing: 7, side: "above" });
+    expect(s.uniqueness!.exponent).toBeCloseTo(0.5, 6);
+  });
+
+  it("gives the same answer when 0 IS a sample point: [-0.3, 1.2] has -0.3 + 80·1.5/400 = 0", () => {
+    const grid = firstOrderEquilibria("sqrt(y)", { min: -0.3, max: 1.2 }, { tRange });
+    const off = firstOrderEquilibria("sqrt(y)", { min: -0.31, max: 1.2 }, { tRange });
+    expect(grid.solutions).toHaveLength(1);
+    expect(grid.solutions[0].y).toBe(0);
+    expect(grid.solutions[0].domainEdge).toBe("above");
+    expect(grid.solutions[0].stability).toBe("edge_leave");
+    expect(grid.solutions[0].uniqueness!.verdict).toBe("unbounded");
+    expect(grid.solutions[0].uniqueness!.exponent).toBeCloseTo(off.solutions[0].uniqueness!.exponent, 9);
+  });
+
+  it("dy/dt = y^(1/3): α = 2/3, edge_leave (a negative base with a fractional exponent is NaN, so the equation lives above 0)", () => {
+    const r = firstOrderEquilibria("y^(1/3)", { min: -0.31, max: 1.2 }, { tRange });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].y).toBe(0);
+    expect(r.solutions[0].domainEdge).toBe("above");
+    expect(r.solutions[0].stability).toBe("edge_leave");
+    expect(r.solutions[0].uniqueness!.verdict).toBe("unbounded");
+    expect(r.solutions[0].uniqueness!.exponent).toBeCloseTo(2 / 3, 6);
+  });
+
+  it("dy/dt = -sqrt(y): the solutions above the edge approach it (edge_approach), uniqueness still fails", () => {
+    const r = firstOrderEquilibria("-sqrt(y)", { min: -0.31, max: 1.2 }, { tRange });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].domainEdge).toBe("above");
+    expect(r.solutions[0].stability).toBe("edge_approach");
+    expect(r.solutions[0].uniqueness!.verdict).toBe("unbounded");
+    expect(r.solutions[0].uniqueness!.exponent).toBeCloseTo(0.5, 6);
+  });
+
+  it("an edge defined BELOW the line: dy/dt = sqrt(1 - y) at y = 1, approached from below", () => {
+    // sqrt(1 - y) > 0 below y = 1: solutions move up, toward the line. 1 - 1 = 0 exactly, so the
+    // bisection lands on the double 1. Grid: -0.5 + i·1.7/400 = 1 needs i = 352.9, not a sample point.
+    const r = firstOrderEquilibria("sqrt(1 - y)", { min: -0.5, max: 1.2 }, { tRange });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].y).toBe(1);
+    expect(r.solutions[0].domainEdge).toBe("below");
+    expect(r.solutions[0].stability).toBe("edge_approach");
+    expect(r.solutions[0].uniqueness).toMatchObject({ verdict: "unbounded", side: "below" });
+    expect(r.solutions[0].uniqueness!.exponent).toBeCloseTo(0.5, 6);
+  });
+
+  it("box invariance: the verdict, stability and exponent do not depend on the y range", () => {
+    // 0.05 - 0.36 is -0.31000000000000005 in floating point (a different box at the last bit);
+    // [-0.7, 2.3] has 0 at i = 93.3 (not a sample point) and a different span, hence different offsets.
+    const a = firstOrderEquilibria("sqrt(y)", { min: -0.31, max: 1.2 }, { tRange });
+    const b = firstOrderEquilibria("sqrt(y)", { min: 0.05 - 0.36, max: 1.2 }, { tRange });
+    const c = firstOrderEquilibria("sqrt(y)", { min: -0.7, max: 2.3 }, { tRange });
+    for (const r of [a, b, c]) {
+      expect(r.solutions).toHaveLength(1);
+      expect(r.solutions[0].y).toBe(0);
+      expect(r.solutions[0].domainEdge).toBe("above");
+      expect(r.solutions[0].stability).toBe("edge_leave");
+      expect(r.solutions[0].uniqueness!.verdict).toBe("unbounded");
+      expect(r.solutions[0].uniqueness!.exponent).toBeCloseTo(0.5, 6);
+    }
+  });
+
+  it("scale invariance: -1e6 sqrt(y) dt + 1e6 dy = 0 is dy/dt = sqrt(y) and gets the same answer", () => {
+    const scaled = firstOrderEquilibria({ kind: "differential", M: "-1e6*sqrt(y)", N: "1e6" }, { min: -0.31, max: 1.2 }, { tRange });
+    const plain = firstOrderEquilibria("sqrt(y)", { min: -0.31, max: 1.2 }, { tRange });
+    expect(scaled.solutions).toHaveLength(1);
+    expect(scaled.solutions[0].y).toBe(0);
+    expect(scaled.solutions[0].domainEdge).toBe("above");
+    expect(scaled.solutions[0].stability).toBe("edge_leave");
+    expect(scaled.solutions[0].uniqueness!.verdict).toBe("unbounded");
+    expect(scaled.solutions[0].uniqueness!.exponent).toBeCloseTo(plain.solutions[0].uniqueness!.exponent, 9);
+  });
+
+  it("control group: dy/dt = y on [-1, 1] has y = 0 unstable, no domain edge, uniqueness bounded with α = 0", () => {
+    // g(t, 0 + d) - g(t, 0) = d: D = 1 at every level on both sides.
+    const r = firstOrderEquilibria("y", { min: -1, max: 1 }, { tRange });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].stability).toBe("unstable");
+    expect(r.solutions[0].domainEdge).toBeUndefined();
+    expect(r.solutions[0].uniqueness).toMatchObject({ verdict: "bounded_at_tested_scales", probesTotal: 7, probesFailing: 0 });
+    expect(Math.abs(r.solutions[0].uniqueness!.exponent)).toBeLessThan(0.05);
+  });
+
+  it("the logistic equation keeps its two interior solutions, both with bounded quotients", () => {
+    const r = firstOrderEquilibria("y*(1-y)", { min: -1, max: 2 }, { tRange });
+    expect(r.solutions.map((s) => [Math.round(s.y * 1e9) / 1e9, s.stability, s.domainEdge, s.uniqueness?.verdict])).toEqual([
+      [0, "unstable", undefined, "bounded_at_tested_scales"],
+      [1, "stable", undefined, "bounded_at_tested_scales"],
+    ]);
+  });
+
+  it("dy/dt = y² stays semi-stable (an interior tangential root), with a bounded verdict at α = -1", () => {
+    // The residual at the located root is subtracted: h(d) = (c + d)² - c² = 2cd + d², D = 2c + d,
+    // which is d up to the ~1e-15 location error of c: slope +1, α = -1.
+    const r = firstOrderEquilibria("y^2", { min: -2.1, max: 2.05 }, { tRange });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].stability).toBe("semi_stable");
+    expect(r.solutions[0].domainEdge).toBeUndefined();
+    expect(r.solutions[0].uniqueness!.verdict).toBe("bounded_at_tested_scales");
+    expect(r.solutions[0].uniqueness!.exponent).toBeCloseTo(-1, 3);
+  });
+
+  it("a pole is not a domain-edge solution: dy/dt = 1/y on [-1, 1] (0 is sample 200) finds nothing", () => {
+    // M = -1/y is infinite at the sample y = 0; the bisection from either neighbour ends at the
+    // double next to 0, where |M| ~ 1e308 is nowhere near fTol.
+    expect(firstOrderEquilibria("1/y", { min: -1, max: 1 }, { tRange }).solutions).toEqual([]);
+  });
+
+  it("an isolated undefined sample on a line defined on both sides is not a domain edge: dy/dt = y·log|y| at 0", () => {
+    // 0·log 0 is NaN at the sample y = 0 (i = 200 of [-1, 1]), but the equation is defined on both
+    // sides; the two edge bisections meet at 0 and cancel the edge marking. Just above, y log y < 0
+    // (down, toward the line); just below, y log|y| > 0 (up, toward it): stable. The derivative
+    // log|y| + 1 is unbounded but only logarithmically: the probe reads borderline, not unbounded
+    // (α ≈ 0.13 with the span-2 offsets; see uniqueness.test.ts for the analytic fit).
+    // y log|y| also vanishes at y = ±1 (interior roots, derivative log|y| + 1 = 1 there: bounded;
+    // both are left on both sides: unstable), so the range holds three constant solutions.
+    const r = firstOrderEquilibria("y*log(abs(y))", { min: -1, max: 1 }, { tRange });
+    expect(r.solutions).toHaveLength(3);
+    expect(r.solutions.map((s) => Math.round(s.y * 1e9) / 1e9 + 0)).toEqual([-1, 0, 1]); // + 0: the middle root is -5e-324
+    for (const s of [r.solutions[0], r.solutions[2]]) {
+      expect(s.stability).toBe("unstable");
+      expect(s.domainEdge).toBeUndefined();
+      expect(s.uniqueness!.verdict).toBe("bounded_at_tested_scales");
+    }
+    const mid = r.solutions[1];
+    expect(Math.abs(mid.y)).toBeLessThan(1e-300);
+    expect(mid.domainEdge).toBeUndefined();
+    expect(mid.stability).toBe("stable");
+    expect(mid.uniqueness!.verdict).toBe("borderline");
+    expect(mid.uniqueness!.exponent).toBeGreaterThan(0.1);
+    expect(mid.uniqueness!.exponent).toBeLessThan(0.25);
+  });
+
+  it("a non-autonomous constant solution carries the worst probe: dy/dt = t·sqrt(y) on t in [0.5, 3]", () => {
+    // g = t sqrt(y): every probe t > 0 gives D = t δ^-1/2, α = 1/2 (the factor t only shifts log D).
+    const r = firstOrderEquilibria("t*sqrt(y)", { min: -0.31, max: 1.2 }, { tRange: { min: 0.5, max: 3 } });
+    expect(r.autonomous).toBe(false);
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].domainEdge).toBe("above");
+    expect(r.solutions[0].stability).toBe("edge_leave");
+    expect(r.solutions[0].uniqueness).toMatchObject({ verdict: "unbounded", probesFailing: 7, probesTotal: 7 });
+    expect(r.solutions[0].uniqueness!.exponent).toBeCloseTo(0.5, 6);
+  });
+});
