@@ -17,7 +17,9 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   ParseError code `x_in_first_order`; a pasted left-hand side gives `lhs_in_expression` with a
   mode-aware message ("dy/dt =" in "ty", "x' =" / "y' =" in "xy"), checked on the RAW g / M / N by
   `assertNoLeftHandSide` before slope-field wraps them; a bare "y =" followed by "?" is a
-  comparison typo and gets a "write ==" hint instead),
+  comparison typo and gets a "write ==" hint instead; `roundingBound` is the running rounding-error
+  bound of each component from the expression's OWN terms plus an underflow flag, the yardstick for
+  "this residual is zero as far as floating point can tell"),
   `field` (grid sampling), `integrate` (RK4 + adaptive Dormand-Prince, shared stop rules; blow-up
   is decided by the POSITION only, never by speed; 'reached_equilibrium' is relative to the
   problem's reference speed; the adaptive step is capped at h*L <= 1 so sinks are actually
@@ -30,12 +32,17 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   numerically rank-deficient, difference step shrinking with the Newton step; seeded from a grid,
   the |F| minima of a scan, the domain's edge (bisection) and a sign-change quadtree, every cap
   reported in `seeding`; a root is accepted
-  by a LOCAL test only: Newton step below the location tolerance, or residual at its rounding
-  floor, never a residual tolerance from the box; a vanishing test drops points where the field
-  is discontinuous into `singularPoints`; duplicates merge within the resolution each run
-  achieved, never a fraction of the box; a
+  by a LOCAL test only: Newton step below the location tolerance (1e-13 x box, never below
+  8 eps |p|), or residual at the rounding floor of the expression's own terms, never a residual
+  tolerance from the box and NEVER an extrapolated geometric tail of an exhausted run; a
+  vanishing test (end-to-end decrease of |F(p + d e) - F(p)| over offsets that resolve the point)
+  drops points where the field is discontinuous into `singularPoints`; an underflow plateau
+  (exp(x) at x < -745) is reported once as `underflowPlateau`, a field exactly 0 on >= 25% of the
+  scan as `region_of_equilibria`; every point carries its `resolution`; duplicates merge within
+  the resolution each run achieved, never a fraction of the box; a
   continuum needs a count signal AND a shape signal AND connectedness (the field vanishes between
-  neighbours), else `multiple_non_hyperbolic`; classification uses PER-ENTRY Jacobian errors, and
+  neighbours), else `multiple_non_hyperbolic`; classification uses PER-ENTRY Jacobian errors from
+  a step relative to the box and adapted to the function (no absolute 1e-6), and
   a repeated root decided within error always carries `repeatedRoot`), `slope-field` (first-order base: `FirstOrderSpec` explicit `dy/dt = g(t, y)`
   or differential `M dt + N dy = 0`; `toSystem` returns a SystemSpec with `variables: "ty"` (the
   student's t is the horizontal coordinate x of the reduced planar system), constant solutions

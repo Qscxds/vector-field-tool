@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { findEquilibria } from "./equilibria";
 import { compileSystem } from "./parse";
 import {
   BORDERLINE_EXPONENT,
@@ -407,5 +408,50 @@ describe("equilibriaUniqueness: axis-direction probes at the equilibria of a sys
       const [s] = equilibriaUniqueness(sin, [{ x: 0, y: 0 }], b);
       expect(s.verdict, `sin, box ±${half}`).toBe("bounded_at_tested_scales");
     }
+  });
+});
+
+describe("J-fix2.7: the equilibrium's location resolution bounds the probe", () => {
+  const box = (a: number, b: number) => ({ x: { min: a, max: b }, y: { min: a, max: b } });
+  const probeAll = (f: string, g: string, b: { x: { min: number; max: number }; y: { min: number; max: number } }) => {
+    const sys = compileSystem({ f, g });
+    const r = findEquilibria(sys, b);
+    expect(r.points, `${f} ${JSON.stringify(b)}`).toHaveLength(1);
+    return equilibriaUniqueness(sys, r.points.map((p) => ({ ...p.at, resolution: p.resolution })), b)[0];
+  };
+
+  it("x' = |x|^(1/3), y' = -y: the derivative is unbounded at the origin with α = 2/3 along x, on every box and scale", () => {
+    // |F(p + d e_x)| = |d|^(1/3): D = d^(-2/3), α = 2/3 exactly. The root is located to
+    // x ~ -1e-13 (the cusp is approached only linearly); below that resolution the quotients of
+    // the smooth off-cusp point used to level off into "bounded". Now the descent stops at
+    // RESOLUTION_FACTOR times the located radius r and |F(q)| itself is probed, which at
+    // d >= 10 r is the clean law to within (1 ± 0.1)^(1/3).
+    for (const b of [box(-2, 2), box(-200, 200), box(-0.1, 0.1)]) {
+      for (const s of ["1", "1e6", "1e-6"]) {
+        const u = probeAll(`${s}*abs(x)^(1/3)`, `${s}*(-y)`, b);
+        const label = `${s} ${JSON.stringify(b)}`;
+        expect(u.verdict, label).toBe("unbounded");
+        expect(u.along, label).toBe("x");
+        expect(Math.abs(u.exponent - 2 / 3), label).toBeLessThan(0.05);
+      }
+    }
+  });
+
+  it("3|x|^(2/3) gives α = 1/3 and sign(x)|x|^(1/3) gives 2/3; sqrt|x| keeps 1/2", () => {
+    // D = 3 d^(-1/3) -> α = 1/3; the signed cube root has the same magnitude law as |x|^(1/3).
+    const twoThirds = probeAll("3*abs(x)^(2/3)", "-y", box(-2, 2));
+    expect(twoThirds.verdict).toBe("unbounded");
+    expect(Math.abs(twoThirds.exponent - 1 / 3)).toBeLessThan(0.05);
+    const signed = probeAll("sign(x)*abs(x)^(1/3)", "-y", box(-2, 2));
+    expect(signed.verdict).toBe("unbounded");
+    expect(Math.abs(signed.exponent - 2 / 3)).toBeLessThan(0.05);
+    const root = probeAll("sqrt(abs(x))", "-y", box(-3, 3));
+    expect(root.verdict).toBe("unbounded");
+    expect(Math.abs(root.exponent - 0.5)).toBeLessThan(0.05);
+  });
+
+  it("a smooth system stays bounded with the resolution in place: the origin of x' = -x - y, y' = x - y", () => {
+    const u = probeAll("-x - y", "x - y", box(-2, 2));
+    expect(u.verdict).toBe("bounded_at_tested_scales");
   });
 });

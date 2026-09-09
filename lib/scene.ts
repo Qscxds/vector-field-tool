@@ -101,6 +101,8 @@ export type Scene = {
   truncated?: EquilibriaResult["truncated"];
   /** Points where the field is undefined or discontinuous (a direction-dependent limit) that a Newton run ended at; not equilibria (lib/core/equilibria vanishing test). */
   singularPoints?: EquilibriaResult["singularPoints"];
+  /** True when part of the box evaluates to exactly 0 by underflow (not equilibria, not listed; lib/core/equilibria). Both shells and the tool summary print the notice. */
+  underflowPlateau?: EquilibriaResult["underflowPlateau"];
   /**
    * Set when the system is non-autonomous (the symbol t appears in f or g: the static rule of
    * lib/core/time-dependence; `maxRelDeviation` is the probe's evidence of how much the field

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { collinearity, curveLikeFraction, findEquilibria } from "./equilibria";
+import { collinearity, curveLikeFraction, findEquilibria, NEWTON_STEP_TOL, VANISHING_DELTA_FACTOR } from "./equilibria";
 import { compileSystem } from "./parse";
+import type { Box } from "./types";
 
 const box = (a: number, b: number) => ({ x: { min: a, max: b }, y: { min: a, max: b } });
 const near = (p: { x: number; y: number }, x: number, y: number, eps = 1e-7) => Math.hypot(p.x - x, p.y - y) < eps;
@@ -582,12 +583,12 @@ describe("local acceptance, ill-scaled solve, resolution dedupe, vanishing test 
     expect(Math.hypot(big.singularPoints![0].x, big.singularPoints![0].y)).toBeLessThan(1e-9);
   });
 
-  it.fails("J.8: the singular point is also reported on [-100, 100]² (open: no run stalls within the vanishing window of the origin there)", () => {
-    // On [-100, 100]² every run that heads for the origin stalls on the diagonal y = x, where
-    // |F| = 1/2 is a local minimum, or too far from the origin for the window
-    // [stepTol, 1e3 stepTol] = [2e-11, 2e-8] to straddle it, so there is nothing to submit to
-    // the vanishing test: whether the singular point is listed still depends on where the seeds
-    // stall (review J item 4's seeding does not reach it). Recorded, not hidden.
+  it("J.8: the singular point is also reported on [-100, 100]² (closed by J-fix2: the poor-step rule lets a run reach the origin's window)", () => {
+    // On [-100, 100]² every run that headed for the origin used to stall on the diagonal y = x,
+    // where |F| = 1/2 is a local minimum, or too far from the origin for the window
+    // [stepTol, 1e3 stepTol] = [2e-11, 2e-8] to straddle it. With a poor full step compared
+    // against the half step (J-fix2 item 1) a run now ends inside the window and the vanishing
+    // test (end-to-end decrease along 8 directions) rejects it: exactly one singular point.
     const b = findEquilibria(compileSystem({ f: "x*y/(x^2 + y^2)", g: "y - x" }), box(-100, 100));
     expect(b.points).toEqual([]);
     expect(b.singularPoints).toHaveLength(1);
@@ -748,6 +749,226 @@ describe("rank-one steps, sign-change quadtree, domain-edge lines, error-based b
       }
       expect(stars).toBe(61);
       expect(saddles).toBe(60);
+    }
+  });
+});
+
+describe("J-fix2: acceptance without extrapolation, term-based rounding floor, underflow, units, corners", () => {
+  const offsetBox = { x: { min: -1, max: 3 }, y: { min: -2, max: 2 } };
+  const scalings = ["1", "1e-6", "1e6"];
+
+  it("J-fix2.1: exhausted runs are never roots: x' = y, y' = exp(x) + 1 and y' = exp(-x²) have no equilibrium on any box", () => {
+    // exp(x) + 1 >= 1 and exp(-x²) > 0 everywhere: F has no zero. Newton walks down the
+    // exponential with steps that shrink only by finite-difference noise (ρ = 1 - 1e-11) or
+    // harmonically (1/(2x)); the old geometric-tail rule accepted the exhausted run as a multiple
+    // root, some of them outside the box.
+    for (const b of [box(-1e3, 1e3), box(-1e4, 1e4), box(-1e6, 1e6), offsetBox]) {
+      for (const s of scalings) {
+        for (const g of ["exp(x) + 1", "exp(-x^2)", "2^x + 1"]) {
+          const r = findEquilibria(compileSystem({ f: `${s}*y`, g: `${s}*(${g})` }), b);
+          expect(r.points, `${g} ${s} ${JSON.stringify(b)}`).toEqual([]);
+          expect(r.warning, `${g} ${s} ${JSON.stringify(b)}`).toBe("none_found");
+          expect(r.singularPoints, `${g} ${s} ${JSON.stringify(b)}`).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  it("J-fix2.1: the cusp root of x' = sqrt|x|, y' = -y is found once, at the origin, on every box and scale", () => {
+    // The only zero is (0, 0). Newton's full step at a cusp is the mirror image (dir = -2x) and
+    // the old run oscillated until exhausted, then claimed a radius larger than the box; the
+    // half step lands on the root. The located point lies within the location tolerance
+    // NEWTON_STEP_TOL × box of the origin (the polish brings it far closer).
+    for (const b of [box(-0.05, 0.05), box(-1e-3, 1e-3), box(-1e-7, 1e-7), box(-3, 3)]) {
+      for (const s of scalings) {
+        const r = findEquilibria(compileSystem({ f: `${s}*sqrt(abs(x))`, g: `${s}*(-y)` }), b);
+        const label = `${s} ${JSON.stringify(b)}`;
+        expect(r.points, label).toHaveLength(1);
+        expect(Math.hypot(r.points[0].at.x, r.points[0].at.y), label).toBeLessThanOrEqual(NEWTON_STEP_TOL * (b.x.max - b.x.min));
+        expect(r.points[0].classification, label).toBe("non_hyperbolic");
+        expect(r.warning, label).toBeUndefined();
+      }
+    }
+  });
+
+  it("J-fix2.1: a direction-dependent singularity is a singular point, never an equilibrium: x' = x² / (x² + y²), y' = -y", () => {
+    // f = 0 needs x = 0 with y != 0, g = 0 needs y = 0: F has no zero. Its limit at the origin is
+    // 1 along the x-axis and 0 along the y-axis. A run crawls down the y-axis to a point within
+    // the tolerance of the origin; the vanishing test, over offsets that resolve that point,
+    // sees |F(p + δ e_x) - F(p)| = 1 at every level along x and rejects it. The singular point
+    // lies within the vanishing window VANISHING_DELTA_FACTOR × NEWTON_STEP_TOL × box of the origin.
+    for (const b of [box(-2, 2), box(-30, 30), box(-100, 100), offsetBox]) {
+      for (const s of ["1", "1e6"]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*x^2/(x^2 + y^2)`, g: `${s}*(-y)` }), b);
+        const label = `${s} ${JSON.stringify(b)}`;
+        expect(r.points, label).toEqual([]);
+        expect(r.warning, label).toBe("none_found");
+        expect(r.singularPoints, label).toHaveLength(1);
+        const size = Math.max(b.x.max - b.x.min, b.y.max - b.y.min);
+        expect(Math.hypot(r.singularPoints![0].x, r.singularPoints![0].y), label).toBeLessThan(VANISHING_DELTA_FACTOR * NEWTON_STEP_TOL * size);
+      }
+    }
+  });
+
+  it("J-fix2.2: a tiny local minimum of |F| is not a root: x' = y, y' = exp(-x²) - 0.5y has no equilibrium", () => {
+    // g = 0 on the curve y = 2 exp(-x²) > 0 and f = 0 on y = 0: they never meet. Near |x| = 10 the
+    // least-squares stall has |F| = 7e-44 against a rounding floor of 7e-57 (f = y is exact to
+    // eps |y|): not at its floor, so not a root, whatever the stencil values y ± h are.
+    for (const b of [box(-3, 3), box(-10, 10), box(-30, 30), offsetBox]) {
+      for (const s of scalings) {
+        const r = findEquilibria(compileSystem({ f: `${s}*y`, g: `${s}*(exp(-x^2) - 0.5*y)` }), b);
+        expect(r.points, `${s} ${JSON.stringify(b)}`).toEqual([]);
+        expect(r.warning, `${s} ${JSON.stringify(b)}`).toBe("none_found");
+      }
+    }
+  });
+
+  it("J-fix2.2: a cancelling double root is one non-hyperbolic equilibrium, never two hyperbolic ones: x' = cos(x) - 1, y' = y", () => {
+    // cos(x) - 1 = -x²/2 + ...: double roots at x = 2πk, y = 0. The value is formed from terms of
+    // size 1, so it is noise below ~2 eps, i.e. for |x| < ~6e-8; every run stopping in that band
+    // is at its rounding floor and claims the band as its radius, so all such runs are one root,
+    // classified non_hyperbolic because the Jacobian entry -x there is within its location error.
+    // On [-100, 100]² the roots are 2πk for k = -15..15: 31 of them.
+    for (const [f, g] of [["cos(x) - 1", "y"], ["1 - cos(x)", "y"], ["exp(x) - 1 - x", "y"], ["x - sin(x)", "y"]]) {
+      for (const b of [box(-2, 2), offsetBox]) {
+        for (const s of scalings) {
+          const r = findEquilibria(compileSystem({ f: `${s}*(${f})`, g: `${s}*(${g})` }), b);
+          const label = `${f} ${s} ${JSON.stringify(b)}`;
+          expect(r.points, label).toHaveLength(1);
+          expect(Math.abs(r.points[0].at.x), label).toBeLessThan(1e-6);
+          expect(r.points[0].classification, label).toBe("non_hyperbolic");
+          expect(r.singularPoints, label).toBeUndefined();
+        }
+      }
+    }
+    const lattice = findEquilibria(compileSystem({ f: "cos(x) - 1", g: "y" }), box(-100, 100), { maxPoints: 100 });
+    expect(lattice.points).toHaveLength(31);
+    for (const p of lattice.points) {
+      expect(p.classification).toBe("non_hyperbolic");
+      expect(Math.abs(p.at.x / (2 * Math.PI) - Math.round(p.at.x / (2 * Math.PI)))).toBeLessThan(1e-6);
+    }
+    expect(lattice.singularPoints).toBeUndefined();
+  });
+
+  it("J-fix2.3: an underflow plateau is reported once and never as equilibria: x' = y, y' = exp(x)", () => {
+    // exp(x) > 0 everywhere, so F has no zero; for x < -745 exp(x) evaluates to exactly 0 (below
+    // the smallest subnormal) and every point of the x-axis there used to be a located root. The
+    // expression's own bound flags the underflow; the plateau is reported once, and only where the
+    // box reaches it (exp never underflows on [-3, 3]²).
+    for (const s of scalings) {
+      const small = findEquilibria(compileSystem({ f: `${s}*y`, g: `${s}*exp(x)` }), box(-3, 3));
+      expect(small.points, s).toEqual([]);
+      expect(small.warning, s).toBe("none_found");
+      expect(small.underflowPlateau, s).toBeUndefined();
+      for (const b of [box(-1000, 1000), box(-1e4, 1e4), { x: { min: -2000, max: -900 }, y: { min: -5, max: 5 } }]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*y`, g: `${s}*exp(x)` }), b);
+        expect(r.points, `${s} ${JSON.stringify(b)}`).toEqual([]);
+        expect(r.warning, `${s} ${JSON.stringify(b)}`).toBe("none_found");
+        expect(r.underflowPlateau, `${s} ${JSON.stringify(b)}`).toBe(true);
+        expect(r.singularPoints, `${s} ${JSON.stringify(b)}`).toBeUndefined();
+      }
+    }
+    // 2^x underflows only below x = -1074: no plateau on [-1000, 1000]², one on [-1e4, 1e4]².
+    expect(findEquilibria(compileSystem({ f: "y", g: "2^x" }), box(-1000, 1000)).underflowPlateau).toBeUndefined();
+    expect(findEquilibria(compileSystem({ f: "y", g: "2^x" }), box(-1e4, 1e4)).underflowPlateau).toBe(true);
+    // A product that underflows next to a genuine continuum (x' = xy vanishes on both axes) is not a plateau.
+    const axes = findEquilibria(compileSystem({ f: "x*y", g: "0" }), box(-2, 2));
+    expect(axes.warning).toBe("possible_continuum");
+    expect(axes.underflowPlateau).toBeUndefined();
+  });
+
+  it("J-fix2.4: the classification does not depend on the units: a star node on a box of size 4e-7 and on [-3, 3]²", () => {
+    // x' = 3x, y' = 3y: J = 3I, eigenvalues 3, 3, a star node. In units where the box is
+    // [-2e-7, 2e-7]² the old fixed step 1e-6 spanned the whole box; the step is now relative to
+    // the box, so the Jacobian is 3 to 1e-6 in both. The cubic x' = 1e14 x³ - 1e-7, y' = 3y is the
+    // system x' = X³ - 1, y' = 3Y of the unit box in units of 1e-7: root at x = 1e-7 with
+    // J00 = 3 × 1e14 × 1e-14 = 3, the same star node (the old step read J00 = 103).
+    const cases: [string, string, Box, number][] = [
+      ["3*x", "3*y", box(-2e-7, 2e-7), 0],
+      ["3*x", "3*y", box(-3, 3), 0],
+      ["1e14*x^3 - 1e-7", "3*y", box(-2e-7, 2e-7), 1e-7],
+      ["x^3 - 1", "3*y", box(-2, 2), 1],
+    ];
+    for (const [f, g, b, x0] of cases) {
+      const r = findEquilibria(compileSystem({ f, g }), b);
+      const label = `${f} ${JSON.stringify(b)}`;
+      expect(r.points, label).toHaveLength(1);
+      expect(Math.abs(r.points[0].at.x - x0), label).toBeLessThanOrEqual(1e-6 * Math.max(1, Math.abs(x0)));
+      expect(r.points[0].classification, label).toBe("star_node");
+      expect(r.points[0].jacobian[0][0], label).toBeCloseTo(3, 6);
+      expect(r.points[0].jacobian[1][1], label).toBeCloseTo(3, 6);
+      for (const e of r.points[0].eigenvalues) expect(e.re, label).toBeCloseTo(3, 6);
+    }
+  });
+
+  it("J-fix2.4: the lattice of x' = sin(x), y' = sin(y) is complete and correctly typed however far the box is panned", () => {
+    // Roots (kπ, mπ); J = diag(cos kπ, cos mπ) = diag(±1, ±1): a star node when k + m is even
+    // (equal signs), a saddle when odd. At |p| ~ 1e5 the spacing of doubles is 1.5e-11 and kπ is
+    // not representable: the nearest double has |sin| ~ 1e-11 and a Newton step of that size,
+    // which is within the location tolerance 8 eps |p| (the old 1e-13 × box never accepted it).
+    // Expected count: the number of multiples of π in [x0, x0 + 10], squared.
+    for (const x0 of [0, 1e3, 1e4, 3e4, 1e5, 999990]) {
+      const b = { x: { min: x0, max: x0 + 10 }, y: { min: x0, max: x0 + 10 } };
+      const perAxis = Math.floor((x0 + 10) / Math.PI) - Math.ceil(x0 / Math.PI) + 1;
+      const r = findEquilibria(compileSystem({ f: "sin(x)", g: "sin(y)" }), b);
+      expect(r.points, `x0 = ${x0}`).toHaveLength(perAxis * perAxis);
+      expect(r.warning, `x0 = ${x0}`).toBeUndefined();
+      for (const p of r.points) {
+        const k = Math.round(p.at.x / Math.PI), m = Math.round(p.at.y / Math.PI);
+        expect(Math.abs(p.at.x - k * Math.PI), `x0 = ${x0}`).toBeLessThan(1e-6);
+        expect(p.classification, `x0 = ${x0} (${k}, ${m})`).toBe((k + m) % 2 === 0 ? "star_node" : "saddle");
+        expect(Math.abs(p.jacobian[0][0]), `x0 = ${x0}`).toBeCloseTo(1, 6);
+        expect(Math.abs(p.jacobian[1][1]), `x0 = ${x0}`).toBeCloseTo(1, 6);
+      }
+    }
+  });
+
+  it("J-fix2.5: a point on a line of equilibria is never a singular point: x' = (x + y)², y' = 0 and x' = xy, y' = 0", () => {
+    // Both fields vanish on whole lines (x + y = 0; the two axes). A located point with a residual
+    // at its rounding floor but not exactly 0 sees F = 0 exactly along the line: a difference
+    // equal to the residual is unresolvable, never a discontinuity.
+    for (const [f, g] of [["(x + y)^2", "0"], ["x*y", "0"]]) {
+      for (const b of [box(-2, 2), offsetBox, box(-200, 200)]) {
+        const r = findEquilibria(compileSystem({ f, g }), b);
+        expect(r.singularPoints, `${f} ${JSON.stringify(b)}`).toBeUndefined();
+        expect(r.warning, `${f} ${JSON.stringify(b)}`).toBe("possible_continuum");
+      }
+    }
+  });
+
+  it("J-fix2.6: a field that vanishes on a region says so: x' = 0, y' = 0 and max(x - 1, 0), max(y - 1, 0)", () => {
+    // The zero field is 0 at every scan sample; max(x - 1, 0), max(y - 1, 0) is exactly 0 on
+    // x <= 1, y <= 1, i.e. on 9/16 of [-2, 2]² (>= REGION_ZERO_FRACTION). Neither is a line, a
+    // curve or a set of isolated degenerate points.
+    for (const [f, g] of [["0", "0"], ["max(x - 1, 0)", "max(y - 1, 0)"]]) {
+      for (const b of [box(-2, 2), offsetBox, box(-200, 200)]) {
+        const r = findEquilibria(compileSystem({ f, g }), b);
+        expect(r.warning, `${f} ${JSON.stringify(b)}`).toBe("region_of_equilibria");
+        expect(r.points.length, `${f} ${JSON.stringify(b)}`).toBeGreaterThan(0);
+        for (const p of r.points) expect(p.classification).toBe("non_hyperbolic");
+      }
+    }
+    // Four isolated degenerate points keep their verdict: the field is 0 at no scan sample.
+    const four = findEquilibria(compileSystem({ f: "(x^2 - 1)^2", g: "(y^2 - 1)^2" }), box(-2, 2));
+    expect(four.warning).toBe("multiple_non_hyperbolic");
+  });
+
+  it("J-fix2.8: a removable singularity on a scan-cell corner does not hide the root: x' = x log|x|, y' = y", () => {
+    // x log|x| is 0 at x = 0 (its limit) but evaluates to 0 × (-Infinity) = NaN there, exactly on
+    // a corner of every symmetric box. Roots at x = 0 and x = ±1 (log|x| = 0), y = 0. The corner
+    // with a non-finite value now counts as unknown and the cell is refined until a run lands in
+    // the origin's basin. At the origin the derivative log|x| + 1 is unbounded, so no linearization
+    // exists: the verdict carries a caveat instead of a resolved eigenvalue.
+    for (const b of [box(-200, 200), box(-199, 201), box(-2, 2)]) {
+      for (const s of scalings) {
+        const r = findEquilibria(compileSystem({ f: `${s}*x*log(abs(x))`, g: `${s}*y` }), b);
+        const label = `${s} ${JSON.stringify(b)}`;
+        expect(r.points, label).toHaveLength(3);
+        const origin = r.points.find((p) => Math.abs(p.at.x) < 1e-9 && Math.abs(p.at.y) < 1e-9);
+        expect(origin, label).toBeTruthy();
+        expect(origin!.caveat, label).toBeDefined();
+        for (const x of [-1, 1]) expect(r.points.some((p) => Math.abs(p.at.x - x) < 1e-9 && p.classification === "star_node"), label).toBe(true);
+      }
     }
   });
 });

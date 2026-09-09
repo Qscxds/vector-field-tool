@@ -323,6 +323,7 @@ export function analyzePlanar(
     warning: eq.warning,
     truncated: eq.truncated,
     singularPoints: eq.singularPoints,
+    underflowPlateau: eq.underflowPlateau,
   };
   return { scene, lines: [`${header}${singularNote(field.singularCount)}`, ...describeEquilibria(scene, locale)] };
 }

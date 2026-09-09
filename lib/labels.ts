@@ -30,7 +30,7 @@ export type LabelTable = {
   /** The side of a horizontal line, as a word for the `{side}` placeholder. */
   side: Record<NonNullable<EquilibriumSolution["domainEdge"]>, string>;
   status: Record<IntegrationStatus, string>;
-  warning: Record<"none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit", string>;
+  warning: Record<"none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit" | "region_of_equilibria", string>;
   caveat: Record<CaveatKey, string>;
   form: Record<OdeForm, string>;
   /**
@@ -49,7 +49,8 @@ export type LabelTable = {
     | "parenOpen" | "parenClose"
     | "nonUniqueTrajectory"
     | "timeDependent" | "timeDependentTrajectory" | "secondOrderReduced"
-    | "timeDependenceMeasured" | "timeDependenceNoChange" | "timeDependenceDomainMoves" | "timeDependenceUntested",
+    | "timeDependenceMeasured" | "timeDependenceNoChange" | "timeDependenceDomainMoves" | "timeDependenceUntested"
+    | "underflowPlateau",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -132,6 +133,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       possible_continuum: "警告：找到的平衡点几乎都是非双曲的，而且排成一条线或一条曲线，这很可能是一个连续的平衡点集合（例如整条坐标轴或一个圆），下面只列出其中一部分代表点。",
       multiple_non_hyperbolic: "注意：找到了多个非双曲平衡点，但它们并不排成一条线或曲线，看起来是彼此孤立的退化平衡点。线性化对其中每一个都无法判定稳定性，需要逐个做非线性分析。",
       hit_limit: "警告：平衡点数量超过了上限，下面只列出前几个。",
+      region_of_equilibria: "注意：向量场在观察范围内的一整片区域上恒为零：这片区域中的每一个点都是平衡点。下面列出的只是其中一些代表点，线性化对它们都无法判定稳定性。",
     },
     caveat: {
       center: "线性化给出一对纯虚特征值（实部在数值精度内为零）。仅凭线性化无法区分真正的中心与极缓慢的螺旋：两者的相图完全不同，判定需要守恒量（例如能量或 Hamilton 函数）或更高阶的非线性分析。",
@@ -196,6 +198,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependenceNoChange: "在观察范围内取若干时刻采样时没有测到变化（含 t 的项可能在这些时刻恰好为零或相互抵消），但 t 确实出现在方程中，因此同样不做上述分析。",
       timeDependenceDomainMoves: "向量场在部分采样时刻有定义、在其他时刻无定义：它的定义域随 t 变化。",
       timeDependenceUntested: "向量场在所有采样时刻都无法计算，因此无法测量它随 t 的变化幅度。",
+      underflowPlateau: "注意：在观察范围的一部分区域里，方程右端的值小于计算机能表示的最小数，计算结果恰好为 0；这些点并不是平衡点，因此没有列出。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -349,6 +352,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       possible_continuum: "Warning: almost all equilibria found are non-hyperbolic and lie on a line or a curve; this is most likely a continuum of equilibria (a whole axis, a circle). Only a few representative points are listed.",
       multiple_non_hyperbolic: "Note: several non-hyperbolic equilibria were found, but they do not lie on a line or a curve; they look like isolated degenerate equilibria. Linearization cannot decide the stability of any of them; each needs a nonlinear analysis.",
       hit_limit: "Warning: more equilibria than the limit; only the first few are listed.",
+      region_of_equilibria: "Note: the vector field vanishes on a whole region of the viewing box: every point of that region is an equilibrium. The points listed below are only representative samples of it, and linearization cannot decide the stability of any of them.",
     },
     caveat: {
       center: "The linearization gives a purely imaginary pair of eigenvalues (real part zero to numerical precision). Linearization alone cannot distinguish a true center from an extremely slow spiral: their phase portraits are entirely different, and deciding requires a conserved quantity (such as an energy or Hamiltonian) or a higher-order nonlinear analysis.",
@@ -413,6 +417,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependenceNoChange: "At the several times sampled inside the viewing box no change was measured (the t term may vanish or cancel there), but t is present, so the analysis is withheld all the same.",
       timeDependenceDomainMoves: "The field is defined at some of the sampled times and undefined at others: its domain moves with t.",
       timeDependenceUntested: "The field could not be evaluated at any of the sampled times, so how much it changes with t could not be measured.",
+      underflowPlateau: "Note: in part of this viewing box the right-hand side is below the smallest number the computer can represent and evaluates to exactly 0; those points are not equilibria and are not listed.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -590,12 +595,14 @@ export function timeDependenceEvidence(L: LabelTable, td: { maxRelDeviation: num
  */
 export function equilibriaNotices(
   L: LabelTable,
-  scene: { warning?: keyof LabelTable["warning"]; truncated?: boolean; equilibria?: readonly unknown[]; singularPoints?: readonly { x: number; y: number }[] },
+  scene: { warning?: keyof LabelTable["warning"]; truncated?: boolean; equilibria?: readonly unknown[]; singularPoints?: readonly { x: number; y: number }[]; underflowPlateau?: boolean },
 ): string[] {
   const lines: string[] = [];
   if (scene.warning && !(scene.warning === "hit_limit" && scene.truncated)) lines.push(L.warning[scene.warning]);
   if (scene.truncated) lines.push(fill(L.ui.equilibriaTruncated, { max: scene.equilibria?.length ?? 0 }));
   for (const s of scene.singularPoints ?? []) lines.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
+  // Part of the box evaluates to exactly 0 by underflow (lib/core/equilibria underflowPlateau): said once, after the points.
+  if (scene.underflowPlateau) lines.push(L.tool.underflowPlateau);
   return lines;
 }
 

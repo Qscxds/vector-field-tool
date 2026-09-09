@@ -283,3 +283,19 @@ describe("fill and locale detection", () => {
     expect(labels("fr" as never)).toBe(LABELS.en);
   });
 });
+
+describe("J-fix2 notices: the underflow plateau and a region of equilibria, in both locales", () => {
+  it("equilibriaNotices appends the underflow-plateau sentence once, after the points, and prints the region warning", async () => {
+    const { equilibriaNotices } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      expect(equilibriaNotices(L, { warning: "none_found", equilibria: [], underflowPlateau: true })).toEqual([L.warning.none_found, L.tool.underflowPlateau]);
+      expect(equilibriaNotices(L, { warning: "none_found", equilibria: [] })).toEqual([L.warning.none_found]);
+      expect(equilibriaNotices(L, { warning: "region_of_equilibria", equilibria: [0, 0] })).toEqual([L.warning.region_of_equilibria]);
+      // Full sentences, distinct from the continuum and isolated-points wording.
+      expect(L.tool.underflowPlateau.length).toBeGreaterThan(20);
+      expect(L.warning.region_of_equilibria).not.toBe(L.warning.possible_continuum);
+      expect(L.warning.region_of_equilibria).not.toBe(L.warning.multiple_non_hyperbolic);
+    }
+  });
+});
