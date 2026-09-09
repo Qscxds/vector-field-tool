@@ -44,6 +44,12 @@ export type InteractiveInput = {
   systemKey: string;
   /** Trajectories that came with the scene (trace_trajectory); kept until the system changes. */
   initialTrajectories?: TrajectoryView[];
+  /**
+   * Starts of fixed trajectories (a link's traj, a preset's starts): traced with traceFixed on
+   * mount and again whenever `systemKey` changes, from the displayed snapshot time. Ignored when
+   * `initialTrajectories` is given. Clicked points are added to them; see `trajectoryStarts`.
+   */
+  initialTrajectoryStarts?: Vec2[];
   start?: Vec2;
   /** Whether equilibria & co. are recomputed for the visible box (false for sample_field / trace_trajectory). */
   withFeatures: boolean;
@@ -75,15 +81,18 @@ export type InteractiveScene = {
   overlay: TrajectoryView[];
   hint: { at: Vec2; text: string } | null;
   trajectories: TrajectoryView[];
+  /** Where the kept trajectories start (initial starts + clicked points, in order), so a shell can encode them. */
+  trajectoryStarts: Vec2[];
   clearTrajectories: () => void;
   handlers: InteractiveHandlers;
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, start, withFeatures, equalScale = true, snapshotT = 0 } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, start, withFeatures, equalScale = true, snapshotT = 0 } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   const [trajectories, setTrajectories] = useState<TrajectoryView[]>(initialTrajectories ?? []);
+  const [trajectoryStarts, setTrajectoryStarts] = useState<Vec2[]>(initialTrajectoryStarts ?? []);
   const [overlay, setOverlay] = useState<TrajectoryView[]>([]);
   const [hint, setHint] = useState<{ at: Vec2; text: string } | null>(null);
 
@@ -99,12 +108,6 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     setOverlay([]);
     setHint(null);
   }, [homeKey, equalScale]);
-  useEffect(() => {
-    setTrajectories(initialTrajectories ?? []);
-    setOverlay([]);
-    setHint(null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [systemKey]);
 
   const viewport = useMemo(
     () => (view && view.width === width && view.height === height ? view : homeBox ? fitViewport(homeBox, width, height, { equalScale }) : null),
@@ -194,6 +197,24 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const snapshotTRef = useRef(snapshotT);
   snapshotTRef.current = snapshotT;
 
+  const seedsRef = useRef(initialTrajectoryStarts);
+  seedsRef.current = initialTrajectoryStarts;
+
+  // A new system (or snapshot time, when the shell keys on it): the kept curves belong to the old
+  // picture. Start over from the scene's own trajectories, else from the seed starts, traced by
+  // the same rule as a click (traceFixed, 20x the home box, from the displayed snapshot time).
+  useEffect(() => {
+    const seeds = seedsRef.current ?? [];
+    const s = sysRef.current;
+    const home = homeBoxRef.current;
+    const traced = s && home ? seeds.flatMap((p) => markNonUnique(traceFixed(s, p, home, snapshotTRef.current), featuresRef.current, home, probeRef.current ?? undefined)) : [];
+    setTrajectories(initialTrajectories ?? traced);
+    setTrajectoryStarts(seeds);
+    setOverlay([]);
+    setHint(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [systemKey]);
+
   const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
   const rafRef = useRef<number | null>(null);
 
@@ -223,6 +244,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     // The curve's extent is the solution's business (20x the home box); the view only clips it.
     // It starts at the displayed snapshot time (matters only for a non-autonomous system).
     setTrajectories((prev) => [...prev, ...markNonUnique(traceFixed(s, p, home, snapshotTRef.current), featuresRef.current, home, probeRef.current ?? undefined)]);
+    setTrajectoryStarts((prev) => [...prev, p]);
   }, []);
 
   const onHoverWorld = useCallback((world: Vec2 | null, screen: Vec2 | null) => {
@@ -264,7 +286,10 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     [],
   );
 
-  const clearTrajectories = useCallback(() => setTrajectories([]), []);
+  const clearTrajectories = useCallback(() => {
+    setTrajectories([]);
+    setTrajectoryStarts([]);
+  }, []);
 
   return {
     scene,
@@ -272,6 +297,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     overlay,
     hint,
     trajectories,
+    trajectoryStarts,
     clearTrajectories,
     handlers: { onClickWorld, onHoverWorld, onWheelZoom, onPan, onDoubleClick },
   };

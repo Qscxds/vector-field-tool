@@ -72,7 +72,11 @@ export type LabelTable = {
     | "singularitiesContinuum"
     | "secondOrderNotAffine" | "secondOrderZeroCoefficient" | "secondOrderNoEquation" | "secondOrderDoubleEquals"
     | "secondOrderTooManyEquals" | "secondOrderOtherPrime" | "secondOrderHigherDerivative" | "secondOrderPlaceholderTyped"
-    | "secondOrderUndefinedAtSamples" | "secondOrderUnknownSymbol",
+    | "secondOrderUndefinedAtSamples" | "secondOrderUnknownSymbol"
+    | "copyLink" | "copied" | "copyLinkFallback" | "urlProblems"
+    | "urlReasonQueryTooLong" | "urlReasonTooLong" | "urlReasonInvalidExpression" | "urlReasonNotANumber"
+    | "urlReasonNotInteger" | "urlReasonOutOfRange" | "urlReasonInvertedRange" | "urlReasonTooNarrow"
+    | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode",
     string
   >;
 };
@@ -271,6 +275,22 @@ export const LABELS: Record<Locale, LabelTable> = {
       secondOrderPlaceholderTyped: "xd 和 xdd 是内部名称；请用 x' 和 x'' 表示 x 的导数。",
       secondOrderUndefinedAtSamples: "方程在大多数用于检验的采样点上无定义（不是有限数），无法安全地降阶。",
       secondOrderUnknownSymbol: "未知符号「{name}」。未知函数是 x，它的导数是 x'（dx/dt），二阶导数是 x''；t 是时间。允许的符号：x、x'、x''、t、pi、e。",
+      copyLink: "复制链接",
+      copied: "已复制",
+      copyLinkFallback: "无法访问剪贴板，请手动复制下面的链接：",
+      urlProblems: "链接里的这些参数无效，已忽略并使用默认值：{list}。",
+      urlReasonQueryTooLong: "链接过长，全部参数已忽略",
+      urlReasonTooLong: "表达式超过 200 个字符",
+      urlReasonInvalidExpression: "表达式无法解析",
+      urlReasonNotANumber: "不是数字",
+      urlReasonNotInteger: "不是整数",
+      urlReasonOutOfRange: "超出允许范围",
+      urlReasonInvertedRange: "范围下限不小于上限",
+      urlReasonTooNarrow: "范围太窄",
+      urlReasonBadChoice: "不是允许的取值",
+      urlReasonTooMany: "轨线起点超过 20 个，只保留前 20 个",
+      urlReasonMalformedPair: "有格式错误的轨线起点，已跳过",
+      urlReasonUnusedInMode: "当前方程类型不使用这个参数",
     },
   },
   en: {
@@ -466,6 +486,22 @@ export const LABELS: Record<Locale, LabelTable> = {
       secondOrderPlaceholderTyped: "xd and xdd are internal names; write x' and x'' for the derivatives of x.",
       secondOrderUndefinedAtSamples: "The equation is undefined (not a finite number) at most of the sample points used to check it, so it cannot be reduced safely.",
       secondOrderUnknownSymbol: "Unknown symbol “{name}”. The unknown function is x, its derivative is x' (dx/dt) and its second derivative is x''; t is the time. Allowed symbols: x, x', x'', t, pi, e.",
+      copyLink: "Copy link",
+      copied: "Copied",
+      copyLinkFallback: "The clipboard is not available; copy the link below by hand:",
+      urlProblems: "These link parameters were invalid and have been ignored (defaults used): {list}.",
+      urlReasonQueryTooLong: "link too long, all parameters ignored",
+      urlReasonTooLong: "expression over 200 characters",
+      urlReasonInvalidExpression: "expression could not be parsed",
+      urlReasonNotANumber: "not a number",
+      urlReasonNotInteger: "not an integer",
+      urlReasonOutOfRange: "outside the allowed range",
+      urlReasonInvertedRange: "range minimum is not below its maximum",
+      urlReasonTooNarrow: "range too narrow",
+      urlReasonBadChoice: "not an allowed value",
+      urlReasonTooMany: "more than 20 trajectory starts; only the first 20 kept",
+      urlReasonMalformedPair: "malformed trajectory start skipped",
+      urlReasonUnusedInMode: "not used by this equation type",
     },
   },
 };
