@@ -301,9 +301,10 @@ export function analyzePlanar(
   const sys = compileOrExplain(spec);
   const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
   const singularNote = (count: number) => (count ? " " + fill(L.tool.singularSamples, { count }) : "");
-  // Non-autonomous (f or g changes with t): equilibria, eigenvalues and stability classes do
-  // not exist for it. Return only the field, as a snapshot at the requested time, and say so.
-  const td = detectTimeDependence(sys, box, { checkpoint });
+  // Non-autonomous (t appears in f or g: the static rule of lib/core/time-dependence): equilibria
+  // and linearized stability are tools for autonomous systems and are not attempted. Return only
+  // the field, as a snapshot at the requested time, and say so, with the probe's evidence.
+  const td = detectTimeDependence(sys, box, { checkpoint, snapshotT });
   if (td.dependsOnT) {
     const field = sampleField(sys, box, density, density, snapshotT, checkpoint);
     const scene: Scene = { kind: "analyze_system", locale, system: spec, box, field, timeDependent: { snapshotT, maxRelDeviation: td.maxRelDeviation } };
@@ -555,7 +556,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const sys = compileOrExplain(spec);
-        const td = detectTimeDependence(sys, box, { checkpoint });
+        const td = detectTimeDependence(sys, box, { checkpoint, snapshotT: input.t });
         const field = sampleField(sys, box, input.density, input.density, input.t, checkpoint);
         const scene: Scene = {
           kind: "sample_field",

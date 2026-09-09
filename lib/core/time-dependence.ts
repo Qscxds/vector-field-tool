@@ -1,53 +1,62 @@
 /**
- * Numerical probe for time dependence of a planar system x' = f(x, y, t), y' = g(x, y, t).
+ * Time dependence of a planar system x' = f(x, y, t), y' = g(x, y, t).
  *
  * Why it exists: the parser accepts t and the kernel's eval(p, t) supports it, so a student can
  * write x' = y, y' = -x + sin(t). Such a system is non-autonomous: its vector field changes with
  * time, a picture of it is only a snapshot at one instant, and equilibrium points, Jacobian
- * eigenvalues and stability classes are not defined for it. The callers use this verdict to
- * withhold those claims and to label the picture with its snapshot time.
+ * eigenvalues and stability classes are tools for autonomous systems that this tool does not
+ * attempt for it. The callers use the verdict to withhold those claims and to label the picture
+ * with its snapshot time.
  *
- * Method: F is evaluated at 13 irrational-fraction points of the box (the detect-form style, off
- * the axes and off the diagonals), each at the 5 probe times PROBE_TIMES. At every point the
- * largest change of the vector between the probe times and t = 0 is measured. The deviation is
- * relative to the field's typical magnitude, the 75th percentile of |F| over all finite samples
- * (so one sample next to a pole does not set the scale), with a rounding floor of 1e3·eps times
- * that magnitude below which a change counts as zero. The verdict is `dependsOnT` when the largest
- * relative deviation exceeds TIME_DEPENDENCE_TOL = 1e-9.
+ * THE VERDICT IS STATIC (decision of the J review, finding C.5): a system is time-dependent when
+ * the symbol t appears in f or g (read from the validated AST; the parser already checks the
+ * symbols). Full stop. A numerical probe cannot decide this: a forcing term of 1e-6 sin(t) is
+ * invisible relative to the field on a box 1e4 wide, a forcing localized at exp(-2000 x^2) sin(t)
+ * vanishes at every fixed sample point, and a field undefined at every probe time (sqrt(t - 5))
+ * shows no change at all. The verdict therefore never depends on the box, on the sampling or on
+ * the magnitude of the field. "0*t + y" counts as time-dependent by this rule: t appears, and the
+ * honest answer is to say so and to report that no change was measured.
  *
- * About the threshold: it is a probe threshold, not a mathematical statement. A system whose time
- * dependence is smaller than one part in 1e9 of its magnitude on the box passes as autonomous; the
- * rounding floor is ~2e-13, so the band between the two is where a deliberately minuscule term
- * would still be detected while genuine rounding noise (x + t - t) is not. Scaling f and g by a
- * common constant changes nothing, because both the deviation and the scale are measured.
+ * The numerical PROBE is evidence, not the verdict: it measures how much the field changed at the
+ * sampled times, and the callers report that number. F is evaluated at 13 irrational-fraction
+ * points of the box (the detect-form style, off the axes and off the diagonals), each at the probe
+ * times PROBE_TIMES plus the caller's snapshot time when it is not one of them. At every point the
+ * largest change of the vector between the probe times and t = 0 is measured, relative to the
+ * field's typical magnitude, the 75th percentile of |F| over all finite samples (so one sample
+ * next to a pole does not set the scale), with a rounding floor of 1e3·eps times that magnitude
+ * below which a change counts as zero. Scaling f and g by a common constant changes nothing,
+ * because both the deviation and the scale are measured.
  *
  * A point where F is finite at some probe times and undefined at others has a domain that moves
- * with t (sqrt(t)·y, log(t)): that too is time dependence, reported with an infinite deviation.
- * Points undefined at every probe time (1/x on x = 0 for all t) are dropped. With no usable point
- * the verdict is "not time-dependent" with 0 samples, which callers may treat as untested.
+ * with t (sqrt(t)·y, log(t), sqrt(t - 5) at the snapshot t = 10): reported as an infinite
+ * deviation. Points undefined at every probe time (1/x on x = 0 for all t) are dropped; with no
+ * usable point the probe reports 0 samples (the field could not be evaluated at any sampled time).
  *
- * A "ty" system (a first-order equation reduced to a planar system) ignores the time argument by
- * construction, so it measures a deviation of exactly 0 here; no special case is needed.
+ * A "ty" system (a first-order equation reduced to a planar system) has t as its horizontal
+ * coordinate, not as a time: never time-dependent, and its probe measures exactly 0.
  */
-import type { CompiledSystem } from "./parse";
-import type { Box, Vec2 } from "./types";
+import { type CompiledSystem, mathjs, parseValidated } from "./parse";
+import type { Box, SystemSpec, Vec2 } from "./types";
 
 export type TimeDependence = {
-  /** Largest relative deviation above TIME_DEPENDENCE_TOL at some usable sample point. */
+  /** The verdict: the symbol t appears in f or g (static, from the AST). Never decided by the probe. */
   dependsOnT: boolean;
-  /** Largest change of F between probe times, relative to the typical magnitude of |F|; Infinity when the domain moves with t. */
+  /**
+   * Probe evidence: the largest change of F between the sampled times, relative to the typical
+   * magnitude of |F| on the box; 0 when no change was measured; Infinity when the domain moves with t.
+   */
   maxRelDeviation: number;
-  /** Sample points that took part (finite at every probe time, or finite at some and not others). */
+  /** Sample points that took part in the probe (finite at every sampled time, or finite at some and not others). */
   samples: number;
 };
 
 export type TimeDependenceOptions = {
   /** Called once per sample point (wall-clock budgets). */
   checkpoint?: () => void;
+  /** The caller's snapshot time, added to the probe times (so a domain that contains it but not the fixed times is seen to move). */
+  snapshotT?: number;
 };
 
-/** Probe threshold on the relative deviation; see the header. */
-export const TIME_DEPENDENCE_TOL = 1e-9;
 /** Probe times: 0 and four irrational-looking values on both sides of 0, no two commensurate with a round period. */
 export const PROBE_TIMES: readonly number[] = [0, 0.7183, 1.4142, 3.1416, -2.7183];
 
@@ -76,13 +85,31 @@ function percentile(values: number[], q: number): number {
   return sorted[Math.min(sorted.length - 1, Math.floor(q * (sorted.length - 1) + 0.5))];
 }
 
-/** Whether, and how much, F changes with t on the box. Never throws (eval never throws). */
+/**
+ * The static rule: whether the symbol t appears in f or g of a planar system. A "ty" system is
+ * never time-dependent (its t is the horizontal coordinate). The spec must compile (callers hold
+ * a CompiledSystem); parameters cannot be named t, so a symbol t is always the time.
+ */
+export function mentionsTime(spec: SystemSpec): boolean {
+  if (spec.variables === "ty") return false;
+  return [spec.f, spec.g].some((expr) => {
+    let found = false;
+    parseValidated(expr, spec.params, { variables: spec.variables }).traverse((n) => {
+      if (mathjs.isSymbolNode(n) && n.name === "t") found = true;
+    });
+    return found;
+  });
+}
+
+/** The verdict (static, see mentionsTime) together with the probe evidence. Never throws (eval never throws). */
 export function detectTimeDependence(sys: CompiledSystem, box: Box, opts: TimeDependenceOptions = {}): TimeDependence {
+  const dependsOnT = mentionsTime(sys.spec);
+  const times = opts.snapshotT !== undefined && Number.isFinite(opts.snapshotT) && !PROBE_TIMES.includes(opts.snapshotT) ? [...PROBE_TIMES, opts.snapshotT] : PROBE_TIMES;
   const magnitudes: number[] = [];
   const perPoint: Array<{ deviation: number } | { mixed: true } | null> = [];
   for (const p of boxSamplePoints(box)) {
     opts.checkpoint?.();
-    const values = PROBE_TIMES.map((t) => sys.eval(p, t));
+    const values = times.map((t) => sys.eval(p, t));
     const finiteCount = values.filter(finiteVec).length;
     for (const v of values) if (finiteVec(v)) magnitudes.push(Math.hypot(v.x, v.y));
     if (finiteCount === 0) {
@@ -113,5 +140,5 @@ export function detectTimeDependence(sys: CompiledSystem, box: Box, opts: TimeDe
     const rel = d === 0 ? 0 : d / typical;
     maxRelDeviation = Math.max(maxRelDeviation, rel);
   }
-  return { dependsOnT: maxRelDeviation > TIME_DEPENDENCE_TOL, maxRelDeviation, samples };
+  return { dependsOnT, maxRelDeviation, samples };
 }

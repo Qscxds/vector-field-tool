@@ -82,16 +82,19 @@ export function featuresBoxFor(homeBox: Box, visibleBox: Box, atHome: boolean): 
 
 /**
  * Equilibria (systems) or constant solutions / singular points / forms / implicit curves (first
- * order) inside `box`. A non-autonomous system gets `timeDependent` INSTEAD of equilibria: they
- * are not defined for it, and listing the equilibria of the t = snapshot slice would be exactly
- * the silent error this tool exists to avoid. First-order specs are never time-dependent (their
+ * order) inside `box`. A non-autonomous system (t appears in f or g, the static rule of
+ * lib/core/time-dependence) gets `timeDependent` INSTEAD of equilibria: equilibria and linearized
+ * stability are tools for autonomous systems, and listing the equilibria of the t = snapshot slice
+ * would be exactly the silent error this tool exists to avoid. First-order specs are never time-dependent (their
  * t is the horizontal coordinate). Never throws: a failure inside the kernel yields no features
  * rather than a broken page.
  */
 export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec | null, box: Box, locale: Locale, opts: FeatureOptions = {}): Features {
   try {
     if (!firstOrder) {
-      const td = opts.timeDependence ?? detectTimeDependence(sys, box);
+      // The verdict is static (t appears in f or g); the probe only measures the change, and it
+      // includes the snapshot time so a domain that moves with t is seen at the time on display.
+      const td = opts.timeDependence ?? detectTimeDependence(sys, box, { snapshotT: opts.snapshotT ?? 0 });
       if (td.dependsOnT) return { timeDependent: { snapshotT: opts.snapshotT ?? 0, maxRelDeviation: td.maxRelDeviation } };
       const eq = findEquilibria(sys, box);
       return { equilibria: withUniqueness(sys, eq.points, box), warning: eq.warning, truncated: eq.truncated, singularPoints: eq.singularPoints };

@@ -111,10 +111,13 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     [view, homeBox, width, height, equalScale],
   );
 
-  // Measured once on the ENTERED box, never on the visible one: whether the system is
-  // non-autonomous is a property of the equation, and zooming or panning must not flip it.
+  // The verdict is static (t appears in the equation), so zooming or panning can never flip it;
+  // the probe's evidence is measured once on the ENTERED box, at the displayed snapshot time.
   // First-order specs are never time-dependent (their t is the horizontal coordinate).
-  const timeDependence = useMemo(() => (sys && !firstOrder && homeBox ? detectTimeDependence(sys, homeBox) : null), [sys, firstOrder, homeBox]);
+  const timeDependence = useMemo(
+    () => (sys && !firstOrder && homeBox ? detectTimeDependence(sys, homeBox, { snapshotT }) : null),
+    [sys, firstOrder, homeBox, snapshotT],
+  );
   const timeDependent = useMemo(
     () => (timeDependence?.dependsOnT ? { snapshotT, maxRelDeviation: timeDependence.maxRelDeviation } : undefined),
     [timeDependence, snapshotT],

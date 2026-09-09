@@ -59,6 +59,21 @@ describe("computeFeatures", () => {
     expect(auto.equilibria).toHaveLength(1);
   });
 
+  it("the verdict is static: 0*t + y, a 1e-6 forcing on a huge box and a forcing localized away from every sample all get timeDependent, never equilibria (J review C.5)", () => {
+    // t appears in each of them; the probe measures 0, ~1e-10 and 0 respectively, and the origin
+    // would otherwise be listed as a center for a system that has no equilibrium for all t.
+    const huge = { x: { min: -1e4, max: 1e4 }, y: { min: -1e4, max: 1e4 } };
+    for (const [f, g, b] of [["0*t + y", "-x", box], ["y", "-x + 1e-6*sin(t)", huge], ["y", "-x + exp(-2000*x^2)*sin(t)", box]] as const) {
+      const r = computeFeatures(compileSystem({ f, g }), null, b, "en", { snapshotT: 1.5 });
+      expect(r.equilibria, `${f} | ${g}`).toBeUndefined();
+      expect(r.timeDependent?.snapshotT, `${f} | ${g}`).toBe(1.5);
+    }
+    // sqrt(t - 5) is undefined at every fixed probe time: still time-dependent, and the snapshot
+    // time 10 joins the probe, where the field is finite (the domain moves: Infinity).
+    const moving = computeFeatures(compileSystem({ f: "y", g: "-x*sqrt(t - 5)" }), null, box, "en", { snapshotT: 10 });
+    expect(moving).toEqual({ timeDependent: { snapshotT: 10, maxRelDeviation: Infinity } });
+  });
+
   it("honours a verdict measured elsewhere (the shells measure it once on the entered box)", () => {
     const sys = compileSystem({ f: "y", g: "-x" });
     const f = computeFeatures(sys, null, box, "en", { timeDependence: { dependsOnT: true, maxRelDeviation: 0.5, samples: 13 } });

@@ -319,7 +319,11 @@ describe("analyze_system", () => {
   it("the snapshot time t changes the sampled field of a non-autonomous system: g(t = 1.5) - g(t = 0) = sin 1.5 at every sample", async () => {
     const at0 = await call("analyze_system", { f: "y", g: "-x + sin(t)", density: 5 });
     const at15 = await call("analyze_system", { f: "y", g: "-x + sin(t)", density: 5, t: 1.5 });
-    expect(at15.scene.timeDependent).toEqual({ snapshotT: 1.5, maxRelDeviation: at0.scene.timeDependent!.maxRelDeviation });
+    // The snapshot time joins the probe times (J review C.5), so the evidence at t = 1.5 is measured
+    // over a superset of times: at least the t = 0 value (sin 1.5 = 0.9975 exceeds sin 1.4142 = 0.9878).
+    expect(at15.scene.timeDependent?.snapshotT).toBe(1.5);
+    expect(at15.scene.timeDependent!.maxRelDeviation).toBeGreaterThanOrEqual(at0.scene.timeDependent!.maxRelDeviation);
+    expect(at15.scene.timeDependent!.maxRelDeviation).toBeLessThan(3);
     expect(at15.text).toContain("t = 1.5");
     const a = at0.scene.field!.samples, b = at15.scene.field!.samples;
     expect(a).toHaveLength(25);
@@ -328,6 +332,42 @@ describe("analyze_system", () => {
       expect(b[i].v.x).toBe(a[i].v.x); // f = y does not depend on t
       expect(b[i].v.y - a[i].v.y).toBeCloseTo(Math.sin(1.5), 12);
     }
+  });
+
+  it("the verdict is static (t present): 0*t + y, a 1e-6 forcing on a huge box and a localized forcing are all non-autonomous, with no equilibrium and the snapshot honored (J review C.5)", async () => {
+    const cases: Array<{ f: string; g: string; box?: Record<string, number> }> = [
+      { f: "0*t + y", g: "-x" },
+      { f: "y", g: "-x + 1e-6*sin(t)", box: { xMin: -1e4, xMax: 1e4, yMin: -1e4, yMax: 1e4 } },
+      { f: "y", g: "-x + exp(-2000*x^2)*sin(t)" },
+    ];
+    for (const c of cases) {
+      const r = await call("analyze_system", { f: c.f, g: c.g, ...(c.box ?? {}), density: 5, t: 1.5, locale: "en" });
+      expect(r.isError, c.g).toBeFalsy();
+      expect(r.scene.equilibria, c.g).toBeUndefined();
+      expect(r.scene.timeDependent?.snapshotT, c.g).toBe(1.5);
+      expect(r.text, c.g).not.toMatch(/\n1\. /);
+      expect(r.text, c.g).toContain("t = 1.5");
+    }
+  });
+
+  it("a field undefined at every fixed probe time (sqrt(t - 5)) is still non-autonomous, and the field is sampled at the requested t = 10, where it is finite (J review C.5)", async () => {
+    // y' = -x sqrt(t - 5) at t = 10: (y, -x sqrt 5). No equilibrium line, no 'none found'.
+    const r = await call("analyze_system", { f: "y", g: "-x*sqrt(t - 5)", density: 5, t: 10, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.timeDependent).toEqual({ snapshotT: 10, maxRelDeviation: Infinity });
+    expect(r.scene.equilibria).toBeUndefined();
+    expect(r.scene.warning).toBeUndefined();
+    expect(r.scene.field!.singularCount).toBe(0);
+    for (const s of r.scene.field!.samples) {
+      expect(s.v.x).toBe(s.at.y);
+      expect(Math.abs(s.v.y - -s.at.x * Math.sqrt(5)) <= 1e-15 * Math.max(1e-300, Math.abs(s.at.x * Math.sqrt(5)))).toBe(true);
+    }
+    expect(r.text).not.toMatch(/No equilibrium points/);
+    expect(r.text).toContain("t = 10");
+    // sample_field on the same input agrees: finite field at t = 10, and the same note.
+    const s = await call("sample_field", { f: "y", g: "-x*sqrt(t - 5)", density: 5, t: 10, locale: "en" });
+    expect(s.scene.timeDependent).toEqual({ snapshotT: 10, maxRelDeviation: Infinity });
+    expect(s.scene.field!.singularCount).toBe(0);
   });
 
   it("an autonomous system is unchanged by the detection: x' = y, y' = -x still has its center-or-weak-spiral with the caveat", async () => {
@@ -519,7 +559,9 @@ describe("analyze_second_order", () => {
     expect(at0.text).not.toMatch(/\n1\. /);
     expect(at0.text).not.toMatch(/eigenvalue/i);
     const at15 = await call("analyze_second_order", { equation: "x'' = -x + sin(t)", density: 5, t: 1.5, locale: "en" });
-    expect(at15.scene.timeDependent).toEqual({ snapshotT: 1.5, maxRelDeviation: at0.scene.timeDependent!.maxRelDeviation });
+    // The snapshot time joins the probe times (J review C.5): the evidence at t = 1.5 is at least the t = 0 value.
+    expect(at15.scene.timeDependent?.snapshotT).toBe(1.5);
+    expect(at15.scene.timeDependent!.maxRelDeviation).toBeGreaterThanOrEqual(at0.scene.timeDependent!.maxRelDeviation);
     expect(at15.text).toContain("t = 1.5");
     const a = at0.scene.field!.samples, b = at15.scene.field!.samples;
     expect(a).toHaveLength(25);
@@ -654,6 +696,20 @@ describe("sample_field", () => {
     const autonomous = await call("sample_field", { f: "x", g: "y", density: 5, t: 2, locale: "en" });
     expect(autonomous.scene.timeDependent).toBeUndefined();
     expect(autonomous.text).not.toMatch(/non-autonomous/);
+  });
+
+  it("the snapshot time t reaches the sampled field: g(t = 1.5) - g(t = 0) = sin 1.5 at every sample of y' = -x + sin(t)", async () => {
+    const at0 = await call("sample_field", { f: "y", g: "-x + sin(t)", density: 5, locale: "en" });
+    const at15 = await call("sample_field", { f: "y", g: "-x + sin(t)", density: 5, t: 1.5, locale: "en" });
+    expect(at15.scene.timeDependent?.snapshotT).toBe(1.5);
+    expect(at15.text).toContain("t = 1.5");
+    const a = at0.scene.field!.samples, b = at15.scene.field!.samples;
+    expect(a).toHaveLength(25);
+    for (let i = 0; i < a.length; i++) {
+      expect(b[i].at).toEqual(a[i].at);
+      expect(b[i].v.x).toBe(a[i].v.x);
+      expect(b[i].v.y - a[i].v.y).toBeCloseTo(Math.sin(1.5), 12);
+    }
   });
 
   it("rejects density outside 5..60 with a message naming density", async () => {
