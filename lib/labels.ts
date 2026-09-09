@@ -32,7 +32,7 @@ export type LabelTable = {
   uniqueness: Record<"unbounded" | "borderline" | "unboundedPoint" | "borderlinePoint", string>;
   /** Tool summary fragments. `{name}` placeholders are filled by `fill`. */
   tool: Record<
-    | "systemHeader" | "singularSamples" | "equilibriumLine" | "eigenvaluesUnavailable" | "note"
+    | "systemHeader" | "singularSamples" | "singularPoint" | "equilibriumLine" | "eigenvaluesUnavailable" | "note"
     | "trajectoryHeader" | "forward" | "backward" | "trajectoryLine" | "sampleFieldLine" | "widgetDraws"
     | "firstOrderHeader" | "differentialUndirected" | "directionSingular" | "truncated" | "constantSolution"
     | "noConstantAutonomous" | "noConstantGeneral" | "formsHeader" | "formLine" | "formBorderlineLine" | "formsCaveat"
@@ -126,6 +126,7 @@ export const LABELS: Record<Locale, LabelTable> = {
     tool: {
       systemHeader: "系统 x' = {f}，y' = {g}，观察范围 x∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]。",
       singularSamples: "向量场在 {count} 个采样点上无定义或无穷大。",
+      singularPoint: "向量场在 {point} 处无定义或不连续（从不同方向趋近时极限不同），这一点不是平衡点。",
       equilibriumLine: "{index}. 平衡点 {point}：{classification}。 特征值 {eigenvalues}；迹 {trace}，行列式 {determinant}。",
       eigenvaluesUnavailable: "无法求出",
       note: " 注意：{caveat}",
@@ -291,6 +292,7 @@ export const LABELS: Record<Locale, LabelTable> = {
     tool: {
       systemHeader: "System x' = {f}, y' = {g}; viewing box x ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}].",
       singularSamples: "The vector field is undefined or infinite at {count} sample points.",
+      singularPoint: "The vector field is undefined or discontinuous at {point} (its limit depends on the direction of approach); this point is not an equilibrium.",
       equilibriumLine: "{index}. Equilibrium {point}: {classification}. Eigenvalues {eigenvalues}; trace {trace}, determinant {determinant}.",
       eigenvaluesUnavailable: "unavailable",
       note: " Note: {caveat}",

@@ -390,6 +390,9 @@ function EquilibriaList({ scene, L }: { scene: Scene; L: LabelTable }) {
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.equilibriaHeading}</h2>
       {scene.warning ? <p style={{ margin: "0 0 6px", color: "#92400e" }}>{L.warning[scene.warning]}</p> : null}
       {scene.truncated ? <p style={{ margin: "0 0 6px", color: "#92400e" }}>{fill(L.ui.equilibriaTruncated, { max: eq.length })}</p> : null}
+      {(scene.singularPoints ?? []).map((s, i) => (
+        <p key={`singular-${i}`} style={{ margin: "0 0 6px", color: "#92400e" }}>{fill(L.tool.singularPoint, { point: formatPoint(s) })}</p>
+      ))}
       <ol style={{ margin: 0, paddingLeft: 20 }}>
         {eq.map((p, i) => (
           <li key={i} style={{ marginBottom: 6 }}>

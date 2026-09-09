@@ -224,6 +224,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
   if (scene.warning) items.push(L.warning[scene.warning]);
   if (scene.truncated) items.push(fill(L.ui.equilibriaTruncated, { max: scene.equilibria?.length ?? 0 }));
+  for (const s of scene.singularPoints ?? []) items.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
   // Mode-aware (planar / explicit first order / differential form): see lib/labels-trajectory.
   for (const group of groupTrajectories(scene.trajectories ?? [])) items.push(...trajectoryLines(scene, group, L));
   const fo = scene.firstOrder;

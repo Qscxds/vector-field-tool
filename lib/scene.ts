@@ -92,6 +92,8 @@ export type Scene = {
   warning?: EquilibriaResult["warning"];
   /** True when more equilibria were found than are listed in `equilibria` (the first maxPoints, sorted by x). Independent of `warning`. */
   truncated?: EquilibriaResult["truncated"];
+  /** Points where the field is undefined or discontinuous (a direction-dependent limit) that a Newton run ended at; not equilibria (lib/core/equilibria vanishing test). */
+  singularPoints?: EquilibriaResult["singularPoints"];
   /**
    * Set when the system is non-autonomous (f or g changes with t, measured by
    * lib/core/time-dependence). The field is then a snapshot at `snapshotT`, traced curves start

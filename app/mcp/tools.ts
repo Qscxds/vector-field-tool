@@ -189,6 +189,7 @@ function describeEquilibria(scene: Scene, locale: Locale): string[] {
   const eq = scene.equilibria ?? [];
   if (scene.warning) lines.push(L.warning[scene.warning]);
   if (scene.truncated) lines.push(fill(L.ui.equilibriaTruncated, { max: eq.length }));
+  for (const s of scene.singularPoints ?? []) lines.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
   eq.forEach((p, i) => {
     lines.push(
       fill(L.tool.equilibriumLine, {
@@ -321,6 +322,7 @@ export function analyzePlanar(
     equilibria: withUniqueness(sys, eq.points, box, checkpoint),
     warning: eq.warning,
     truncated: eq.truncated,
+    singularPoints: eq.singularPoints,
   };
   return { scene, lines: [`${header}${singularNote(field.singularCount)}`, ...describeEquilibria(scene, locale)] };
 }
