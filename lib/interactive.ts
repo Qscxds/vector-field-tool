@@ -10,6 +10,9 @@
  * - A FIXED trajectory (click) extends according to the solution, not the view: it stops when it
  *   leaves a box 20 times the original problem domain, so zooming out never exposes a curve that
  *   was cut where the old view ended. The view only clips what is drawn.
+ * And one from the J review (2026-09-08): the "passes through a point where uniqueness fails" flag
+ * is decided from the curve's own extent (markNonUnique with a probe), never from the entered box
+ * alone, since a curve runs far beyond the box.
  */
 import { detectForms, NO_FORM_NOTE, reportedForms } from "./core/detect-form";
 import { findEquilibria, type Equilibrium } from "./core/equilibria";
@@ -147,30 +150,118 @@ function segmentLineGap(a: Vec2, b: Vec2, c: number): number {
   return (a.y - c) * (b.y - c) <= 0 ? 0 : Math.min(Math.abs(a.y - c), Math.abs(b.y - c));
 }
 
+/** Constant solutions (y values) and equilibria (points) whose uniqueness verdict is "unbounded". */
+type NonUniqueSet = { lines: number[]; points: Vec2[] };
+
+function nonUniqueOf(features: Pick<Scene, "equilibria" | "firstOrder">): NonUniqueSet {
+  return {
+    lines: (features.firstOrder?.solutions ?? []).filter((s) => s.uniqueness?.verdict === "unbounded").map((s) => s.y),
+    points: (features.equilibria ?? []).filter((e) => e.uniqueness?.verdict === "unbounded").map((e) => e.at),
+  };
+}
+
+/** The start point, any point or any segment of the curve comes within tol of a line or a point of the set. */
+function touchesSet(t: TrajectoryView, set: NonUniqueSet, tol: number): boolean {
+  const pts = t.points;
+  if (pts.length === 0 || (set.lines.length === 0 && set.points.length === 0)) return false;
+  if (set.lines.some((c) => Math.abs(pts[0].y - c) <= tol) || set.points.some((q) => Math.hypot(pts[0].x - q.x, pts[0].y - q.y) <= tol)) return true;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1], b = pts[i];
+    if (set.lines.some((c) => segmentLineGap(a, b, c) <= tol) || set.points.some((q) => segmentDistance(a, b, q) <= tol)) return true;
+  }
+  return false;
+}
+
+/**
+ * What markNonUnique needs to probe a curve itself: the compiled system and, for a first-order
+ * scene, its equation. `timeDependent` (a non-autonomous planar system) disables the probe:
+ * equilibria and their uniqueness are not defined for such a system.
+ */
+export type NonUniqueProbe = { sys: CompiledSystem; firstOrder: FirstOrderSpec | null; timeDependent?: boolean };
+
+/** Seeds per axis of the equilibrium search around a speed minimum of a planar curve (a small square box). */
+export const CURVE_SEED_GRID = 4;
+/** Padding of a curve's own extent, as a fraction of that extent, when its features are computed. */
+export const CURVE_EXTENT_PAD = 1e-3;
+
+/**
+ * The constant solutions / equilibria with unbounded quotients that the curve itself can reach,
+ * so that the flag follows the curve and not the entered box: a clicked curve runs to 20 times the
+ * home box, and y = 0 of dy/dt = sqrt(y) is reached from a box y in [1, 4] all the same.
+ * - First order: the constant solutions of the curve's OWN y extent (padded by CURVE_EXTENT_PAD of
+ *   itself and at least by the on-line tolerance), with the t probes over the curve's own t extent
+ *   (the box's when that is degenerate: a vertical curve of a differential form).
+ * - Planar: an equilibrium the curve passes through is a local minimum of the speed |F| along the
+ *   curve, so each such point (its ends included) is searched in a square box spanning the steps
+ *   around it; a bounding box of the whole curve would be degenerate for a curve on an axis.
+ * The uniqueness scale is the box's, as for the listed features. Never throws: a failure inside
+ * the kernel means nothing is flagged by this path.
+ */
+function curveNonUnique(probe: NonUniqueProbe, t: TrajectoryView, box: Box, tol: number): NonUniqueSet {
+  const none: NonUniqueSet = { lines: [], points: [] };
+  const pts = t.points;
+  if (pts.length === 0 || probe.timeDependent || !pts.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))) return none;
+  try {
+    if (probe.firstOrder) {
+      let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
+      for (const p of pts) {
+        if (p.x < xMin) xMin = p.x;
+        if (p.x > xMax) xMax = p.x;
+        if (p.y < yMin) yMin = p.y;
+        if (p.y > yMax) yMax = p.y;
+      }
+      const padY = Math.max(CURVE_EXTENT_PAD * (yMax - yMin), tol);
+      const padX = Math.max(CURVE_EXTENT_PAD * (xMax - xMin), tol);
+      const tRange = xMax - xMin > NON_UNIQUE_REL_TOL * (box.x.max - box.x.min) ? { min: xMin - padX, max: xMax + padX } : box.x;
+      const eq = firstOrderEquilibria(probe.firstOrder, { min: yMin - padY, max: yMax + padY }, { tRange });
+      return nonUniqueOf({ firstOrder: { expr: "", autonomous: eq.autonomous, solutions: eq.solutions } });
+    }
+    const speed = pts.map((p) => {
+      const f = probe.sys.eval(p);
+      return Number.isFinite(f.x) && Number.isFinite(f.y) ? Math.hypot(f.x, f.y) : Infinity;
+    });
+    const step = (i: number, j: number) => Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
+    const found: Equilibrium[] = [];
+    for (let i = 0; i < pts.length; i++) {
+      if (!Number.isFinite(speed[i])) continue;
+      if ((i > 0 && speed[i - 1] < speed[i]) || (i + 1 < pts.length && speed[i + 1] < speed[i])) continue;
+      const half = Math.max(i > 0 ? step(i, i - 1) : 0, i + 1 < pts.length ? step(i, i + 1) : 0, tol);
+      const around: Box = { x: { min: pts[i].x - half, max: pts[i].x + half }, y: { min: pts[i].y - half, max: pts[i].y + half } };
+      for (const e of findEquilibria(probe.sys, around, { seedGrid: CURVE_SEED_GRID, maxPoints: 4 }).points) {
+        if (!found.some((q) => Math.hypot(q.at.x - e.at.x, q.at.y - e.at.y) <= tol)) found.push(e);
+      }
+    }
+    return nonUniqueOf({ equilibria: withUniqueness(probe.sys, found, box) });
+  } catch {
+    return none;
+  }
+}
+
 /**
  * Flags the trajectories that pass through a point where uniqueness fails: the start point, any
  * point of the curve, or any segment between consecutive points comes within NON_UNIQUE_REL_TOL of
  * the box scale of a constant solution y = c, or of a system equilibrium, whose uniqueness verdict
  * is "unbounded". Segments count because an adaptive step can cross such a point without landing
- * on it (x' = sqrt|x| through the origin). Pure: returns the same array when nothing is flagged,
- * new TrajectoryView objects otherwise.
+ * on it (x' = sqrt|x| through the origin).
+ *
+ * The listed features are the fast path. With `probe` given, a curve they do not flag is checked
+ * against the features of its OWN extent (curveNonUnique), so the flag depends on the curve, never
+ * on the entered box. Pure: returns the same array when nothing is flagged, new TrajectoryView
+ * objects otherwise.
  */
-export function markNonUnique(trajectories: TrajectoryView[], features: Pick<Scene, "equilibria" | "firstOrder">, box: Box): TrajectoryView[] {
+export function markNonUnique(trajectories: TrajectoryView[], features: Pick<Scene, "equilibria" | "firstOrder">, box: Box, probe?: NonUniqueProbe): TrajectoryView[] {
   const tol = NON_UNIQUE_REL_TOL * Math.max(box.x.max - box.x.min, box.y.max - box.y.min);
-  const lines = (features.firstOrder?.solutions ?? []).filter((s) => s.uniqueness?.verdict === "unbounded").map((s) => s.y);
-  const points = (features.equilibria ?? []).filter((e) => e.uniqueness?.verdict === "unbounded").map((e) => e.at);
-  if (lines.length === 0 && points.length === 0) return trajectories;
-  const touches = (t: TrajectoryView): boolean => {
-    const pts = t.points;
-    if (pts.length === 0) return false;
-    if (lines.some((c) => Math.abs(pts[0].y - c) <= tol) || points.some((q) => Math.hypot(pts[0].x - q.x, pts[0].y - q.y) <= tol)) return true;
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      if (lines.some((c) => segmentLineGap(a, b, c) <= tol) || points.some((q) => segmentDistance(a, b, q) <= tol)) return true;
+  const listed = nonUniqueOf(features);
+  if (!probe && listed.lines.length === 0 && listed.points.length === 0) return trajectories;
+  let changed = false;
+  const out = trajectories.map((t) => {
+    if (touchesSet(t, listed, tol) || (probe && touchesSet(t, curveNonUnique(probe, t, box, tol), tol))) {
+      changed = true;
+      return { ...t, nonUnique: true };
     }
-    return false;
-  };
-  return trajectories.map((t) => (touches(t) ? { ...t, nonUnique: true } : t));
+    return t;
+  });
+  return changed ? out : trajectories;
 }
 
 /** Grows a box by `factor` of its own size on every side (factor 1 → three times as wide and tall). */

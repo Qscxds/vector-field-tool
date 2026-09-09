@@ -20,7 +20,7 @@ import type { CompiledSystem } from "@/lib/core/parse";
 import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
-import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features } from "@/lib/interactive";
+import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
 import { labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
@@ -185,6 +185,9 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   featuresRef.current = features;
   const localeRef = useRef(locale);
   localeRef.current = locale;
+  // What markNonUnique needs to probe a traced curve's own extent (the flag follows the curve, not the box).
+  const probeRef = useRef<NonUniqueProbe | null>(null);
+  probeRef.current = sys ? { sys, firstOrder, timeDependent: Boolean(features.timeDependent) } : null;
   const snapshotTRef = useRef(snapshotT);
   snapshotTRef.current = snapshotT;
 
@@ -216,7 +219,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     if (!s || !home) return;
     // The curve's extent is the solution's business (20x the home box); the view only clips it.
     // It starts at the displayed snapshot time (matters only for a non-autonomous system).
-    setTrajectories((prev) => [...prev, ...markNonUnique(traceFixed(s, p, home, snapshotTRef.current), featuresRef.current, home)]);
+    setTrajectories((prev) => [...prev, ...markNonUnique(traceFixed(s, p, home, snapshotTRef.current), featuresRef.current, home, probeRef.current ?? undefined)]);
   }, []);
 
   const onHoverWorld = useCallback((world: Vec2 | null, screen: Vec2 | null) => {
@@ -248,7 +251,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
         return;
       }
       setHint(null);
-      setOverlay(markNonUnique(tracePreview(s, h.world, vp, snapshotTRef.current), featuresRef.current, vp.box));
+      setOverlay(markNonUnique(tracePreview(s, h.world, vp, snapshotTRef.current), featuresRef.current, vp.box, probeRef.current ?? undefined));
     });
   }, []);
   useEffect(

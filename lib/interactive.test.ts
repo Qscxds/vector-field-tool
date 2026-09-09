@@ -355,3 +355,107 @@ describe("trajectories through a point where uniqueness fails (J.2)", () => {
     expect(markNonUnique(pair, f, box)).toBe(pair);
   });
 });
+
+describe("the non-unique flag follows the curve, not the entered box (review J)", () => {
+  const spec = { kind: "explicit" as const, g: "sqrt(y)" };
+  const sys = compileSystem(toSystem(spec));
+  const probe = { sys, firstOrder: spec };
+  const flags = (pair: TrajectoryView[]) => pair.map((t) => [t.direction, t.status, t.nonUnique ?? false]);
+
+  it("dy/dt = sqrt(y) clicked at (0, 2): the backward curve reaches y = 0 in finite time on every box, including y in [1, 4] where the line is not listed", () => {
+    // y = ((t + 2 sqrt 2) / 2)² backward reaches 0 at t = -2 sqrt 2 and stops at the domain edge
+    // (below 0 the equation is undefined). With the home box y in [1, 4] the constant solution
+    // y = 0 lies outside the features box and the listed features alone cannot flag the curve; the
+    // probe over the curve's own extent finds the line and its unbounded quotients. The answer is
+    // the same on the three boxes.
+    for (const yr of [{ min: 1, max: 4 }, { min: 0, max: 4 }, { min: -1, max: 4 }]) {
+      const home = { x: { min: -3, max: 3 }, y: yr };
+      const features = computeFeatures(sys, spec, home, "en");
+      const pair = markNonUnique(traceFixed(sys, { x: 0, y: 2 }, home), features, home, probe);
+      expect(flags(pair), `y in [${yr.min}, ${yr.max}]`).toEqual([["forward", "left_box", false], ["backward", "domain_edge", true]]);
+    }
+    // the fast path alone (no probe) depends on the box: this is the defect being fixed
+    const narrow = { x: { min: -3, max: 3 }, y: { min: 1, max: 4 } };
+    expect(computeFeatures(sys, spec, narrow, "en").firstOrder?.solutions).toEqual([]);
+    expect(markNonUnique(traceFixed(sys, { x: 0, y: 2 }, narrow), computeFeatures(sys, spec, narrow, "en"), narrow).every((t) => !t.nonUnique)).toBe(true);
+  });
+
+  it("a curve that CROSSES a non-unique line outside the box is flagged: dy/dt = sqrt|y| from (0, 1) with y in [0.5, 2]", () => {
+    // Backward from y = 1, y decreases through 0 (sqrt|y| > 0 on both sides, the field never
+    // stops) and leaves the far box below; the segment test against the line found in the curve's
+    // own extent catches the crossing. The same curve on y in [-2, 2] is flagged by the listed line.
+    const aspec = { kind: "explicit" as const, g: "sqrt(abs(y))" };
+    const asys = compileSystem(toSystem(aspec));
+    for (const yr of [{ min: 0.5, max: 2 }, { min: -2, max: 2 }]) {
+      const home = { x: { min: -3, max: 3 }, y: yr };
+      const pair = markNonUnique(traceFixed(asys, { x: 0, y: 1 }, home), computeFeatures(asys, aspec, home, "en"), home, { sys: asys, firstOrder: aspec });
+      const back = pair.find((t) => t.direction === "backward")!;
+      expect(Math.min(...back.points.map((p) => p.y)), `y in [${yr.min}, ${yr.max}]`).toBeLessThan(0);
+      expect(back.nonUnique, `y in [${yr.min}, ${yr.max}]`).toBe(true);
+      expect(pair.find((t) => t.direction === "forward")!.nonUnique).toBeUndefined();
+    }
+  });
+
+  it("a curve starting on the line is flagged even when the line is outside the box", () => {
+    const home = { x: { min: -3, max: 3 }, y: { min: 1, max: 4 } };
+    const pair = markNonUnique(traceFixed(sys, { x: 0, y: 0 }, home), computeFeatures(sys, spec, home, "en"), home, probe);
+    expect(pair.every((t) => t.nonUnique)).toBe(true);
+  });
+
+  // Along y = 0, x = ((t + 2 sqrt 2) / 2)² reaches 0 at t = -2 sqrt 2 and continues into x < 0: the
+  // curve of x' = sqrt|x|, y' = -y from (2, 0) crosses the equilibrium, whose quotients along x
+  // grow like δ^-1/2. From (2, 0.5) it crosses x = 0 at y = 0.5 e^{2 sqrt 2} ≈ 8.5, far from the
+  // equilibrium, and is not flagged: the flag is about the equilibrium point, as for the features.
+  const psys = compileSystem({ f: "sqrt(abs(x))", g: "-y" });
+  const pprobe = { sys: psys, firstOrder: null };
+
+  it("planar: the curve through the origin is flagged when the box lists the equilibrium (x in [-2, 2]); the one beside it is not", () => {
+    const home = { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } };
+    const features = computeFeatures(psys, null, home, "en");
+    const through = markNonUnique(traceFixed(psys, { x: 2, y: 0 }, home), features, home, pprobe);
+    expect(through.find((t) => t.direction === "backward")!.nonUnique).toBe(true);
+    expect(through.find((t) => t.direction === "forward")!.nonUnique).toBeUndefined();
+    const beside = markNonUnique(traceFixed(psys, { x: 2, y: 0.5 }, home), features, home, pprobe);
+    expect(beside.every((t) => !t.nonUnique)).toBe(true);
+    // the same curve traced from a box that does not contain the origin is not flagged by the
+    // listed features alone (no equilibrium is listed there)
+    const narrow = { x: { min: 1, max: 3 }, y: { min: -2, max: 2 } };
+    expect(computeFeatures(psys, null, narrow, "en").equilibria).toEqual([]);
+  });
+
+  // The probe searches a square box around each speed minimum of the curve with findEquilibria;
+  // the backward curve's speed minimum is at x = 2.4e-8, and the box around it (half-side 1.2e-7,
+  // the neighbouring steps) contains the origin. findEquilibria, however, converges to this cusp
+  // equilibrium only on the box [-0.5, 0.5]² (a seed happens to land on x = 0); on every other box
+  // tried (half-widths 0.1 down to 1e-7, centred at 0 or offset) Newton / LM oscillate at the
+  // cusp (the Newton step of sqrt|x| is the mirror image) and report none_found. Until the
+  // planar finder locates cusp equilibria (lib/core/equilibria.ts, outside this module), the
+  // curve-based flag cannot fire here. Derived expectation kept; marked as a known failure.
+  it.fails("planar: the same curve is flagged from the box x in [1, 3] (depends on findEquilibria locating a cusp equilibrium)", () => {
+    const narrow = { x: { min: 1, max: 3 }, y: { min: -2, max: 2 } };
+    const through = markNonUnique(traceFixed(psys, { x: 2, y: 0 }, narrow), computeFeatures(psys, null, narrow, "en"), narrow, pprobe);
+    expect(through.find((t) => t.direction === "backward")!.nonUnique).toBe(true);
+  });
+
+  it("planar: a curve that ends at a smooth sink outside the box is probed and not flagged: x' = -(x - 5), y' = -y from (2, 0) with x in [1, 3]", () => {
+    // Forward, the curve reaches (5, 0) (reached_equilibrium) outside the box; the equilibrium is
+    // found in the box around the speed minimum and its quotients are bounded (D = 1): no flag.
+    const lin = compileSystem({ f: "-(x - 5)", g: "-y" });
+    const narrow = { x: { min: 1, max: 3 }, y: { min: -2, max: 2 } };
+    const pair = traceFixed(lin, { x: 2, y: 0 }, narrow);
+    expect(pair.find((t) => t.direction === "forward")!.status).toBe("reached_equilibrium");
+    expect(markNonUnique(pair, computeFeatures(lin, null, narrow, "en"), narrow, { sys: lin, firstOrder: null })).toBe(pair);
+  });
+
+  it("returns the same array when the probe finds nothing, and does not probe a non-autonomous system", () => {
+    const lspec = { kind: "explicit" as const, g: "y*(1-y)" };
+    const lsys = compileSystem(toSystem(lspec));
+    const lhome = { x: { min: 0, max: 6 }, y: { min: -0.5, max: 2 } };
+    const pair = traceFixed(lsys, { x: 3, y: 0.5 }, lhome);
+    expect(markNonUnique(pair, computeFeatures(lsys, lspec, lhome, "en"), lhome, { sys: lsys, firstOrder: lspec })).toBe(pair);
+    // x' = cos(t), y' = -y: equilibria are not defined, so nothing is probed (and nothing thrown)
+    const tsys = compileSystem({ f: "cos(t)", g: "-y" });
+    const tpair = traceFixed(tsys, { x: 0, y: 1 }, box);
+    expect(markNonUnique(tpair, computeFeatures(tsys, null, box, "en"), box, { sys: tsys, firstOrder: null, timeDependent: true })).toBe(tpair);
+  });
+});
