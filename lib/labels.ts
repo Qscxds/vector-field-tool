@@ -53,7 +53,8 @@ export type LabelTable = {
     | "timeDependenceMeasured" | "timeDependenceNoChange" | "timeDependenceDomainMoves" | "timeDependenceUntested"
     | "underflowPlateau"
     | "constantSolutionProbes" | "constantSolutionPlateau" | "zeroPlateau" | "scanResolution" | "fractionalPowerHint" | "noConstantAllZero"
-    | "formsExcludedLine" | "tracedBoth" | "tracedForward" | "tracedBackward",
+    | "formsExcludedLine" | "tracedBoth" | "tracedForward" | "tracedBackward"
+    | "identicallyZero",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -181,8 +182,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       directionSingular: "方向场奇点（M = N = 0，此处方向无定义）：{points}{truncated}。",
       truncated: "（数量已截断）",
       constantSolution: "常数解 y = {y}：{stability}。",
-      noConstantAutonomous: "方程是自治的，但在观察范围内没有常数解。",
-      noConstantGeneral: "在观察范围内没有常数解（右端依赖 t；斜率场仍然有效）。",
+      noConstantAutonomous: "方程是自治的（右端不含 t），但在观察范围内没有常数解。",
+      noConstantGeneral: "在观察范围内没有常数解（右端含有 t，方程不是自治的；斜率场仍然有效）。",
       noConstantUntestable: "在观察范围内没有常数解；方程是否自治无法检验（右端在这个范围的绝大部分上没有定义）。",
       formsHeader: "方程类型（数值探测，只表示「与该形式一致」，不是证明）：",
       formLine: "- 在数值上表现得像{form}。{evidence}",
@@ -214,6 +215,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       tracedBoth: "轨线从 t = 0 出发：正向部分是 t > 0 时的解，逆向部分是 t < 0 时的解。",
       tracedForward: "轨线从 t = 0 出发并正向积分，因此它是 t > 0 时的解。",
       tracedBackward: "轨线从 t = 0 出发并逆向积分，因此它是 t < 0 时的解。",
+      identicallyZero: "右端恒等于 0：每一条水平线 y = c 都是常数解，方向场是平的。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -416,8 +418,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       directionSingular: "Singular points of the direction field (M = N = 0, direction undefined): {points}{truncated}.",
       truncated: " (list truncated)",
       constantSolution: "Constant solution y = {y}: {stability}.",
-      noConstantAutonomous: "The equation is autonomous but has no constant solution in the viewing range.",
-      noConstantGeneral: "No constant solution in the viewing range (the right-hand side depends on t; the slope field is still valid).",
+      noConstantAutonomous: "The equation is autonomous (the right-hand side does not mention t) but has no constant solution in the viewing range.",
+      noConstantGeneral: "No constant solution in the viewing range (the right-hand side mentions t, so the equation is not autonomous; the slope field is still valid).",
       noConstantUntestable: "No constant solution in the viewing range; whether the equation is autonomous could not be tested (the right-hand side is undefined on most of the range).",
       formsHeader: "Equation type (numerical probes; 'consistent with', never a proof):",
       formLine: "- Numerically behaves like {form}. {evidence}",
@@ -449,6 +451,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       tracedBoth: "Here the trajectory starts at t = 0: the forward part is the solution for t > 0 and the backward part the solution for t < 0.",
       tracedForward: "Here the trajectory starts at t = 0 and runs forward, so it is the solution for t > 0.",
       tracedBackward: "Here the trajectory starts at t = 0 and runs backward, so it is the solution for t < 0.",
+      identicallyZero: "The right-hand side is identically zero: every horizontal line y = c is a constant solution, and the direction field is flat.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -637,13 +640,15 @@ export function constantSolutionNotices(L: LabelTable, fo: { zeroPlateaus?: read
 }
 
 /**
- * The sentence for a first-order scene without constant solutions. The autonomy verdict has three
- * states (lib/core/slope-field.ts): measured autonomous, measured t-dependent, or untestable when
- * the right-hand side is undefined on most of the range or exactly 0 at every sample (`reason`);
- * the third must never be read as either of the first two. Shared by the tool summary and both
- * shells.
+ * The sentence for a first-order scene without constant solutions. An identically zero right-hand
+ * side (`identicallyZero`: every sample exactly 0 with no underflow, lib/core/slope-field.ts) has
+ * every line y = c as a constant solution and gets its own sentence. Otherwise the autonomy
+ * verdict is the static rule (t occurs in the right-hand side or not); "untestable" is kept for
+ * older scenes only and must never be read as either of the other two. Shared by the tool
+ * summary and both shells.
  */
-export function noConstantSentence(L: LabelTable, autonomous: boolean | "untestable", reason?: "undefined" | "all_zero"): string {
+export function noConstantSentence(L: LabelTable, autonomous: boolean | "untestable", reason?: "undefined" | "all_zero", identicallyZero?: boolean): string {
+  if (identicallyZero) return L.tool.identicallyZero;
   if (autonomous === true) return L.tool.noConstantAutonomous;
   if (autonomous === false) return L.tool.noConstantGeneral;
   return reason === "all_zero" ? L.tool.noConstantAllZero : L.tool.noConstantUntestable;

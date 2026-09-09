@@ -414,6 +414,21 @@ export function compileScalar(
   return compileNode(expr, parseValidated(expr, params, opts), params, opts);
 }
 
+/**
+ * The static rule for "does this expression depend on the symbol `name`": true iff the symbol
+ * occurs in the parsed expression (a parameter cannot be named t, x or y, so a symbol of that
+ * name is always the variable). Never a numerical probe: t*sqrt(y) mentions t even where sqrt(y)
+ * is undefined, and 0*t mentions t although it evaluates to 0 everywhere. Throws ParseError when
+ * the expression does not compile (callers hold a compiled expression already).
+ */
+export function mentionsSymbol(expr: string, name: string, params?: Record<string, number>, opts: CompileOptions = {}): boolean {
+  let found = false;
+  parseValidated(expr, params, opts).traverse((n) => {
+    if (math.isSymbolNode(n) && n.name === name) found = true;
+  });
+  return found;
+}
+
 /** Compiles a planar system; both expressions share the parameter set and the variable mode. */
 export function compileSystem(spec: SystemSpec): CompiledSystem {
   const opts: CompileOptions = { variables: spec.variables };

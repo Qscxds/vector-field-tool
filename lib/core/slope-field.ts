@@ -16,7 +16,7 @@
  * genuinely undefined where M = N = 0; those points are reported separately.
  */
 import { findEquilibria } from "./equilibria";
-import { assertNoLeftHandSide, compileScalar, compileSystem } from "./parse";
+import { assertNoLeftHandSide, compileBound, compileScalar, compileSystem, mentionsSymbol, parseValidated, type RoundingBound } from "./parse";
 import type { Box, Range, SystemSpec, Vec2 } from "./types";
 import { lipschitzProbe, type UniquenessVerdict } from "./uniqueness";
 
@@ -68,12 +68,25 @@ export function firstOrderToSystem(expr: string, params?: Record<string, number>
  * Compiled M and N with the shared parameter set, in variable mode "ty". The evaluators take a
  * kernel point {x, y} whose x is the student's t. Every first-order module (constant solutions,
  * form detection, the exact potential) compiles through here, so this is the single choke point
- * for the variable mode.
+ * for the variable mode. `MBound` is the running rounding-error bound of M at a point (see
+ * RoundingBound in parse.ts): the yardstick for "this value of M is zero as far as floating
+ * point can tell", built from M's own terms, never from the box.
  */
-export function compileDifferential(spec: FirstOrderSpec): { M: (p: Vec2) => number; N: (p: Vec2) => number } {
+export function compileDifferential(spec: FirstOrderSpec): { M: (p: Vec2) => number; N: (p: Vec2) => number; MBound: (p: Vec2) => RoundingBound } {
   const { M, N } = toDifferential(spec);
   const opts = { variables: "ty" as const };
-  return { M: compileScalar(M, spec.params, opts), N: compileScalar(N, spec.params, opts) };
+  const mNode = parseValidated(M, spec.params, opts);
+  return { M: compileScalar(M, spec.params, opts), N: compileScalar(N, spec.params, opts), MBound: compileBound(mNode, spec.params, opts) };
+}
+
+/**
+ * Does the right-hand side mention t? The static rule (as for planar systems since the J fix
+ * round): t occurs in g, or in M or N of the differential form, read from the parsed expression,
+ * never measured. t*sqrt(y) on y <= 0 is non-autonomous although no finite slope can be compared.
+ */
+export function firstOrderMentionsT(spec: FirstOrderSpec): boolean {
+  const texts = spec.kind === "explicit" ? [spec.g] : [spec.M, spec.N];
+  return texts.some((e) => mentionsSymbol(e, "t", spec.params, { variables: "ty" }));
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -155,15 +168,21 @@ export type EquilibriumSolution = {
 
 export type FirstOrderEquilibria = {
   /**
-   * Whether g = -M/N is independent of t (informational; constant solutions no longer require
-   * it). "untestable" when fewer than 3 pairs of finite slopes at the same y could be compared
-   * across the t probes (the right-hand side is undefined on most of the range), or when every
-   * finite sample is exactly 0 even after refining the scan (`untestableReason`): neither
-   * "autonomous" nor "depends on t" may be claimed then.
+   * Whether the right-hand side is independent of t: the STATIC rule (firstOrderMentionsT), true
+   * iff the symbol t does not occur in g (or in M, N). Informational; constant solutions do not
+   * require it. "untestable" is kept in the type for older scenes only and is no longer produced.
    */
   autonomous: boolean | "untestable";
-  /** Why autonomy is untestable: the right-hand side is undefined at (almost) every sample, or exactly 0 at every finite one. */
+  /** No longer produced (autonomy is static); kept for older scenes. */
   untestableReason?: "undefined" | "all_zero";
+  /**
+   * True when M is identically zero on the range as far as the scan can tell: every sample at
+   * every t probe is finite and exactly 0, and none of them underflowed (the rounding bound
+   * reports no unrepresentable nonzero result). dy/dt = 0: every line y = c is a constant
+   * solution and the field is flat; `solutions` is empty and no plateau is listed. Not set when
+   * some sample is undefined or underflowed (y·exp(-100 y²) with a cell of 5).
+   */
+  identicallyZero?: boolean;
   solutions: EquilibriumSolution[];
   /**
    * The scan resolution Δy actually used (the cell of the finest scan run; refined by 4 while every
@@ -221,6 +240,12 @@ const VANISH_POSITION_GUARD = 1e3;
  * follows a large value is a coincidence (another root at that level) and is skipped.
  */
 const UNDERFLOW_REACH = 1e60;
+/**
+ * A value within its rounding bound that follows a measured value within this factor of the bound
+ * is the rounding floor of the vanishing law (4^β for β up to 10); after a larger value it is a
+ * coincidence (another root at that level) and is skipped.
+ */
+const PRECISION_REACH = 1e6;
 /** The residual |M(t, c)| may exceed what the vanishing law predicts at the location tolerance by this factor. */
 const RESIDUAL_SAFETY = 10;
 /** N(t, c) counts as zero (a singular point on the line) below this many eps of |N| within a ladder offset of c. */
@@ -281,15 +306,20 @@ function fittedSlope(levels: readonly { delta: number; a: number }[]): number {
 }
 
 /**
- * Does the expression text use a fractional power (y^(2/3), y^0.5, y^-1.5)? Such a power of a
- * negative number is undefined, the usual reason a first-order equation ends on a line; the shells
- * add the abs(y)^p hint to a domain-edge sentence only then (not for a logarithm or sqrt(1 - y²)).
+ * Does the expression text use a fractional power (y^(2/3), y^0.5, y^-1.5, pow(y, 2/3),
+ * pow(y, 0.5))? Such a power of a negative number is undefined, the usual reason a first-order
+ * equation ends on a line; the shells add the abs(y)^p hint to a domain-edge sentence only then
+ * (not for a logarithm or sqrt(1 - y²)). A text heuristic: the exponent must be written as a
+ * decimal or a fraction of integer literals right after ^ or as the last argument of pow(...).
  */
 export function hasFractionalPower(spec: FirstOrderSpec): boolean {
   const texts = spec.kind === "explicit" ? [spec.g] : [spec.M, spec.N];
   const decimal = /\^\s*\(?\s*-?\d*\.\d+/;
   const fraction = /\^\s*\(\s*-?\d+\s*\/\s*\d+\s*\)/;
-  return texts.some((t) => decimal.test(t) || fraction.test(t));
+  // pow(base, exponent): the exponent is the text after the LAST top-level comma of the call;
+  // "[^()]*" keeps the match inside the innermost pow( ... ) so pow(y, 2)/3 is not a fraction.
+  const powCall = /pow\s*\([^()]*(?:\([^()]*\)[^()]*)*,\s*\(?\s*-?(?:\d*\.\d+|\d+\s*\/\s*\d+)\s*\)?\s*\)/;
+  return texts.some((t) => decimal.test(t) || fraction.test(t) || powCall.test(t));
 }
 
 /**
@@ -302,15 +332,27 @@ export function hasFractionalPower(spec: FirstOrderSpec): boolean {
  * (a derivative-free golden-section minimizer, so a cusp such as sqrt|y| is located as well as a
  * smooth double root), domain edges (a finite sample next to an undefined one, one cell OUTSIDE
  * the range included, bisected on finiteness to the last defined double), and runs of samples
- * that are exactly 0. A run whose zero set is a point (y(1 - y) at the sample 0) is a candidate
- * at that point; a wide run is examined at its located edges: an edge into which M falls
+ * that are exactly 0. Consecutive zero samples form one run only when M does not rise between
+ * them (0, 1 and 2 of y(1 - y)(2 - y) with a cell of 1 are three runs; a quarter point that is
+ * itself zero is a spotted root). A run whose zero set is a point (y(1 - y) at the sample 0) is
+ * a candidate at that point; a wider zero-to-precision band that M falls into from both sides
+ * down to its rounding floor (the cancellation of y(1 - y) - 1/4 around 1/2) is one candidate at
+ * its center; otherwise a wide run is examined at its located edges: an edge into which M falls
  * continuously to 0 is a candidate (the boundary y = 1 of max(0, y - 1)), a run into which the
  * arithmetic UNDERFLOWS from both sides (exp(-1/y²) on |y| < 0.037) is one candidate at its
  * center reported with its half-width, and anything else (an underflow plateau reaching the box
  * edge, as exp(-y²) beyond |y| = 27.3) is listed in `zeroPlateaus` with no solution claimed
- * inside. When EVERY finite sample is exactly 0 (a Gaussian factor underflowing at every sample)
- * each sample is a candidate and the ladder decides (y·exp(-100 y²) on [-1000, 1000] keeps y = 0);
- * autonomy is untestable then.
+ * inside. When EVERY sample is exactly 0 and none underflowed, M is identically zero
+ * (`identicallyZero`, nothing listed); when every FINITE sample is exactly 0 otherwise (a
+ * Gaussian factor underflowing at every sample, or the line the only defined sample) each sample
+ * is a candidate and the ladder decides (y·exp(-100 y²) on [-1000, 1000] keeps y = 0).
+ * Autonomy is the static rule (firstOrderMentionsT), never measured here.
+ *
+ * "Zero" throughout is zero to precision: |M| within the rounding bound of M's own terms at the
+ * point (parse.ts RoundingBound), which the vanishing ladder treats as its floor, so a double root
+ * whose expanded form cancels (y(1 - y) - 1/4, y² - 2y + 1) is measured on the levels above the
+ * floor and located at the center of its zero-to-precision band; an underflowed 0 is never zero
+ * to precision.
  *
  * A candidate is accepted by a LOCAL criterion only, at every t probe where it can be tested:
  * M(t, ·) must vanish continuously at c, i.e. on each side where it is defined the values
@@ -352,7 +394,9 @@ export function firstOrderEquilibria(
   if (!Number.isFinite(yRange.min) || !Number.isFinite(yRange.max) || !(yRange.min < yRange.max)) {
     throw new RangeError("y range must satisfy min < max with finite bounds.");
   }
-  const { M, N } = compileDifferential(spec);
+  const { M, N, MBound } = compileDifferential(spec);
+  // Autonomy is the static rule: t occurs in the right-hand side or it does not (never measured).
+  const autonomous = !firstOrderMentionsT(spec);
   const samples = opts.samples ?? 400;
   const span = yRange.max - yRange.min;
   const cell = span / samples;
@@ -386,42 +430,33 @@ export function firstOrderEquilibria(
   const ref = table[refIndex];
   const xRef = xProbe[refIndex];
 
-  // Autonomy of the slope (informational): at every 5th y, the slopes at the other probes are
-  // compared with the reference probe's, relative to the two slopes themselves. Too few
-  // comparable pairs (the slope is undefined almost everywhere) is a third state, not "depends on t".
-  let comparable = 0;
-  let tDependent = false;
-  outer: for (let i = 0; i < ys.length; i += 5) {
-    const s0 = slope(xRef, ys[i]);
-    if (!Number.isFinite(s0)) continue;
-    for (const x of xProbe) {
-      if (x === xRef) continue;
-      const s = slope(x, ys[i]);
-      if (!Number.isFinite(s)) continue;
-      comparable++;
-      if (Math.abs(s - s0) > 1e-9 * Math.max(Math.abs(s0), Math.abs(s))) {
-        tDependent = true;
-        break outer;
-      }
-    }
-  }
-
   // Every finite sample exactly 0: M may be identically 0 (dy/dt = 0) or a factor may underflow at
-  // every sample (y·exp(-100 y²) with a cell of 5); the scan cannot tell, so autonomy is
-  // untestable, and each sample is a candidate for the ladder to decide (below).
+  // every sample (y·exp(-100 y²) with a cell of 5). The rounding bound tells the two apart: when
+  // every sample is finite, exactly 0 and none underflowed, M is identically zero as far as the
+  // scan can tell (every line y = c is a constant solution; nothing is listed). Otherwise each
+  // finite sample is a candidate for the ladder to decide (below).
   const finiteYs = new Set<number>();
   let allZero = true;
-  table.forEach((col) => col.forEach((v, i) => { if (Number.isFinite(v)) { finiteYs.add(ys[i]); if (v !== 0) allZero = false; } }));
-  const autonomy: Pick<FirstOrderEquilibria, "autonomous" | "untestableReason"> =
-    finiteYs.size === 0 ? { autonomous: "untestable", untestableReason: "undefined" }
-    : allZero ? { autonomous: "untestable", untestableReason: "all_zero" }
-    : tDependent ? { autonomous: false }
-    : comparable < 3 ? { autonomous: "untestable", untestableReason: "undefined" }
-    : { autonomous: true };
-  if (finiteYs.size === 0) return { ...autonomy, solutions: [], resolution: cell, zeroPlateaus: [] };
+  let allFinite = true;
+  table.forEach((col) => col.forEach((v, i) => { if (Number.isFinite(v)) { finiteYs.add(ys[i]); if (v !== 0) allZero = false; } else allFinite = false; }));
+  if (finiteYs.size === 0) return { autonomous, solutions: [], resolution: cell, zeroPlateaus: [] };
   // N ≡ 0 (no slope anywhere): no constant solution is listed.
   const nValues = xProbe.flatMap((x) => ys.filter((_, i) => i % 8 === 0).map((y) => N({ x, y }))).filter(Number.isFinite);
-  if (nValues.length > 0 && nValues.every((v) => v === 0)) return { ...autonomy, solutions: [], resolution: cell, zeroPlateaus: [] };
+  if (nValues.length > 0 && nValues.every((v) => v === 0)) return { autonomous, solutions: [], resolution: cell, zeroPlateaus: [] };
+  if (allZero && allFinite && !xProbe.some((x) => ys.some((y) => MBound({ x, y }).underflow))) {
+    return { autonomous, identicallyZero: true, solutions: [], resolution: cell, zeroPlateaus: [] };
+  }
+
+  /**
+   * |M(x, y)| within its own rounding bound (parse.ts RoundingBound: the rounding of M's own
+   * terms at this point) and not an underflow: zero as far as floating point can tell. The
+   * cancellation of y(1 - y) - 1/4 leaves ~1e-17 of noise on |y - 1/2| < 7e-9, where the
+   * expression is -(y - 1/2)² exactly; an underflowed 0 (exp(-1/y²)) is NOT zero to precision.
+   */
+  const zeroToPrecision = (x: number, y: number): boolean => {
+    const b = MBound({ x, y });
+    return Number.isFinite(b.value) && !b.underflow && Math.abs(b.value) <= b.error;
+  };
 
   const mAt = (y: number) => M({ x: xRef, y });
 
@@ -437,11 +472,21 @@ export function firstOrderEquilibria(
       const delta = cell * VANISH_SHRINK ** -k;
       if (delta < positionFloor) break;
       evaluated++;
-      const v = M({ x, y: c + sign * delta });
+      const bnd = MBound({ x, y: c + sign * delta });
+      const v = bnd.value;
       lastFinite = Number.isFinite(v);
       if (!lastFinite) continue;
       const a = Math.abs(v);
       if (a > maxSeen) maxSeen = a;
+      if (!bnd.underflow && a <= bnd.error) {
+        // Zero to precision: the rounding floor of the ladder when the values were falling toward
+        // it (the last measured value of a law δ^β lies within 4^β of the floor); after a much
+        // larger value it is a coincidence (another root at this level) and is skipped, as an
+        // exact 0 is below. Values within the bound are never measurements of the law.
+        const prev = values[values.length - 1];
+        if (prev && prev.a <= PRECISION_REACH * bnd.error) break;
+        continue;
+      }
       if (a < MIN_NORMAL) {
         // Exactly 0 or a denormal: the arithmetic underflowing when the values were already near
         // the smallest normal double; a coincidence (another root at this level) otherwise.
@@ -499,7 +544,7 @@ export function firstOrderEquilibria(
     const edge = definedSide(above) && !definedSide(below) ? "above" : definedSide(below) && !definedSide(above) ? "below" : undefined;
     if (Number.isFinite(m0)) {
       if (vanishingSides.length === 0) return { verdict: "skip", ...out };
-      if (m0 !== 0 && Math.abs(m0) > RESIDUAL_SAFETY * Math.max(...vanishingSides.map((s) => predicted(s, w)))) return { verdict: "reject", ...out };
+      if (!zeroToPrecision(x, c) && Math.abs(m0) > RESIDUAL_SAFETY * Math.max(...vanishingSides.map((s) => predicted(s, w)))) return { verdict: "reject", ...out };
       return edge ? { verdict: "root", edge, ...out } : { verdict: "root", ...out };
     }
     // M undefined at (x, c) itself: a removable point when M vanishes on both sides (y·log|y| at 0)
@@ -557,7 +602,11 @@ export function firstOrderEquilibria(
       if (mid === lo || mid === hi) break;
       const fm = mAt(mid);
       if (!Number.isFinite(fm)) return { y: mid, width: hi - lo };
+      // Zero to precision (exactly 0, or noise of a multiple root formed by cancellation): the
+      // sign carries no information below this; the root is the center of the interval on which
+      // M is zero to precision.
       if (fm === 0) return { y: mid, width: hi - lo };
+      if (zeroToPrecision(xRef, mid)) return precisionInterval(mid, lo, hi);
       if (Math.sign(fm) === Math.sign(flo)) { lo = mid; flo = fm; } else { hi = mid; fhi = fm; }
     }
     return { y: Math.abs(flo) <= Math.abs(fhi) ? lo : hi, width: hi - lo };
@@ -577,7 +626,11 @@ export function firstOrderEquilibria(
       if (f1 < f2) { b = x2; x2 = x1; f2 = f1; x1 = b - R * (b - a); f1 = f(x1); }
       else { a = x1; x1 = x2; f1 = f2; x2 = a + R * (b - a); f2 = f(x2); }
     }
-    return { y: f1 < f2 ? x1 : x2, width: b - a };
+    const best = f1 < f2 ? x1 : x2;
+    // A minimum that is zero to precision (a double root formed by cancellation: y(1 - y) - 1/4 at
+    // 1/2, or (y - 1)² expanded) is located as the center of the interval of such values, never
+    // at whichever noise value happened to be smallest.
+    return zeroToPrecision(xRef, best) ? precisionInterval(best, a0, b0) : { y: best, width: b - a };
   };
 
   /**
@@ -595,16 +648,69 @@ export function firstOrderEquilibria(
     return { y: fin, width: Math.abs(und - fin) };
   };
 
-  /** The boundary of the zero set of M(x_ref, ·) between a zero and a nonzero (or undefined) point: the last zero double. */
+  /**
+   * The boundary of the set on which M(x_ref, ·) is zero to precision, between a point in it and a
+   * point outside it (or undefined): bisection on the predicate to the last double inside. (A
+   * bracket that is zero to precision at both ends converges to `nonzeroY` itself.)
+   */
   const zeroEdge = (zeroY: number, nonzeroY: number): number => {
     let z = zeroY, n = nonzeroY;
     for (let k = 0; k < LOCATE_ITERATIONS && !resolved(Math.min(z, n), Math.max(z, n)); k++) {
       const mid = (z + n) / 2;
       if (mid === z || mid === n) break;
-      if (mAt(mid) === 0) z = mid;
-      else n = mid;
+      if (inZeroSet(mid) && connectedZeros(z, mid)) z = mid;
+      else {
+        // A midpoint in the zero set but not connected to z is a root of its own (2 between the
+        // sample 0 and its neighbor 4 of y(1 - y)(2 - y)): a candidate, and the edge lies below it.
+        if (inZeroSet(mid)) pushCandidate({ y: mid, width: locFloor, kind: "point" });
+        n = mid;
+      }
     }
     return z;
+  };
+
+  /**
+   * A point of the zero set of M(x_ref, ·): the computed value is exactly 0 (a flat region or an
+   * underflow plateau) or zero to precision (the noise of a multiple root formed by cancellation).
+   */
+  const inZeroSet = (y: number): boolean => mAt(y) === 0 || zeroToPrecision(xRef, y);
+
+  /**
+   * Does M(x_ref, ·) rise clearly above its rounding floor at y: beyond RESIDUAL_SAFETY times the
+   * bound, the slack this module allows rounding everywhere? A value within a few rounding units
+   * of the bound is the ragged edge of a zero-to-precision band, not M being nonzero.
+   */
+  const risesAt = (y: number): boolean => {
+    const b = MBound({ x: xRef, y });
+    return Number.isFinite(b.value) && Math.abs(b.value) > RESIDUAL_SAFETY * b.error;
+  };
+
+  /**
+   * Are a and b (both in the zero set) connected through it? The zero set of a plateau is an
+   * interval, so M cannot rise between two of its points; where it does at a quarter point, the
+   * two are separate roots (y(1 - y)(2 - y) at the samples 0 and 2 of a cell of 2, or a bisection
+   * midpoint that happens to be another root; y·exp(-100 y²) at the samples -5 and 0 of a cell
+   * of 5, where M = 1e-68 at -1.25), never one zero set. A quarter point of a disconnected pair
+   * that is itself in the zero set is a root spotted between the samples (y = 1 between 0 and 2)
+   * and becomes a candidate for the ladder to confirm.
+   */
+  const connectedZeros = (a: number, b: number): boolean => {
+    const probes = [0.25, 0.5, 0.75].map((f) => a + f * (b - a));
+    if (!probes.some(risesAt)) return true;
+    for (const y of probes) if (inZeroSet(y)) pushCandidate({ y, width: locFloor, kind: "point" });
+    return false;
+  };
+
+  /**
+   * The interval around y0 (zero to precision) on which M(x_ref, ·) is zero to precision, between
+   * lo and hi: a root whose location the arithmetic cannot pin down further is reported at the
+   * center, with half the width as its location tolerance. For -(y - 1/2)² formed by cancellation
+   * that is |y - 1/2| < ~7e-9 (sqrt of the rounding bound ~ 4 eps / 4), centered on 1/2.
+   */
+  const precisionInterval = (y0: number, lo: number, hi: number): { y: number; width: number } => {
+    const a = zeroEdge(y0, lo);
+    const b = zeroEdge(y0, hi);
+    return { y: (a + b) / 2, width: (b - a) / 2 };
   };
 
   const finiteAt = (i: number) => i >= 0 && i < ys.length && Number.isFinite(ref[i]);
@@ -623,16 +729,32 @@ export function firstOrderEquilibria(
       const nbY = inside ? ys[nb] : ys[k] + dir * cell;
       const nbV = inside ? ref[nb] : mAt(nbY);
       if (!Number.isFinite(nbV)) return { kind: "undefined", y: ys[k] };
-      if (nbV === 0) return { kind: "open", y: ys[k] };
+      // A zero neighbor connected through the zero set continues the run (the box edge, or the
+      // next run of a split scan at the range end); a disconnected one is a separate root and the
+      // edge is located toward it as toward a nonzero neighbor.
+      if (nbV === 0 && (!inside || connectedZeros(ys[k], nbY))) return { kind: "open", y: ys[k] };
       return { kind: "located", y: zeroEdge(ys[k], nbY) };
     };
     const lo = endAt(i, -1);
     const hi = endAt(j, 1);
     const c = (lo.y + hi.y) / 2;
+    const bracket = nonzeroAt(i - 1) && nonzeroAt(j + 1) ? { lo: ys[i - 1], hi: ys[j + 1], flo: ref[i - 1], fhi: ref[j + 1] } : undefined;
     if (hi.y - lo.y <= 2 * edgeWidth(c)) {
-      // The zero set is a point: an ordinary candidate, bracketed by the nonzero neighbours (deflation).
-      const bracket = nonzeroAt(i - 1) && nonzeroAt(j + 1) ? { lo: ys[i - 1], hi: ys[j + 1], flo: ref[i - 1], fhi: ref[j + 1] } : undefined;
-      pushCandidate({ y: c, width: Math.max(hi.y - lo.y, locFloor), kind: "point", bracket });
+      // The zero set is a point: an ordinary candidate, bracketed by the nonzero neighbours
+      // (deflation). A single sample at which M is exactly 0 is the root to the last bit (sin(y)
+      // at 0, y·log|y| at -1); the zero-to-precision band of a few ulps around it says no more.
+      pushCandidate({ y: i === j ? ys[i] : c, width: Math.max(hi.y - lo.y, locFloor), kind: "point", bracket });
+      return;
+    }
+    // A wider band on which M is zero to precision WITHOUT underflowing (the cancellation of
+    // y(1 - y) - 1/4 on |y - 1/2| < 7e-9; never the inside of an underflow plateau, whose
+    // samples carry the underflow flag), into which M falls continuously from both sides down to
+    // its rounding floor: one root at the center, known to half the width. The ladder from the
+    // center decides: it measures the law above the floor for a multiple root, and is 'flat' (no
+    // evidence) inside a flat region wider than the cell, which falls through to the edge rules.
+    const cancellationBand = [0.25, 0.5, 0.75].every((f) => zeroToPrecision(xRef, lo.y + f * (hi.y - lo.y)));
+    if (lo.kind === "located" && hi.kind === "located" && cancellationBand && checkPoint(xRef, c, (hi.y - lo.y) / 2).verdict === "root") {
+      pushCandidate({ y: c, width: (hi.y - lo.y) / 2, kind: "point", bracket });
       return;
     }
     const loSide = lo.kind === "located" ? vanishing(xRef, lo.y, -1) : undefined;
@@ -661,8 +783,10 @@ export function firstOrderEquilibria(
     if (v !== 0 && !belowDefined) { const e = domainEdgeAt(ys[i], belowY); pushCandidate({ ...e, kind: "point" }); }
     if (v !== 0 && !aboveDefined) { const e = domainEdgeAt(ys[i], aboveY); pushCandidate({ ...e, kind: "point" }); }
     if (v === 0) {
+      // A run of zero samples is one zero set only when M is zero between consecutive samples
+      // too; otherwise each sample is its own run (0, 1 and 2 of y(1 - y)(2 - y) with a cell of 1).
       let j = i;
-      while (j + 1 < ys.length && ref[j + 1] === 0) j++;
+      while (j + 1 < ys.length && ref[j + 1] === 0 && connectedZeros(ys[j], ys[j + 1])) j++;
       zeroRun(i, j);
       i = j;
       continue;
@@ -809,7 +933,7 @@ export function firstOrderEquilibria(
     solutions.push(solution);
   }
   solutions.sort((u, v) => u.y - v.y);
-  return { ...autonomy, solutions, resolution: cell, zeroPlateaus };
+  return { autonomous, solutions, resolution: cell, zeroPlateaus };
 }
 
 const UNIQUENESS_RANK: Record<UniquenessVerdict, number> = { unbounded: 3, borderline: 2, untestable: 1, bounded_at_tested_scales: 0 };

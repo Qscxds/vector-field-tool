@@ -41,10 +41,12 @@ export type FirstOrderView = {
   expr: string;
   /** The equation itself, so a client can recompute locally (zoom, pan, hover). */
   spec?: FirstOrderSpec;
-  /** Whether the slope is independent of t; "untestable" when it is undefined on most of the range (neither may be claimed). */
+  /** Whether the right-hand side is independent of t (the static rule: t occurs in it or not); "untestable" only in older scenes. */
   autonomous: boolean | "untestable";
-  /** Why autonomy is untestable (lib/core/slope-field): undefined at (almost) every sample, or exactly 0 at every finite one. */
+  /** Older scenes only (autonomy is static now). */
   untestableReason?: "undefined" | "all_zero";
+  /** The right-hand side is identically zero on the range (lib/core/slope-field): every line y = c is a constant solution; `solutions` is empty. */
+  identicallyZero?: boolean;
   solutions: EquilibriumSolution[];
   /** The scan resolution Δy of the constant-solution search; roots closer than this may have been merged or missed (always shown). */
   resolution?: number;

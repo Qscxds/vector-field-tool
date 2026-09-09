@@ -774,7 +774,7 @@ describe("analyze_first_order", () => {
   it("says when there are no constant solutions", async () => {
     const r = await call("analyze_first_order", { expr: "t - y", locale: "zh" });
     expect(r.scene.firstOrder?.solutions).toEqual([]);
-    expect(r.text).toContain("没有常数解（右端依赖 t；");
+    expect(r.text).toContain("没有常数解（右端含有 t，方程不是自治的；");
   });
 
   it("accepts the differential form: y dt - t dy = 0 has undirected segments and a singular origin", async () => {
@@ -1017,20 +1017,23 @@ describe("uniqueness failure and domain-edge constant solutions (J.2)", () => {
     expect(real.scene.firstOrder!.solutions[0].domainEdge).toBeUndefined();
   });
 
-  it("a range on which the equation is undefined: the autonomy verdict is untestable and the sentence says so, never 'depends on t' (review J)", async () => {
+  it("a range on which the equation is undefined: autonomy is the static rule (no t in sqrt(y)), the sentence never says 'mentions t' (review J, FB)", async () => {
     const r = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -4, yMax: -0.001, locale: "en" });
-    expect(r.scene.firstOrder!.autonomous).toBe("untestable");
+    expect(r.scene.firstOrder!.autonomous).toBe(true);
     expect(r.scene.firstOrder!.solutions).toEqual([]);
-    expect(r.text).toContain(labels("en").tool.noConstantUntestable);
-    expect(r.text).not.toContain("depends on t");
+    expect(r.text).toContain(labels("en").tool.noConstantAutonomous);
+    expect(r.text).not.toContain("mentions t, so");
     const zh = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -4, yMax: -0.001, locale: "zh" });
-    expect(zh.text).toContain(labels("zh").tool.noConstantUntestable);
+    expect(zh.text).toContain(labels("zh").tool.noConstantAutonomous);
     // on y in [-4, 0] the line y = 0 is the only defined sample and it is reported, as a domain edge
     const edge = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -4, yMax: 0, locale: "en" });
     expect(edge.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave" });
-    // J-fix2: the line is the only finite sample and M = 0 on it, so autonomy is untestable (all_zero)
-    expect(edge.scene.firstOrder!.autonomous).toBe("untestable");
-    expect(edge.scene.firstOrder!.untestableReason).toBe("all_zero");
+    expect(edge.scene.firstOrder!.autonomous).toBe(true);
+    expect(edge.scene.firstOrder!.untestableReason).toBeUndefined();
+    // t·sqrt(y) on the same range mentions t: non-autonomous by the static rule, line still found
+    const tEdge = await call("analyze_first_order", { expr: "t*sqrt(y)", yMin: -4, yMax: 0, locale: "en" });
+    expect(tEdge.scene.firstOrder!.autonomous).toBe(false);
+    expect(tEdge.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, domainEdge: "above" });
   });
 
   it("says nothing about uniqueness for the logistic equation (bounded is not a proof, so it is not claimed)", async () => {
@@ -1119,20 +1122,36 @@ describe("constant-solution notes in the first-order summary (J-fix2)", () => {
     expect(zh.text).not.toContain("常数解 y");
   });
 
-  it("an all-zero scan says so instead of 'autonomous but no constant solution', and still finds y = 0 of y·exp(-100 y²) on [-1000, 1000]", async () => {
+  it("an all-zero scan of an underflowing factor still finds y = 0 of y·exp(-100 y²) on [-1000, 1000]; dy/dt = 0 is identically zero (FB)", async () => {
     const r = await call("analyze_first_order", { expr: "y*exp(-100*y^2)", yMin: -1000, yMax: 1000, locale: "en" });
     const L = labels("en");
-    expect(r.scene.firstOrder!.autonomous).toBe("untestable");
-    expect(r.scene.firstOrder!.untestableReason).toBe("all_zero");
+    // Autonomy is the static rule: no t. The samples underflowed, so this is not 'identically zero'.
+    expect(r.scene.firstOrder!.autonomous).toBe(true);
+    expect(r.scene.firstOrder!.identicallyZero).toBeUndefined();
     expect(r.text).toContain(fill(L.tool.constantSolution, { y: "0", stability: L.stability.unstable }));
     expect(r.text).not.toContain(L.tool.noConstantAutonomous);
     expect(r.text).toContain(L.tool.zeroPlateau);
-    // dy/dt = 0: nothing is found and the all-zero sentence is used, in both languages
+    // dy/dt = 0: the right-hand side is identically zero; the dedicated sentence, no plateau note,
+    // in both languages; the scene carries the flag.
     const zero = await call("analyze_first_order", { expr: "0", yMin: -1, yMax: 1, locale: "en" });
-    expect(zero.text).toContain(L.tool.noConstantAllZero);
+    expect(zero.scene.firstOrder!.identicallyZero).toBe(true);
+    expect(zero.scene.firstOrder!.solutions).toEqual([]);
+    expect(zero.text).toContain(L.tool.identicallyZero);
     expect(zero.text).not.toContain(L.tool.noConstantAutonomous);
+    expect(zero.text).not.toContain(L.tool.noConstantAllZero);
+    expect(zero.text).not.toContain(L.tool.zeroPlateau);
     const zh = await call("analyze_first_order", { expr: "0", yMin: -1, yMax: 1, locale: "zh" });
-    expect(zh.text).toContain(labels("zh").tool.noConstantAllZero);
+    expect(zh.text).toContain(labels("zh").tool.identicallyZero);
+    expect(zh.text).not.toContain(labels("zh").tool.zeroPlateau);
+    // the differential form with M ≡ 0
+    const diff = await call("analyze_first_order", { M: "0", N: "1 + y^2", yMin: -1, yMax: 1, locale: "en" });
+    expect(diff.scene.firstOrder!.identicallyZero).toBe(true);
+    expect(diff.text).toContain(L.tool.identicallyZero);
+    // a double root written in expanded form is listed (FB): y(1 - y) - 1/4 at 1/2, semi-stable
+    const dbl = await call("analyze_first_order", { expr: "y*(1-y) - 0.25", yMin: -1, yMax: 2, locale: "en" });
+    expect(dbl.scene.firstOrder!.solutions.length).toBe(1);
+    expect(Math.abs(dbl.scene.firstOrder!.solutions[0].y - 0.5)).toBeLessThan(1.5e-8);
+    expect(dbl.text).toContain(fill(L.tool.constantSolution, { y: "0.5", stability: L.stability.semi_stable }));
   });
 
   it("exp(-1/y²): y = 0 is listed with the plateau note (half-width 0.037) right after its line, on [-3, 3] and [-1e5, 1e5]", async () => {

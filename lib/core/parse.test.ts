@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, normalizeOperators, ParseError } from "./parse";
+import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, mentionsSymbol, normalizeOperators, ParseError } from "./parse";
 
 const near = (a: number, b: number, eps = 1e-12) => Math.abs(a - b) <= eps;
 
@@ -474,5 +474,22 @@ describe("operator look-alikes pasted from Word / iOS (unicode minus, ×, ·, ÷
       expect(e).toBeInstanceOf(ParseError);
       expect((e as ParseError).expr).toBe(expr);
     }
+  });
+});
+
+describe("mentionsSymbol (the static rule for a symbol)", () => {
+  it("reads the parsed expression, not the numbers: 0*t and t*sqrt(y) mention t; y*(1-y) and a*y with a parameter do not", () => {
+    const ty = { variables: "ty" as const };
+    expect(mentionsSymbol("0*t", "t", undefined, ty)).toBe(true);
+    expect(mentionsSymbol("t*sqrt(y)", "t", undefined, ty)).toBe(true);
+    expect(mentionsSymbol("sin(t + y)", "t", undefined, ty)).toBe(true);
+    expect(mentionsSymbol("y*(1-y)", "t", undefined, ty)).toBe(false);
+    expect(mentionsSymbol("a*y", "t", { a: 2 }, ty)).toBe(false);
+    expect(mentionsSymbol("a*y", "y", { a: 2 }, ty)).toBe(true);
+    // the default "xy" mode: t is the time symbol there as well
+    expect(mentionsSymbol("x + cos(t)", "t")).toBe(true);
+    expect(mentionsSymbol("x*y", "t")).toBe(false);
+    // an expression that does not compile throws the parser's error (x in "ty" mode)
+    expect(() => mentionsSymbol("x + t", "t", undefined, ty)).toThrow(ParseError);
   });
 });

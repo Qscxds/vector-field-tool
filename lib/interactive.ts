@@ -120,6 +120,7 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
         expr: spec.kind === "explicit" ? `dy/dt = ${spec.g}` : `(${spec.M}) dt + (${spec.N}) dy = 0`,
         spec,
         autonomous: eq.autonomous,
+        identicallyZero: eq.identicallyZero,
         solutions: eq.solutions,
         singularities: singular.points,
         singularitiesTruncated: singular.truncated,

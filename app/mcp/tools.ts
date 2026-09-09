@@ -683,6 +683,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             spec,
             autonomous: eq.autonomous,
             untestableReason: eq.untestableReason,
+            identicallyZero: eq.identicallyZero,
             solutions: eq.solutions,
             resolution: eq.resolution,
             zeroPlateaus: eq.zeroPlateaus,
@@ -716,7 +717,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           // when they apply (nothing is printed for a bounded uniqueness result).
           for (const s of eq.solutions) lines.push(...constantSolutionLines(L, s, spec));
         } else {
-          lines.push(noConstantSentence(L, eq.autonomous, eq.untestableReason));
+          lines.push(noConstantSentence(L, eq.autonomous, eq.untestableReason, eq.identicallyZero));
         }
         // The zero-plateau notice when it applies, and the scan resolution (always: a fact, not a warning).
         lines.push(...constantSolutionNotices(L, eq));
