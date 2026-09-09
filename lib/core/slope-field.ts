@@ -405,7 +405,7 @@ function solutionUniqueness(slope: (x: number, y: number) => number, c: number, 
   for (const x of goodX) {
     const s0 = slope(x, c);
     const base = Number.isFinite(s0) ? s0 : 0;
-    const r = lipschitzProbe((d) => slope(x, c + d) - base, span, { checkpoint });
+    const r = lipschitzProbe((d) => slope(x, c + d) - base, span, { checkpoint, center: c });
     if (r.verdict === "unbounded") failing++;
     const side: SolutionUniqueness["side"] = r.sides.above.verdict === r.verdict || r.sides.below.verdict !== r.verdict ? "above" : "below";
     if (!worst || UNIQUENESS_RANK[r.verdict] > UNIQUENESS_RANK[worst.verdict]) {

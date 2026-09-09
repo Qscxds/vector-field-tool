@@ -516,8 +516,11 @@ describe("domain-edge constant solutions, one-sided stability and uniqueness (J.
     // 0·log 0 is NaN at the sample y = 0 (i = 200 of [-1, 1]), but the equation is defined on both
     // sides; the two edge bisections meet at 0 and cancel the edge marking. Just above, y log y < 0
     // (down, toward the line); just below, y log|y| > 0 (up, toward it): stable. The derivative
-    // log|y| + 1 is unbounded but only logarithmically: the probe reads borderline, not unbounded
-    // (α ≈ 0.13 with the span-2 offsets; see uniqueness.test.ts for the analytic fit).
+    // log|y| + 1 is unbounded but only logarithmically: the quotients D_k = |log δ_k| with
+    // δ_0 = 1e-2 · span = 0.02 level off (change below 5% per level) at k = 13, D_11 = 19.16,
+    // D_13 = 21.93, so the probe reads bounded_at_tested_scales with the local exponent
+    // log(21.93 / 19.16) / log 16 = 0.049 (see uniqueness.test.ts for the rule on analytic values;
+    // uniqueness does hold at y = 0 by the Osgood criterion).
     // y log|y| also vanishes at y = ±1 (interior roots, derivative log|y| + 1 = 1 there: bounded;
     // both are left on both sides: unstable), so the range holds three constant solutions.
     const r = firstOrderEquilibria("y*log(abs(y))", { min: -1, max: 1 }, { tRange });
@@ -532,9 +535,10 @@ describe("domain-edge constant solutions, one-sided stability and uniqueness (J.
     expect(Math.abs(mid.y)).toBeLessThan(1e-300);
     expect(mid.domainEdge).toBeUndefined();
     expect(mid.stability).toBe("stable");
-    expect(mid.uniqueness!.verdict).toBe("borderline");
-    expect(mid.uniqueness!.exponent).toBeGreaterThan(0.1);
-    expect(mid.uniqueness!.exponent).toBeLessThan(0.25);
+    expect(mid.uniqueness!.verdict).toBe("bounded_at_tested_scales");
+    const D = (k: number) => -Math.log(0.02 * 4 ** -k);
+    expect(mid.uniqueness!.exponent).toBeCloseTo(Math.log(D(13) / D(11)) / Math.log(16), 6);
+    expect(mid.uniqueness!.exponent).toBeLessThan(0.05);
   });
 
   it("a non-autonomous constant solution carries the worst probe: dy/dt = t·sqrt(y) on t in [0.5, 3]", () => {
