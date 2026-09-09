@@ -170,6 +170,12 @@ export type ValidateOptions = CompileOptions & {
 export interface CompiledSystem {
   /** Evaluates (f, g) at a point; `t` defaults to 0 for autonomous use. Never throws. */
   eval(p: Vec2, t?: number): Vec2;
+  /**
+   * Rounding-error bounds of f and g at a point, from the expression's own terms (see
+   * RoundingBound below). Optional: a system assembled by hand may lack it, and callers then fall
+   * back to a stencil estimate.
+   */
+  roundingBound?(p: Vec2, t?: number): [RoundingBound, RoundingBound];
   readonly spec: SystemSpec;
 }
 
@@ -391,12 +397,161 @@ export function compileScalar(
 /** Compiles a planar system; both expressions share the parameter set and the variable mode. */
 export function compileSystem(spec: SystemSpec): CompiledSystem {
   const opts: CompileOptions = { variables: spec.variables };
-  const f = compileScalar(spec.f, spec.params, opts);
-  const g = compileScalar(spec.g, spec.params, opts);
+  const fNode = parseValidated(spec.f, spec.params, opts);
+  const gNode = parseValidated(spec.g, spec.params, opts);
+  const f = compileNode(spec.f, fNode, spec.params, opts);
+  const g = compileNode(spec.g, gNode, spec.params, opts);
+  const fBound = compileBound(fNode, spec.params, opts);
+  const gBound = compileBound(gNode, spec.params, opts);
   return {
     spec,
     eval(p: Vec2, t = 0): Vec2 {
       return { x: f(p, t), y: g(p, t) };
     },
+    roundingBound(p: Vec2, t = 0): [RoundingBound, RoundingBound] {
+      return [fBound(p, t), gBound(p, t)];
+    },
+  };
+}
+
+/**
+ * Running rounding-error bound of an expression (review J-fix2 items 2, 3, 5).
+ *
+ * `value` is the same number `eval` returns; `error` is an upper bound on |computed - exact| built
+ * from the magnitudes of the expression's OWN terms at the point, where "exact" means the value
+ * of the expression at the double-precision point actually evaluated: coordinates and literals
+ * are exact inputs (error 0; whether the point stands for the true root is the location
+ * tolerance's business, never the residual's), every operation adds eps of its result, so a sum
+ * carries the errors of its terms plus eps of the result (cos(x) - 1 near 0 is formed from terms
+ * of size 1, so its error is ~2 eps whatever the tiny result), a product propagates
+ * |a| e_b + |b| e_a, and a function propagates |f'(a)| e_a. Comparisons, sign, floor, ceil and round are treated as exact. `underflow` is
+ * true when some multiplicative step (a product, quotient, power or exp) produced 0 or a subnormal
+ * number from non-zero operands: the exact value is not zero, only unrepresentable, and a
+ * computed 0 there is NOT evidence that the expression vanishes (exp(x) at x = -999). The flag
+ * is sticky through the rest of the expression. Non-finite values give an Infinity error.
+ */
+export type RoundingBound = { value: number; error: number; underflow: boolean };
+
+const EPS = 2.220446049250313e-16;
+const MIN_NORMAL = 2.2250738585072014e-308;
+type Bound = (scope: Scope) => RoundingBound;
+const boundOf = (value: number, error: number, underflow: boolean): RoundingBound =>
+  Number.isFinite(value) ? { value, error: error + EPS * Math.abs(value), underflow } : { value, error: Infinity, underflow };
+/** An exact input (a coordinate or a literal): no rounding of its own. */
+const exactInput = (value: number): RoundingBound => (Number.isFinite(value) ? { value, error: 0, underflow: false } : { value, error: Infinity, underflow: false });
+const tiny = (v: number) => v === 0 || Math.abs(v) < MIN_NORMAL;
+const NO_BOUND: RoundingBound = { value: NaN, error: Infinity, underflow: false };
+
+function buildBound(node: MathNode): Bound {
+  if (math.isParenthesisNode(node)) return buildBound(node.content);
+  if (math.isConstantNode(node)) {
+    const v = Number(node.value);
+    return () => exactInput(v);
+  }
+  if (math.isSymbolNode(node)) {
+    const name = node.name;
+    if (name === "pi") return () => exactInput(Math.PI);
+    if (name === "e") return () => exactInput(Math.E);
+    return (scope) => exactInput(scope[name]);
+  }
+  if (math.isConditionalNode(node)) {
+    const c = buildBound(node.condition), t = buildBound(node.trueExpr), f = buildBound(node.falseExpr);
+    return (scope) => (c(scope).value ? t(scope) : f(scope));
+  }
+  const args = (math.isOperatorNode(node) || math.isFunctionNode(node) ? node.args : []).map(buildBound);
+  const fn = math.isOperatorNode(node) ? node.fn : math.isFunctionNode(node) ? (node.fn as { name: string }).name : "";
+  const unary = (op: (a: number) => number, deriv: (a: number, v: number) => number, underflows = false): Bound => {
+    const [A] = args;
+    return (scope) => {
+      const a = A(scope);
+      const v = op(a.value);
+      return boundOf(v, Math.abs(deriv(a.value, v)) * a.error, a.underflow || (underflows && Number.isFinite(a.value) && tiny(v)));
+    };
+  };
+  const binary = (
+    op: (a: number, b: number) => number,
+    err: (a: number, b: number, v: number, ea: number, eb: number) => number,
+    underflows: (a: number, b: number, v: number) => boolean,
+  ): Bound => {
+    const [A, B] = args;
+    return (scope) => {
+      const a = A(scope), b = B(scope);
+      const v = op(a.value, b.value);
+      return boundOf(v, err(a.value, b.value, v, a.error, b.error), a.underflow || b.underflow || underflows(a.value, b.value, v));
+    };
+  };
+  const exact = (op: (...a: number[]) => number): Bound => (scope) => {
+    const vals = args.map((A) => A(scope));
+    return boundOf(op(...vals.map((u) => u.value)), 0, vals.some((u) => u.underflow));
+  };
+  const never = () => false;
+  switch (fn) {
+    case "add": return binary((a, b) => a + b, (_a, _b, _v, ea, eb) => ea + eb, never);
+    case "subtract": return binary((a, b) => a - b, (_a, _b, _v, ea, eb) => ea + eb, never);
+    case "multiply": return binary((a, b) => a * b, (a, b, _v, ea, eb) => Math.abs(a) * eb + Math.abs(b) * ea, (a, b, v) => a !== 0 && b !== 0 && tiny(v));
+    case "divide": return binary((a, b) => a / b, (_a, b, v, ea, eb) => (ea + Math.abs(v) * eb) / Math.abs(b), (a, b, v) => a !== 0 && Number.isFinite(b) && tiny(v));
+    case "pow": return binary(
+      (a, b) => a ** b,
+      (a, b, v, ea, eb) => (a !== 0 ? Math.abs((b * v) / a) * ea : 0) + (a > 0 ? Math.abs(v * Math.log(a)) * eb : 0),
+      (a, _b, v) => a !== 0 && tiny(v),
+    );
+    case "unaryMinus": return unary((a) => -a, () => 1);
+    case "unaryPlus": return unary((a) => a, () => 1);
+    case "smaller": return exact((a, b) => (a < b ? 1 : 0));
+    case "larger": return exact((a, b) => (a > b ? 1 : 0));
+    case "smallerEq": return exact((a, b) => (a <= b ? 1 : 0));
+    case "largerEq": return exact((a, b) => (a >= b ? 1 : 0));
+    case "equal": return exact((a, b) => (a === b ? 1 : 0));
+    case "unequal": return exact((a, b) => (a !== b ? 1 : 0));
+    case "sin": return unary(Math.sin, (a) => Math.cos(a));
+    case "cos": return unary(Math.cos, (a) => Math.sin(a));
+    case "tan": return unary(Math.tan, (_a, v) => 1 + v * v);
+    case "asin": return unary(Math.asin, (a) => 1 / Math.sqrt(1 - a * a));
+    case "acos": return unary(Math.acos, (a) => 1 / Math.sqrt(1 - a * a));
+    case "atan": return unary(Math.atan, (a) => 1 / (1 + a * a));
+    case "atan2": return binary(Math.atan2, (a, b, _v, ea, eb) => (Math.abs(b) * ea + Math.abs(a) * eb) / (a * a + b * b), never);
+    case "sinh": return unary(Math.sinh, (a) => Math.cosh(a));
+    case "cosh": return unary(Math.cosh, (a) => Math.sinh(a));
+    case "tanh": return unary(Math.tanh, () => 1);
+    case "exp": return unary(Math.exp, (_a, v) => v, true);
+    case "log": return args.length === 2
+      ? binary((a, b) => Math.log(a) / Math.log(b), (a, b, v, ea, eb) => (ea / Math.abs(a) + (Math.abs(v) * eb) / Math.abs(b)) / Math.abs(Math.log(b)), never)
+      : unary(Math.log, (a) => 1 / a);
+    case "log10": return unary(Math.log10, (a) => 1 / (a * Math.LN10));
+    case "sqrt": return unary(Math.sqrt, (_a, v) => (v > 0 ? 1 / (2 * v) : 0));
+    case "abs": return unary(Math.abs, () => 1);
+    case "sign": return exact(Math.sign);
+    case "floor": return exact(Math.floor);
+    case "ceil": return exact(Math.ceil);
+    case "round": return exact((a, d) => (d === undefined ? Math.round(a) : Math.round(a * 10 ** d) / 10 ** d));
+    case "min": case "max": return (scope) => {
+      const vals = args.map((A) => A(scope));
+      const v = fn === "min" ? Math.min(...vals.map((u) => u.value)) : Math.max(...vals.map((u) => u.value));
+      // The error of the selected argument, or of every argument within that error of the selection (a near tie).
+      const chosen = vals.find((u) => u.value === v);
+      const err = chosen ? Math.max(...vals.filter((u) => Math.abs(u.value - v) <= u.error + chosen.error).map((u) => u.error)) : Infinity;
+      return boundOf(v, err, vals.some((u) => u.underflow));
+    };
+    default:
+      // A node the whitelist admits but this analysis does not know: no bound.
+      return () => NO_BOUND;
+  }
+}
+
+/**
+ * Compiles a validated AST into a rounding-bound evaluator (see RoundingBound); the same scope
+ * rules as compileNode. Never throws at evaluation time (a failure gives {NaN, Infinity, false}).
+ */
+export function compileBound(node: MathNode, params?: Record<string, number>, opts: CompileOptions = {}): (p: Vec2, t?: number) => RoundingBound {
+  const mode: VariableMode = opts.variables ?? "xy";
+  const bound = buildBound(node);
+  const scope: Scope = { ...(params ?? {}), x: 0, y: 0, t: 0 };
+  return (p: Vec2, t = 0) => {
+    if (mode === "ty") { scope.t = p.x; scope.y = p.y; } else { scope.x = p.x; scope.y = p.y; scope.t = t; }
+    try {
+      return bound(scope);
+    } catch {
+      return NO_BOUND;
+    }
   };
 }

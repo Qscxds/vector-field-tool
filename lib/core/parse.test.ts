@@ -395,3 +395,57 @@ describe("a left-hand side in the expression", () => {
     }
   });
 });
+
+describe("roundingBound: the expression's own rounding error and underflow (J-fix2)", () => {
+  const EPS = 2.220446049250313e-16;
+  const boundOf = (f: string, x: number, y = 0) => compileSystem({ f, g: "0" }).roundingBound!({ x, y })[0];
+
+  it("cos(x) - 1 near 0 is formed from a term of size 1: error ~1 eps whatever the tiny value", () => {
+    // cos(x) rounds once: eps |cos x| ~ eps; the literal 1 is exact, and the subtraction adds only
+    // eps of its tiny result (Sterbenz: cos(x) - 1 is exact for cos(x) in [1/2, 2]): ~1 eps,
+    // which is 2.2e-16 against a value of -4.5e-16.
+    const b = boundOf("cos(x) - 1", 3e-8);
+    expect(b.value).toBe(Math.cos(3e-8) - 1);
+    expect(b.error).toBeGreaterThanOrEqual(EPS * Math.cos(3e-8));
+    expect(b.error).toBeLessThan(1.5 * EPS);
+    expect(b.underflow).toBe(false);
+  });
+
+  it("f = y at y = 1.6e-43 is exact: the error is 0 (a coordinate is an exact input)", () => {
+    const b = boundOf("y", 0, 1.6e-43);
+    expect(b.value).toBe(1.6e-43);
+    expect(b.error).toBe(0);
+    // y - 0.5 y: two operations on the value, each eps of its result.
+    const c = boundOf("y - 0.5*y", 0, 1.6e-43);
+    expect(c.error).toBeGreaterThan(0);
+    expect(c.error).toBeLessThanOrEqual(3 * EPS * 1.6e-43);
+  });
+
+  it("exp(x), 2^x and x^30 flag underflow when they evaluate to 0 or a subnormal from non-zero operands", () => {
+    expect(boundOf("exp(x)", -999)).toEqual({ value: 0, error: 0, underflow: true });
+    expect(boundOf("exp(x)", -740).underflow).toBe(true); // 4.2e-322: subnormal
+    expect(boundOf("exp(x)", -700).underflow).toBe(false); // 9.9e-305: a normal number
+    expect(boundOf("2^x", -2000).underflow).toBe(true);
+    expect(boundOf("2^x", -1000).underflow).toBe(false); // 9.3e-302 is normal
+    expect(boundOf("x^30", 1e-12).underflow).toBe(true);
+    expect(boundOf("x^30", 0).underflow).toBe(false); // 0^30 is exactly 0
+    // The flag is sticky through a sum, and a product with an exact 0 does not raise it.
+    expect(boundOf("y + exp(x)", -999, 1e-43).underflow).toBe(true);
+    expect(boundOf("x*y", 0, 1e-200).underflow).toBe(false);
+    expect(boundOf("x*y", 1e-200, 1e-200).underflow).toBe(true);
+  });
+
+  it("max(x - 1, 0) at x = 0.5 and a conditional are exact zeros, not underflow", () => {
+    expect(boundOf("max(x - 1, 0)", 0.5)).toEqual({ value: 0, error: 0, underflow: false });
+    expect(boundOf("x > 1 ? x - 1 : 0", 0.5)).toEqual({ value: 0, error: 0, underflow: false });
+  });
+
+  it("propagates derivatives: sin(x) carries eps |sin x|, a product |a| e_b + |b| e_a, and a non-finite value has an Infinity error", () => {
+    const s = boundOf("sin(x)", 30002.2);
+    expect(s.error).toBeCloseTo(EPS * Math.abs(Math.sin(30002.2)), 30);
+    const p = boundOf("(x + 1)*(x - 1)", 3); // (4 ± 4 eps)(2 ± 2 eps): 4·2eps + 2·4eps + eps·8 = 24 eps
+    expect(p.error).toBeCloseTo(24 * EPS, 28);
+    expect(boundOf("x*log(abs(x))", 0).error).toBe(Infinity);
+    expect(boundOf("1/x", 0).error).toBe(Infinity);
+  });
+});
