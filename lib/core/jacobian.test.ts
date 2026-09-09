@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { determinant, eigenvalues2, jacobianAt, jacobianSensitivity, jacobianWithError, trace } from "./jacobian";
+import { determinant, eigenvalues2, jacobianAt, jacobianSensitivity, jacobianSensitivityEntries, jacobianWithError, trace } from "./jacobian";
 import { compileSystem } from "./parse";
 import type { Matrix2 } from "./types";
 
@@ -76,6 +76,18 @@ describe("eigenvalues2", () => {
     expect(eigenvalues2([[2, 0], [0, 2]])).toEqual([{ re: 2, im: 0 }, { re: 2, im: 0 }]);
   });
 
+  it("J.6: the small real eigenvalue is det / λ₁, not a cancelled difference: diag(1, 1e-20) and diag(1e10, 1e-10)", () => {
+    // (tr - sqrt(disc)) / 2 = (1 + 1e-20 - (1 - 1e-20)) / 2 rounds to 0; det / λ₁ = 1e-20 exactly.
+    expect(eigenvalues2([[1, 0], [0, 1e-20]])).toEqual([{ re: 1, im: 0 }, { re: 1e-20, im: 0 }]);
+    const [big, small] = eigenvalues2([[1e10, 0], [0, 1e-10]]);
+    expect(big.re / 1e10).toBeCloseTo(1, 12);
+    expect(small.re / 1e-10).toBeCloseTo(1, 12);
+    // Negative trace: the root of larger magnitude is (tr - s) / 2 = -1, the other det / (-1) = -1e-20; largest first.
+    expect(eigenvalues2([[-1, 0], [0, -1e-20]])).toEqual([{ re: -1e-20, im: 0 }, { re: -1, im: 0 }]);
+    // tr = 0, det < 0: ± sqrt(-det).
+    expect(eigenvalues2([[0, 1], [4, 0]])).toEqual([{ re: 2, im: 0 }, { re: -2, im: 0 }]);
+  });
+
   it("trace and determinant", () => {
     expect(trace([[1, 2], [3, 4]])).toBe(5);
     expect(determinant([[1, 2], [3, 4]])).toBe(-2);
@@ -112,6 +124,58 @@ describe("columns at the edge of the field's domain (J.1)", () => {
     expect(jacobianWithError(sqrt, { x: 1, y: 0 }).domainEdge).toBe(false);
     // 1/x at 0: the field itself is infinite there, not on an edge.
     expect(jacobianWithError(compileSystem({ f: "1/x", g: "y" }), { x: 0, y: 0 }).domainEdge).toBe(false);
+  });
+});
+
+describe("jacobianWithError per-entry errors (review J item 6)", () => {
+  it("x' = 1e8 x + y, y' = -x + 1e-8 y at the origin: each entry carries its own rounding floor", () => {
+    // Central differences at h = 1e-6. Entry (i, j) is rounded by 4 eps max|F_i| / (2h) over the
+    // stencil of column j: e_a from |f(±h, 0)| = 100 -> 4.4e-8; e_b from |f(0, ±h)| = 1e-6 ->
+    // 4.4e-16; e_c from |g(±h, 0)| = 1e-6 -> 4.4e-16; e_d from |g(0, ±h)| = 1e-14 -> 4.4e-24. The
+    // truncation term |J_h - J_2h| / 3 of a linear field is rounding of the same size at most.
+    const { J, error, errors } = jacobianWithError(compileSystem({ f: "1e8*x + y", g: "-x + 1e-8*y" }), { x: 0, y: 0 });
+    expect(J[0][0] / 1e8).toBeCloseTo(1, 9);
+    expect(J[1][1] / 1e-8).toBeCloseTo(1, 9);
+    expect(errors[0][0]).toBeGreaterThan(4e-8);
+    expect(errors[0][0]).toBeLessThan(1e-7);
+    expect(errors[0][1]).toBeLessThan(1e-14);
+    expect(errors[1][0]).toBeLessThan(1e-14);
+    expect(errors[1][1]).toBeLessThan(1e-22);
+    expect(error).toBe(Math.max(errors[0][0], errors[0][1], errors[1][0], errors[1][1]));
+    // Propagated to the determinant: e_a |d| + e_d |a| + e_b |c| + e_c |b| << 2.
+    const [[ea, eb], [ec, ed]] = errors;
+    expect(ea * Math.abs(J[1][1]) + ed * Math.abs(J[0][0]) + eb * Math.abs(J[1][0]) + ec * Math.abs(J[0][1])).toBeLessThan(1e-13);
+  });
+
+  it("errors are all Infinity when J is not finite, and per-entry truncation shows where the field bends", () => {
+    expect(jacobianWithError(compileSystem({ f: "sqrt(x)", g: "y" }), { x: 0, y: 0 }).errors.flat().every((e) => e === Infinity)).toBe(true);
+    // f = x³, g = y at (1, 0), h = 1e-6. Entry (0, 0): rounding 4 eps |f| / (2h) = 4.4e-10 with
+    // |f| = 1 on the x stencil, plus the truncation estimate |J_h - J_2h| / 3 = |(3 + h²) -
+    // (3 + 4h²)| / 3 = h² = 1e-12 in exact arithmetic, but each difference quotient itself carries
+    // rounding of up to ~4.4e-10, so the estimate lies between 0 and ~1e-9. Entry (0, 1): f does
+    // not change along y (the quotients are exactly 0, truncation 0) but its rounding floor is set
+    // by |f(1, ±h)| = 1: exactly 4.4e-10. Entry (1, 1): |g(1, ±h)| = 1e-6 -> 4.4e-16, no truncation
+    // (g linear). Entry (1, 0): g(1 ± h, 0) = 0 -> exactly 0.
+    const { errors } = jacobianWithError(compileSystem({ f: "x^3", g: "y" }), { x: 1, y: 0 });
+    expect(errors[0][0]).toBeGreaterThan(4.4e-10);
+    expect(errors[0][0]).toBeLessThan(1.5e-9);
+    expect(errors[0][1]).toBeGreaterThan(4.3e-10);
+    expect(errors[0][1]).toBeLessThan(4.5e-10);
+    expect(errors[1][1]).toBeLessThan(1e-15);
+    expect(errors[1][0]).toBe(0);
+  });
+});
+
+describe("jacobianSensitivityEntries", () => {
+  it("f = x², g = y³ at (0.3, 0.5): 2 for entry (0, 0), 6y = 3 for entry (1, 1), noise elsewhere", () => {
+    const sys = compileSystem({ f: "x^2", g: "y^3" });
+    const p = { x: 0.3, y: 0.5 };
+    const S = jacobianSensitivityEntries(sys, p, jacobianAt(sys, p));
+    expect(S[0][0]).toBeCloseTo(2, 4);
+    expect(S[1][1]).toBeCloseTo(3, 4);
+    expect(S[0][1]).toBeLessThan(1e-3);
+    expect(S[1][0]).toBeLessThan(1e-3);
+    expect(jacobianSensitivity(sys, p, jacobianAt(sys, p))).toBe(Math.max(S[0][0], S[0][1], S[1][0], S[1][1]));
   });
 });
 

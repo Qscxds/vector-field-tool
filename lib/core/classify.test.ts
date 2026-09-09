@@ -226,10 +226,56 @@ describe("error-based zero decisions for ill-scaled Jacobians (J.5c)", () => {
     expect(classify([[1e-13, -1], [1, 1e-13]], 1e-9, { zeroFloor: 1e-14 }).classification).toBe("unstable_spiral");
   });
 
-  it("the repeated-root band stays on the normalized matrix", () => {
+  it("the repeated-root band is error-based too (review J item 9): diag(1 + 1e-6, 1 - 1e-6) is resolved with an entry error of 1e-12", () => {
+    // disc = (a - d)² = 4e-12 against its propagated error 2 |a - d| (e_a + e_d) = 2 · 2e-6 · 2e-12
+    // = 8e-18: the eigenvalues 1 ± 1e-6 are told apart, both positive -> unstable node, no caveat.
+    // (Before J.9 the band stayed relative and called this a star node with the caveat.)
     const r = classify([[1 + 1e-6, 0], [0, 1 - 1e-6]], 1e-9, { zeroFloor: 1e-12 });
-    expect(r.classification).toBe("star_node");
-    expect(r.caveat).toBe("repeatedRoot");
+    expect(r.classification).toBe("unstable_node");
+    expect(r.caveat).toBeUndefined();
+    expect(r.eigenvalues.map((e) => e.re).sort()).toEqual([1 - 1e-6, 1 + 1e-6]);
+    // With an entry error of 1e-5 the difference 2e-6 is within error: 4e-12 <= 2 · 2e-6 · 2e-5 =
+    // 8e-11 -> repeated root to precision; |a - d| = 2e-6 <= e_a + e_d -> star node, with the caveat.
+    const coarse = classify([[1 + 1e-6, 0], [0, 1 - 1e-6]], 1e-9, { zeroFloor: 1e-5 });
+    expect(coarse.classification).toBe("star_node");
+    expect(coarse.caveat).toBe("repeatedRoot");
+  });
+
+  it("J.6: per-entry errors keep the determinant of [[1e8, 1], [-1, 1e-8]] (det = 2)", () => {
+    // Finite-difference errors at the origin of x' = 1e8 x + y, y' = -x + 1e-8 y: e_a ~ 4.4e-8
+    // (rounding of |f| = 100 on the x stencil), e_b ~ 4.4e-16, e_c ~ 4.4e-16, e_d ~ 4.4e-24.
+    // err(det) = e_a |d| + e_d |a| + e_b |c| + e_c |b| ~ 4.4e-16 + 4.4e-16 + 4.4e-16 + 4.4e-16 ~ 2e-15
+    // << 2. tr = 1e8 + 1e-8 > 0, disc = (a - d)² + 4bc = 1e16 - 4 > 0: real, both positive
+    // (eigenvalues ~1e8 and det / 1e8 = 2e-8) -> unstable node.
+    const J: Matrix2 = [[1e8, 1], [-1, 1e-8]];
+    const r = classify(J, 1e-9, { entryErrors: [[4.4e-8, 4.4e-16], [4.4e-16, 4.4e-24]] });
+    expect(r.classification).toBe("unstable_node");
+    expect(r.caveat).toBeUndefined();
+    const eig = r.eigenvalues.map((e) => e.re).sort((a, b) => a - b);
+    expect(eig[1] / 1e8).toBeCloseTo(1, 9);
+    expect(eig[0] / 2e-8).toBeCloseTo(1, 6);
+    // One error for all entries (the largest, 4.4e-8) hides it: 4.4e-8 (1e8 + 1 + 1 + 1e-8) ~ 4.4 > 2.
+    expect(classify(J, 1e-9, { zeroFloor: 4.4e-8 }).classification).toBe("non_hyperbolic");
+    // A non-finite entry error disables the error-based regime (purely relative: det / scale² = 2e-16 -> zero).
+    expect(classify(J, 1e-9, { entryErrors: [[Infinity, 0], [0, 0]] }).classification).toBe("non_hyperbolic");
+  });
+
+  it("J.9: in the error-based regime a repeated root always carries the caveat, exact or not", () => {
+    // Two finite-difference Jacobians of the same star node diag(π, π): one came out bit-identical
+    // on the diagonal, the other differs by 1.3e-10 (rounding of the located root). With entry
+    // errors of 4e-9 both discriminants are zero to precision ((1.3e-10)² <= 2 · 1.3e-10 · 8e-9),
+    // both are star nodes (|a - d| <= e_a + e_d), and both must say so with the same caveat: the
+    // matrix is only known to within its error, so an exactly zero difference is no more a fact.
+    const errors: Matrix2 = [[4e-9, 4e-9], [4e-9, 4e-9]];
+    const exact = classify([[Math.PI, 0], [0, Math.PI]], 1e-9, { entryErrors: errors });
+    const noisy = classify([[Math.PI, 0], [0, Math.PI + 1.3e-10]], 1e-9, { entryErrors: errors });
+    for (const r of [exact, noisy]) {
+      expect(r.classification).toBe("star_node");
+      expect(r.caveat).toBe("repeatedRoot");
+      expect(r.eigenvalues[0].re).toBeCloseTo(Math.PI, 9);
+    }
+    // Without an error estimate the bare rule stands: an exactly zero discriminant needs no caveat.
+    expect(classify([[Math.PI, 0], [0, Math.PI]]).caveat).toBeUndefined();
   });
 
   it("domainEdge is a caveat key consumers can look up", () => {

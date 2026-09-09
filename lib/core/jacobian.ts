@@ -84,8 +84,17 @@ export function jacobianAt(sys: CompiledSystem, p: Vec2, h?: number, t = 0, opts
 
 export type JacobianWithError = {
   J: Matrix2;
-  /** Estimated absolute error of the entries (truncation plus rounding); Infinity when J is not finite. */
+  /** Largest of `errors` (truncation plus rounding); Infinity when J is not finite. */
   error: number;
+  /**
+   * Estimated absolute error of EACH entry (review J item 6): entry (i, j) = ∂F_i/∂x_j carries its
+   * own truncation |J_h - J_2h|_ij / 3 and its own rounding floor eps |F_i| / h measured on the
+   * stencil of column j. A single error for the whole matrix let the 1e8 entry of
+   * [[1e8, 1], [-1, 1e-8]] (rounding ~4e-8) hide the determinant 2: e (|a| + |b| + |c| + |d|)
+   * ~ 4e3, whereas the per-entry propagation e_a |d| + e_d |a| + e_b |c| + e_c |b| is ~1e-15.
+   * All Infinity when J is not finite.
+   */
+  errors: Matrix2;
   /**
    * True when the central stencil crosses the edge of the field's domain: the field is finite at
    * p and on one side of it, not on the other (x' = sqrt(x) at x = 0). J is then the (non-finite)
@@ -104,18 +113,29 @@ export type JacobianWithError = {
 export function jacobianWithError(sys: CompiledSystem, p: Vec2, t = 0): JacobianWithError {
   const h = 1e-6 * Math.max(1, Math.hypot(p.x, p.y));
   const J = jacobianAt(sys, p, h, t);
+  const infinite: Matrix2 = [[Infinity, Infinity], [Infinity, Infinity]];
   if (!allFinite(J)) {
     const domainEdge = finiteVec(sys.eval(p, t)) && allFinite(jacobianAt(sys, p, h, t, { oneSided: true }));
-    return { J, error: Infinity, domainEdge };
+    return { J, error: Infinity, errors: infinite, domainEdge };
   }
   const J2 = jacobianAt(sys, p, 2 * h, t);
-  let truncation = 0;
-  for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) truncation = Math.max(truncation, Math.abs(J[i][j] - J2[i][j]) / 3);
-  const mags = [sys.eval({ x: p.x + h, y: p.y }, t), sys.eval({ x: p.x - h, y: p.y }, t), sys.eval({ x: p.x, y: p.y + h }, t), sys.eval({ x: p.x, y: p.y - h }, t)]
-    .flatMap((v) => [Math.abs(v.x), Math.abs(v.y)])
-    .filter(Number.isFinite);
-  const rounding = (4 * 2.220446049250313e-16 * (mags.length ? Math.max(...mags) : 0)) / (2 * h);
-  return { J, error: Number.isFinite(truncation) ? truncation + rounding : Infinity, domainEdge: false };
+  // Rounding floor of column j: the largest |F_i| on that column's stencil p ± h e_j, per component i.
+  const stencil = [
+    [sys.eval({ x: p.x + h, y: p.y }, t), sys.eval({ x: p.x - h, y: p.y }, t)],
+    [sys.eval({ x: p.x, y: p.y + h }, t), sys.eval({ x: p.x, y: p.y - h }, t)],
+  ];
+  const errors: Matrix2 = [[0, 0], [0, 0]];
+  let error = 0;
+  for (let i = 0; i < 2; i++) {
+    for (let j = 0; j < 2; j++) {
+      const truncation = Math.abs(J[i][j] - J2[i][j]) / 3;
+      const mags = stencil[j].map((v) => Math.abs(i === 0 ? v.x : v.y)).filter(Number.isFinite);
+      const rounding = (4 * EPS * (mags.length ? Math.max(...mags) : 0)) / (2 * h);
+      errors[i][j] = Number.isFinite(truncation) ? truncation + rounding : Infinity;
+      error = Math.max(error, errors[i][j]);
+    }
+  }
+  return { J, error, errors, domainEdge: false };
 }
 
 /**
@@ -127,13 +147,24 @@ export function jacobianWithError(sys: CompiledSystem, p: Vec2, t = 0): Jacobian
  * Jacobians are non-finite on both sides contributes nothing. Non-negative, possibly 0.
  */
 export function jacobianSensitivity(sys: CompiledSystem, p: Vec2, J: Matrix2, d?: number, t = 0): number {
+  const S = jacobianSensitivityEntries(sys, p, J, d, t);
+  return Math.max(S[0][0], S[0][1], S[1][0], S[1][1]);
+}
+
+/**
+ * Per-entry version of jacobianSensitivity: entry (i, j) is the largest |K_ij - J_ij| / d over the
+ * displaced Jacobians K (review J item 6: the location error moves each entry by its own second
+ * derivative; for x' = 1e10 x, y' = 1e-10 y the 1e10 entry's rounding noise must not be charged to
+ * the 1e-10 entry). jacobianSensitivity is the largest entry of this matrix.
+ */
+export function jacobianSensitivityEntries(sys: CompiledSystem, p: Vec2, J: Matrix2, d?: number, t = 0): Matrix2 {
   const step = d ?? 1e-6 * Math.max(1, Math.hypot(p.x, p.y));
-  let worst = 0;
+  const worst: Matrix2 = [[0, 0], [0, 0]];
   for (const dir of [{ x: 1, y: 0 }, { x: 0, y: 1 }]) {
     for (const sign of [1, -1]) {
       const K = jacobianAt(sys, { x: p.x + sign * step * dir.x, y: p.y + sign * step * dir.y }, undefined, t);
       if (!allFinite(K)) continue;
-      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) worst = Math.max(worst, Math.abs(K[i][j] - J[i][j]) / step);
+      for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) worst[i][j] = Math.max(worst[i][j], Math.abs(K[i][j] - J[i][j]) / step);
       break;
     }
   }
@@ -155,12 +186,18 @@ export function determinant(J: Matrix2): number {
 export function eigenvalues2(J: Matrix2): [Complex, Complex] {
   const tr = trace(J);
   const det = determinant(J);
-  const disc = tr * tr - 4 * det;
+  // (a - d)² + 4bc: tr² - 4 det cancels to rounding noise near a repeated root.
+  const disc = (J[0][0] - J[1][1]) * (J[0][0] - J[1][1]) + 4 * J[0][1] * J[1][0];
   if (disc >= 0) {
+    // The root of larger magnitude by the quadratic formula, the other as det / λ₁ (no
+    // cancellation: diag(1, 1e-20) has eigenvalues 1 and 1e-20, not 1 and 0), largest first.
     const s = Math.sqrt(disc);
+    const l1 = tr >= 0 ? (tr + s) / 2 : (tr - s) / 2;
+    const l2 = l1 !== 0 && Number.isFinite(l1) ? det / l1 : (tr - (tr >= 0 ? s : -s)) / 2;
+    const [hi, lo] = l1 >= l2 ? [l1, l2] : [l2, l1];
     return [
-      { re: (tr + s) / 2, im: 0 },
-      { re: (tr - s) / 2, im: 0 },
+      { re: hi, im: 0 },
+      { re: lo, im: 0 },
     ];
   }
   const im = Math.sqrt(-disc) / 2;
