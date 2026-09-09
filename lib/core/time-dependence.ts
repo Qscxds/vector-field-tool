@@ -56,6 +56,16 @@ export const PROBE_TIMES: readonly number[] = [0, 0.7183, 1.4142, 3.1416, -2.718
 const FX = [0.2137, 0.3819, 0.5773, 0.7071, 0.866, 0.4472, 0.6281, 0.1618, 0.9271, 0.0729, 0.3183, 0.7853, 0.5236];
 const FY = [0.6281, 0.1618, 0.9271, 0.4472, 0.3183, 0.7853, 0.2137, 0.866, 0.5773, 0.7071, 0.0729, 0.3819, 0.4472];
 
+/**
+ * The 13 irrational-fraction sample points of a box (see FX / FY), shared with the second-order
+ * reduction so its numerical checks look at the student's own box too.
+ */
+export function boxSamplePoints(box: Box): Vec2[] {
+  const w = box.x.max - box.x.min;
+  const h = box.y.max - box.y.min;
+  return FX.map((fx, i) => ({ x: box.x.min + fx * w, y: box.y.min + FY[i] * h }));
+}
+
 const EPS = 2.220446049250313e-16;
 const finiteVec = (v: Vec2) => Number.isFinite(v.x) && Number.isFinite(v.y);
 
@@ -68,13 +78,10 @@ function percentile(values: number[], q: number): number {
 
 /** Whether, and how much, F changes with t on the box. Never throws (eval never throws). */
 export function detectTimeDependence(sys: CompiledSystem, box: Box, opts: TimeDependenceOptions = {}): TimeDependence {
-  const w = box.x.max - box.x.min;
-  const h = box.y.max - box.y.min;
   const magnitudes: number[] = [];
   const perPoint: Array<{ deviation: number } | { mixed: true } | null> = [];
-  for (let i = 0; i < FX.length; i++) {
+  for (const p of boxSamplePoints(box)) {
     opts.checkpoint?.();
-    const p: Vec2 = { x: box.x.min + FX[i] * w, y: box.y.min + FY[i] * h };
     const values = PROBE_TIMES.map((t) => sys.eval(p, t));
     const finiteCount = values.filter(finiteVec).length;
     for (const v of values) if (finiteVec(v)) magnitudes.push(Math.hypot(v.x, v.y));

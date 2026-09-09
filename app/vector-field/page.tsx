@@ -108,7 +108,8 @@ function compile(form: Form, L: LabelTable): Compiled {
     if (form.mode === "system") {
       spec = { f: form.f, g: form.g };
     } else if (form.mode === "second") {
-      secondOrder = reduceSecondOrder(form.second);
+      // The entered box joins the sample points of the reduction's numerical checks.
+      secondOrder = reduceSecondOrder(form.second, undefined, { box });
       spec = secondOrder.spec;
     } else {
       firstOrder = form.mode === "explicit" ? { kind: "explicit", g: form.g } : { kind: "differential", M: form.M, N: form.N };

@@ -395,9 +395,13 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "analyze_system; pass the equation as written. For a system of two first-order equations use " +
         "analyze_system; for one first-order equation dy/dt = g(t, y) use analyze_first_order. " +
         "Input syntax for `equation`: the unknown is x, its derivatives are written x' and x'' with straight " +
-        "apostrophes, t is the time (a t in the equation makes the reduced system non-autonomous). Either a full " +
+        "apostrophes, t is the time (a t in the equation makes the reduced system non-autonomous, also when it " +
+        "multiplies x''). Either a full " +
         "equation with exactly one = (x'' + 0.5*x' + x = 0, (1 + x^2)*x'' = -x) or just the right-hand side F " +
         "of x'' = F (-sin(x) - 0.2*x'). x'' must appear linearly (x''^2 or sin(x'') cannot be reduced). " +
+        "The reduction is checked numerically at sample points spread over the viewing box and a generic square, at " +
+        "several times t; a term that is only active away from every sample point (a piecewise x''^2 branch outside " +
+        "the box) cannot be detected, so choose the box the student cares about. " +
         "Write multiplication explicitly: x*x', 2*x, not xx' (2x is accepted). Powers use ^, e.g. x^3. " +
         "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; " +
         'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
@@ -422,7 +426,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
       guarded(d, (checkpoint) => {
         const L = labels(input.locale);
         const box = resolveBox(input);
-        const reduced = reduceSecondOrder(input.equation, input.params);
+        const reduced = reduceSecondOrder(input.equation, input.params, { box });
         const { scene, lines } = analyzePlanar(reduced.spec, box, input.density, input.locale, input.t, checkpoint);
         scene.secondOrder = { equation: reduced.equation, reduced: reduced.reduced };
         const reduction = fill(L.tool.secondOrderReduced, { equation: reduced.equation, g: reduced.reduced.g });

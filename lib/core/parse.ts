@@ -116,18 +116,35 @@ export const MAX_EXPRESSION_LENGTH = 500;
  * Machine-readable reason for the ParseErrors a shell may want to explain in its own words:
  * - "x_in_first_order": the symbol x in "ty" mode (the student meant t).
  * - "lhs_in_expression": the text starts with a left-hand side such as "dy/dt =" or "y' =".
+ * - "second_order_*": the failures of lib/core/second-order.ts (the web shell shows a bilingual
+ *   sentence per code; "second_order_unknown_symbol" carries the symbol in `symbol`).
  * Every other ParseError has no code.
  */
-export type ParseErrorCode = "x_in_first_order" | "lhs_in_expression";
+export type ParseErrorCode =
+  | "x_in_first_order"
+  | "lhs_in_expression"
+  | "second_order_not_affine"
+  | "second_order_zero_coefficient"
+  | "second_order_no_equation"
+  | "second_order_double_equals"
+  | "second_order_too_many_equals"
+  | "second_order_other_prime"
+  | "second_order_higher_derivative"
+  | "second_order_placeholder_typed"
+  | "second_order_undefined_at_samples"
+  | "second_order_unknown_symbol";
 
 export class ParseError extends Error {
   readonly expr: string;
   readonly code?: ParseErrorCode;
-  constructor(expr: string, message: string, code?: ParseErrorCode) {
+  /** The offending symbol name, for the unknown-symbol codes. */
+  readonly symbol?: string;
+  constructor(expr: string, message: string, code?: ParseErrorCode, detail?: { symbol?: string }) {
     super(message);
     this.name = "ParseError";
     this.expr = expr;
     if (code) this.code = code;
+    if (detail?.symbol !== undefined) this.symbol = detail.symbol;
   }
 }
 
@@ -141,11 +158,13 @@ export type CompileOptions = {
  * set for one specific caller (lib/core/second-order.ts validates in {x, t, xd, xdd}: the
  * placeholders xd and xdd for x' and x'', and no y); the placeholders are rejected everywhere else
  * because only that caller passes them. `unknownSymbolMessage` lets such a caller word the
- * unknown-symbol error in its own notation (return undefined to keep the standard message).
+ * unknown-symbol error in its own notation (return undefined to keep the standard message), and
+ * `unknownSymbolCode` gives that error a code (the symbol name travels in ParseError.symbol).
  */
 export type ValidateOptions = CompileOptions & {
   symbols?: readonly string[];
   unknownSymbolMessage?: (name: string) => string | undefined;
+  unknownSymbolCode?: ParseErrorCode;
 };
 
 export interface CompiledSystem {
@@ -222,7 +241,7 @@ function parseChecked(expr: string, paramNames: string[], mode: VariableMode, op
         if (path === "fn" && parent !== null && math.isFunctionNode(parent)) return;
         if (!allowedSymbols.has(n.name)) {
           if (isXSymbol(n.name, mode)) throw new ParseError(expr, X_IN_FIRST_ORDER_MESSAGE, "x_in_first_order");
-          throw new ParseError(expr, opts.unknownSymbolMessage?.(n.name) ?? unknownSymbolMessage(n.name, paramNames, mode));
+          throw new ParseError(expr, opts.unknownSymbolMessage?.(n.name) ?? unknownSymbolMessage(n.name, paramNames, mode), opts.unknownSymbolCode, { symbol: n.name });
         }
       } else if (math.isFunctionNode(n)) {
         const fn = n.fn;

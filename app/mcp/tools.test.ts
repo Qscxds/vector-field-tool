@@ -452,6 +452,58 @@ describe("analyze_second_order", () => {
     expect(r.text).toMatch(/equation/);
   });
 
+  it("(1 + t^2)*x'' = -x: the t in the coefficient survives the reduction, so the system is non-autonomous and no equilibrium is claimed (review J-C.1)", async () => {
+    // x'' = -x / (1 + t^2): the field is (y, -x / (1 + t^2)); at t = 2 the second component is -x/5.
+    const r = await call("analyze_second_order", { equation: "(1 + t^2)*x'' = -x", density: 5, t: 2, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.secondOrder?.reduced.g).toMatch(/\bt\b/);
+    expect(r.scene.system?.g).toMatch(/\bt\b/);
+    expect(r.scene.timeDependent?.snapshotT).toBe(2);
+    expect(r.scene.equilibria).toBeUndefined();
+    expect(r.text).not.toMatch(/\n1\. /);
+    for (const s of r.scene.field!.samples) {
+      expect(s.v.x).toBe(s.at.y);
+      expect(Math.abs(s.v.y - -s.at.x / 5) <= 1e-15 * Math.max(1e-300, Math.abs(s.at.x / 5))).toBe(true);
+    }
+  });
+
+  it("the description tells the model the reduction is checked numerically at sample points over the box (review J-C.2)", async () => {
+    const { tools } = await client.listTools();
+    const t = tools.find((t) => t.name === "analyze_second_order")!;
+    expect(t.description).toMatch(/checked numerically at sample points/);
+    expect(t.description).toMatch(/viewing box/);
+  });
+
+  it("curly apostrophes from a phone keyboard are accepted: x’’ + x = 0 is x'' + x = 0 (review J-C.3)", async () => {
+    const r = await call("analyze_second_order", { equation: "x’’ + x = 0", locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.secondOrder?.equation).toBe("x'' + x = 0");
+    expect(r.scene.equilibria).toHaveLength(1);
+  });
+
+  it("x'' = -9.81/0.1*sin(x) is shown without a folded constant (review J-C.4)", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' = -9.81/0.1*sin(x)", locale: "en" });
+    expect(r.isError).toBeFalsy();
+    // The determinant line legitimately prints 98.1; the reduction and the system header must not fold the constant.
+    expect(r.text).not.toMatch(/98\.10000000000001/);
+    const [reduction, header] = r.text.split("\n");
+    expect(reduction).toMatch(/9\.81 \/ 0\.1/);
+    expect(reduction).not.toMatch(/98\.1/);
+    expect(header).not.toMatch(/98\.1/);
+  });
+
+  // x'' = -x + x'/x' reduces to x' = y, y' = -x + y/y (the quotient is kept). F is undefined on
+  // the whole line y = 0 and equals (y, 1 - x) elsewhere, so it has NO zero in its domain: the
+  // derived expectation is no equilibrium at all. At HEAD the equilibrium search accepts the limit
+  // point (1, ~1e-26) because y/y evaluates to 1 for every nonzero y; the point where the equation
+  // is undefined is then classified. Recorded as an open question for the equilibria kernel.
+  it.fails("x'' = -x + x'/x': no equilibrium is reported at (1, 0), where the equation is undefined (review J-C.4, kernel open question)", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' = -x + x'/x'", locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.secondOrder?.reduced.g).toMatch(/y\s*\/\s*y/);
+    expect(r.scene.equilibria ?? []).toHaveLength(0);
+  });
+
   it("x'' = -x + sin(t): the reduced system is non-autonomous, so the shared time-dependence branch runs before any equilibrium search and t selects the snapshot", async () => {
     // x' = y, y' = sin(t) - x: identical to the analyze_system case above, so the same derivation
     // applies (relative deviation at least 0.1975 on the default box). The reduction line still
