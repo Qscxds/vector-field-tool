@@ -7,7 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { NO_FORM_NOTE } from "@/lib/core/detect-form";
-import { constantSolutionNotices, fill, labels, stabilitySentence } from "@/lib/labels";
+import { constantSolutionNotices, fill, formatPoint, labels, stabilitySentence } from "@/lib/labels";
 import type { Scene } from "@/lib/scene";
 import { SlidingWindowLimiter } from "./rate-limit";
 import { createMcpServer } from "./server";
@@ -1047,9 +1047,13 @@ describe("uniqueness failure and domain-edge constant solutions (J.2)", () => {
     const [e] = r.scene.equilibria!;
     expect(e.uniqueness).toMatchObject({ verdict: "unbounded", along: "x" });
     expect(e.uniqueness!.exponent).toBeCloseTo(0.5, 6);
-    const sentence = fill(labels("en").uniqueness.unboundedPoint, { point: "(0, 0)", alpha: "0.5" });
+    // The located root is within ~1e-16 of the origin; J-fix2 formatNumber prints that honestly
+    // (only an exact 0 prints as 0), so the printed point is derived from the scene, not assumed.
+    expect(Math.hypot(e.at.x, e.at.y)).toBeLessThan(1e-12);
+    const point = formatPoint(e.at);
+    const sentence = fill(labels("en").uniqueness.unboundedPoint, { point, alpha: "0.5" });
     expect(r.text).toContain(sentence);
-    expect(r.text.indexOf(sentence)).toBeGreaterThan(r.text.indexOf("1. Equilibrium (0, 0)"));
+    expect(r.text.indexOf(sentence)).toBeGreaterThan(r.text.indexOf(`1. Equilibrium ${point}`));
     // a smooth system stays silent and still carries the verdict
     const lin = await call("analyze_system", { f: "x", g: "-y", locale: "en" });
     expect(lin.scene.equilibria![0].uniqueness?.verdict).toBe("bounded_at_tested_scales");
