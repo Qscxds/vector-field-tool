@@ -77,7 +77,8 @@ export type LabelTable = {
     | "urlReasonQueryTooLong" | "urlReasonTooLong" | "urlReasonInvalidExpression" | "urlReasonNotANumber"
     | "urlReasonNotInteger" | "urlReasonOutOfRange" | "urlReasonInvertedRange" | "urlReasonTooNarrow"
     | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode"
-    | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond",
+    | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
+    | "presetCustom",
     string
   >;
 };
@@ -297,6 +298,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       equationExplicit: "dy/dt = {g}",
       equationDifferential: "({M}) dt + ({N}) dy = 0",
       equationSecond: "{equation}",
+      presetCustom: "自定义",
     },
   },
   en: {
@@ -513,6 +515,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       equationExplicit: "dy/dt = {g}",
       equationDifferential: "({M}) dt + ({N}) dy = 0",
       equationSecond: "{equation}",
+      presetCustom: "Custom",
     },
   },
 };

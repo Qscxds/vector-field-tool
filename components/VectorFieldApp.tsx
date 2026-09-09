@@ -18,7 +18,7 @@ import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
 import { buildShareUrl, encodeState, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
-import { PRESETS, type Preset, type PresetMode } from "@/app/vector-field/presets";
+import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } from "@/app/vector-field/presets";
 
 export type VectorFieldAppProps = {
   /** Decoded page state (lib/url-state); the first render already shows it, no flash of a default. */
@@ -163,21 +163,9 @@ function equationText(form: Form, L: LabelTable, secondOrder: ReducedSecondOrder
   }
 }
 
+/** A preset as form text; the view options (density, arrows) are kept from the current form. */
 function fromPreset(p: Preset, density: number, arrowMode: ArrowMode): Form {
-  return {
-    mode: p.mode,
-    f: p.f,
-    g: p.g,
-    M: p.M,
-    N: p.N,
-    second: p.second ?? "",
-    xMin: String(p.box.xMin),
-    xMax: String(p.box.xMax),
-    yMin: String(p.box.yMin),
-    yMax: String(p.box.yMax),
-    density,
-    arrowMode,
-  };
+  return { ...fromAppState(presetState(p)), density, arrowMode };
 }
 
 /** Student-facing name of the horizontal coordinate: x for a planar system or a second-order equation, t for a first-order equation. */
@@ -340,7 +328,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
 
   const loadPreset = (p: Preset) => {
     setForm(fromPreset(p, form.density, form.arrowMode));
-    setTrajectorySeeds([]);
+    setTrajectorySeeds((p.starts ?? []).map((q) => ({ x: q.x, y: q.y })));
     setPresetId(p.id);
   };
 
@@ -448,20 +436,39 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
         </>
       )}
 
-      {controls ? <section style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-        <span style={{ alignSelf: "center", color: "#52606d" }}>{L.ui.presets}</span>
-        {PRESETS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => loadPreset(p)}
-            style={{ ...buttonStyle, ...(p.id === presetId ? { border: "1px solid #1d4ed8", background: "#eff6ff" } : {}) }}
-            data-preset={p.id}
-          >
-            {p.name[locale]}
-          </button>
-        ))}
-      </section> : null}
+      {controls ? (
+        <section style={{ display: "grid", gap: 4, marginBottom: 14 }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", color: "#52606d" }}>
+            <span>{L.ui.presets}</span>
+            <select
+              value={presetId ?? ""}
+              onChange={(e) => {
+                const p = PRESETS.find((x) => x.id === e.target.value);
+                if (p) loadPreset(p);
+              }}
+              style={{ ...inputStyle, maxWidth: "100%" }}
+              name="preset"
+              data-preset-select
+            >
+              <option value="">{L.ui.presetCustom}</option>
+              {presetsByGroup().map(({ group, presets }) => (
+                <optgroup key={group.id} label={group.name[locale]}>
+                  {presets.map((p) => (
+                    <option key={p.id} value={p.id}>
+                      {p.name[locale]}
+                    </option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+          </label>
+          {preset ? (
+            <p style={{ margin: 0, color: "#52606d" }} data-preset-note>
+              {preset.note[locale]}
+            </p>
+          ) : null}
+        </section>
+      ) : null}
 
       {urlProblems && urlProblems.length > 0 ? (
         <p role="alert" data-url-problems style={{ padding: "8px 12px", margin: "0 0 14px", background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a", borderRadius: 6 }}>
@@ -579,7 +586,6 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {fill(L.ui.secondOrderReduced, { g: compiled.secondOrder.reduced.g })}
             </p>
           ) : null}
-          {preset ? <p style={{ margin: 0, color: "#52606d" }}>{preset.note[locale]}</p> : null}
           <p style={{ margin: 0, color: "#52606d", fontSize: 12 }}>
             {form.mode === "system" ? L.ui.syntaxHint : form.mode === "second" ? L.ui.syntaxHintSecondOrder : L.ui.syntaxHintFirstOrder}
           </p>
