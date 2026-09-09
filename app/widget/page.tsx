@@ -17,7 +17,7 @@ import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
@@ -222,9 +222,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
     items.push(scene.kind === "analyze_first_order" && scene.firstOrder ? scene.firstOrder.expr : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
-  if (scene.warning) items.push(L.warning[scene.warning]);
-  if (scene.truncated) items.push(fill(L.ui.equilibriaTruncated, { max: scene.equilibria?.length ?? 0 }));
-  for (const s of scene.singularPoints ?? []) items.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
+  items.push(...equilibriaNotices(L, scene));
   // Mode-aware (planar / explicit first order / differential form): see lib/labels-trajectory.
   for (const group of groupTrajectories(scene.trajectories ?? [])) items.push(...trajectoryLines(scene, group, L));
   const fo = scene.firstOrder;
@@ -238,6 +236,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
     }
     if (fo.singularities?.length) {
       items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: fo.singularitiesTruncated ? L.tool.truncated : "" }));
+      if (fo.singularitiesWarning === "possible_continuum") items.push(L.ui.singularitiesContinuum);
       if (fo.singularitiesTruncated) items.push(fill(L.ui.singularitiesTruncated, { max: fo.singularities.length }));
     }
     const all = fo.forms ?? [];

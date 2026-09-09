@@ -25,7 +25,7 @@ import {
 } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { EXACT_PATH_TOL, markNonUnique, withUniqueness } from "@/lib/interactive";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, stabilitySentence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, stabilitySentence, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
@@ -66,9 +66,11 @@ const LOCALE_RULE =
 
 /** analyze_system and sample_field: what happens when f or g mentions t. */
 const NON_AUTONOMOUS_RULE =
-  "If f or g mentions t the system is non-autonomous: the field changes with time, so the tool returns the field " +
-  "sampled at the snapshot time `t` and says so, and equilibria and stability are NOT computed (they are undefined " +
-  "for a non-autonomous system).";
+  "If the symbol t appears in f or g the system is treated as non-autonomous (a static rule, whatever the size of " +
+  "the t term): the field changes with time, so the tool returns the field sampled at the snapshot time `t` and " +
+  "says so, and equilibria and linearized stability are NOT computed (they are tools for autonomous systems; this " +
+  "tool does not attempt them for a time-dependent field). A numerical probe only reports how much the field " +
+  "changed at a few sampled times, as evidence.";
 
 // ---------- schemas ----------
 
@@ -185,11 +187,8 @@ function boxValues(box: Box): Record<string, string> {
 
 function describeEquilibria(scene: Scene, locale: Locale): string[] {
   const L = labels(locale);
-  const lines: string[] = [];
   const eq = scene.equilibria ?? [];
-  if (scene.warning) lines.push(L.warning[scene.warning]);
-  if (scene.truncated) lines.push(fill(L.ui.equilibriaTruncated, { max: eq.length }));
-  for (const s of scene.singularPoints ?? []) lines.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
+  const lines: string[] = equilibriaNotices(L, scene);
   eq.forEach((p, i) => {
     lines.push(
       fill(L.tool.equilibriumLine, {
@@ -308,7 +307,7 @@ export function analyzePlanar(
   if (td.dependsOnT) {
     const field = sampleField(sys, box, density, density, snapshotT, checkpoint);
     const scene: Scene = { kind: "analyze_system", locale, system: spec, box, field, timeDependent: { snapshotT, maxRelDeviation: td.maxRelDeviation } };
-    const note = fill(L.tool.timeDependent, { t: fmt(snapshotT), deviation: formatDeviation(td.maxRelDeviation) });
+    const note = fill(L.tool.timeDependent, { t: fmt(snapshotT), evidence: timeDependenceEvidence(L, td) });
     const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
     return { scene, lines: [`${header}${singularNote(field.singularCount)}`, note, line] };
   }
@@ -519,7 +518,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           });
           return t.nonUnique ? [line, L.tool.nonUniqueTrajectory] : [line];
         });
-        if (td.dependsOnT) lines.push(fill(L.tool.timeDependentTrajectory, { deviation: formatDeviation(td.maxRelDeviation) }));
+        if (td.dependsOnT) lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td) }));
         return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: spec.g })}\n${lines.join("\n")}`, scene);
       }),
   );
@@ -567,8 +566,9 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           ...(td.dependsOnT ? { timeDependent: { snapshotT: input.t, maxRelDeviation: td.maxRelDeviation } } : {}),
         };
         const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
-        const note = td.dependsOnT ? "\n" + fill(L.tool.timeDependent, { t: fmt(input.t), deviation: formatDeviation(td.maxRelDeviation) }) : "";
-        return ok(`${line} ${L.tool.widgetDraws}${note}`, scene);
+        // The snapshot note comes first, so the field line it explains follows it.
+        const note = td.dependsOnT ? fill(L.tool.timeDependent, { t: fmt(input.t), evidence: timeDependenceEvidence(L, td) }) + "\n" : "";
+        return ok(`${note}${line} ${L.tool.widgetDraws}`, scene);
       }),
   );
 
@@ -675,6 +675,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             solutions: eq.solutions,
             singularities: singular.points,
             singularitiesTruncated: singular.truncated,
+            singularitiesWarning: singular.warning,
             forms,
             formsNote: reported.length === 0 ? NO_FORM_NOTE[locale] : undefined,
             implicit,
@@ -693,6 +694,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
               truncated: singular.truncated ? L.tool.truncated : "",
             }),
           );
+          if (singular.warning === "possible_continuum") lines.push(L.ui.singularitiesContinuum);
           if (singular.truncated) lines.push(fill(L.ui.singularitiesTruncated, { max: singular.points.length }));
         }
         if (eq.solutions.length) {

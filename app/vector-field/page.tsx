@@ -13,7 +13,7 @@ import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSyste
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
+import { equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
@@ -79,14 +79,18 @@ function parseBox(form: Form, L: LabelTable): Box {
  * English text: in a planar system a pasted left-hand side is "x' =" / "y' =" and x is a state
  * variable, so the t-instead-of-x sentence is never shown there; the two first-order modes name
  * "dy/dt =" and add the t sentence when the kernel's message carries it (a pasted dy/dx).
- * Second-order mode: the kernel's specific hints (linearity in x'', the unknown is x, write =) are
- * English sentences from lib/core/second-order, shown inside the bilingual wrapper (a recorded limitation).
+ * Second-order mode: every refusal of lib/core/second-order carries a second_order_* code, mapped
+ * to its bilingual sentence here (the unknown-symbol one names the symbol); only a generic syntax
+ * failure still shows the kernel's English text inside the wrapper, as in the other modes.
  */
 function explain(error: unknown, L: LabelTable, mode: PresetMode): string {
   if (error instanceof ParseError) {
     if (mode === "system") {
       if (error.code === "lhs_in_expression") return L.ui.lhsInExpressionSystem;
-    } else if (mode !== "second") {
+    } else if (mode === "second") {
+      const sentence = error.code ? SECOND_ORDER_SENTENCES[error.code] : undefined;
+      if (sentence) return fill(L.ui[sentence], { name: error.symbol ?? "" });
+    } else {
       if (error.code === "x_in_first_order") return L.ui.xInFirstOrder;
       if (error.code === "lhs_in_expression") {
         const wroteDx = error.message.includes(X_IN_FIRST_ORDER_MESSAGE);
@@ -98,6 +102,20 @@ function explain(error: unknown, L: LabelTable, mode: PresetMode): string {
   if (error instanceof RangeError) return error.message;
   return error instanceof Error ? error.message : String(error);
 }
+
+/** The bilingual sentence for each second-order refusal code. */
+const SECOND_ORDER_SENTENCES: Partial<Record<NonNullable<ParseError["code"]>, keyof LabelTable["ui"]>> = {
+  second_order_not_affine: "secondOrderNotAffine",
+  second_order_zero_coefficient: "secondOrderZeroCoefficient",
+  second_order_no_equation: "secondOrderNoEquation",
+  second_order_double_equals: "secondOrderDoubleEquals",
+  second_order_too_many_equals: "secondOrderTooManyEquals",
+  second_order_other_prime: "secondOrderOtherPrime",
+  second_order_higher_derivative: "secondOrderHigherDerivative",
+  second_order_placeholder_typed: "secondOrderPlaceholderTyped",
+  second_order_undefined_at_samples: "secondOrderUndefinedAtSamples",
+  second_order_unknown_symbol: "secondOrderUnknownSymbol",
+};
 
 function compile(form: Form, L: LabelTable): Compiled {
   try {
@@ -389,10 +407,10 @@ function EquilibriaList({ scene, L }: { scene: Scene; L: LabelTable }) {
   return (
     <section style={{ marginTop: 14 }}>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.equilibriaHeading}</h2>
-      {scene.warning ? <p style={{ margin: "0 0 6px", color: "#92400e" }}>{L.warning[scene.warning]}</p> : null}
-      {scene.truncated ? <p style={{ margin: "0 0 6px", color: "#92400e" }}>{fill(L.ui.equilibriaTruncated, { max: eq.length })}</p> : null}
-      {(scene.singularPoints ?? []).map((s, i) => (
-        <p key={`singular-${i}`} style={{ margin: "0 0 6px", color: "#92400e" }}>{fill(L.tool.singularPoint, { point: formatPoint(s) })}</p>
+      {equilibriaNotices(L, scene).map((line) => (
+        <p key={line} style={{ margin: "0 0 6px", color: "#92400e" }}>
+          {line}
+        </p>
       ))}
       <ol style={{ margin: 0, paddingLeft: 20 }}>
         {eq.map((p, i) => (
@@ -432,6 +450,7 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
         <div>
           <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.singularHeading}</h2>
           <p style={{ margin: 0 }}>{fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator)}</p>
+          {fo.singularitiesWarning === "possible_continuum" ? <p style={{ margin: "6px 0 0", color: "#92400e" }} data-singularities-continuum>{L.ui.singularitiesContinuum}</p> : null}
           {fo.singularitiesTruncated ? <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.ui.singularitiesTruncated, { max: fo.singularities.length })}</p> : null}
         </div>
       ) : null}

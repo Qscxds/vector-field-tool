@@ -690,9 +690,20 @@ describe("sample_field", () => {
     expect(r.scene.field!.maxMag).toBe(2);
     expect(r.text).toContain("snapshot at t = 2");
     expect(r.text).toContain(labels("en").tool.widgetDraws);
+    // The note precedes the field line it explains (J review C.7), and the probe's evidence is reported.
+    expect(r.text.indexOf("non-autonomous")).toBeLessThan(r.text.indexOf("Sampled the vector field"));
+    expect(r.text).toContain(labels("en").tool.timeDependenceMeasured.split("{deviation}")[0]);
     const zh = await call("sample_field", { f: "t", g: "0", density: 5, locale: "zh" });
     expect(zh.scene.timeDependent?.snapshotT).toBe(0);
     expect(zh.text).toContain("t = 0 时刻的快照");
+    expect(zh.text.indexOf("非自治")).toBeLessThan(zh.text.indexOf("采样了向量场"));
+    // No change measured at the sampled times (0*t): the evidence says so, the verdict still stands.
+    const noChange = await call("sample_field", { f: "0*t + y", g: "-x", density: 5, locale: "en" });
+    expect(noChange.scene.timeDependent?.snapshotT).toBe(0);
+    expect(noChange.text).toContain(labels("en").tool.timeDependenceNoChange);
+    // A domain that moves with t: the evidence names it instead of printing a number.
+    const moving = await call("sample_field", { f: "y", g: "-x*sqrt(t - 5)", density: 5, t: 10, locale: "en" });
+    expect(moving.text).toContain(labels("en").tool.timeDependenceDomainMoves);
     const autonomous = await call("sample_field", { f: "x", g: "y", density: 5, t: 2, locale: "en" });
     expect(autonomous.scene.timeDependent).toBeUndefined();
     expect(autonomous.text).not.toMatch(/non-autonomous/);
@@ -893,6 +904,21 @@ describe("truncated lists are said in full sentences (J.5b)", () => {
     expect(r.scene.equilibria).toHaveLength(30);
     expect(r.scene.warning).toBe("hit_limit");
     expect(r.text).toContain(labels("en").ui.equilibriaTruncated.replace(/\{max\}/g, "30"));
+    // The cap is said once: the truncation sentence carries the count, the bare hit_limit line is not repeated.
+    expect(r.text).not.toContain(labels("en").warning.hit_limit);
+    expect(r.text.split("\n")[1]).toBe(labels("en").ui.equilibriaTruncated.replace(/\{max\}/g, "30"));
+  });
+
+  it("analyze_first_order: a line of singular points (M = y, N = y*t: every point of y = 0) is reported as a continuum in the scene and the text (J review C.7)", async () => {
+    // M = N = 0 exactly on the line y = 0: the reduced system x' = N = y t, y' = -M = -y has the
+    // whole t-axis as equilibria, so the search returns possible_continuum.
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_first_order", { M: "y", N: "y*t", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.firstOrder?.singularitiesWarning, locale).toBe("possible_continuum");
+      expect(r.scene.firstOrder!.singularities!.every((p) => Math.abs(p.y) <= 1e-9), locale).toBe(true);
+      expect(r.text, locale).toContain(labels(locale).ui.singularitiesContinuum);
+    }
   });
 
   it("analyze_first_order: a continuum of singular points is truncated but still called a continuum", async () => {

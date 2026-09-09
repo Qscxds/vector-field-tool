@@ -150,6 +150,74 @@ describe("label tables", () => {
     expect(uniquenessSentence(L, { verdict: "borderline", exponent: 0.1234 }, { point: { x: 1, y: 2 } })).toBe(fill(L.uniqueness.borderlinePoint, { point: "(1, 2)", alpha: "0.12" }));
   });
 
+  it("the non-autonomous sentences never claim equilibria are undefined for such systems, and say what the tool does instead (J review C.6)", () => {
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      for (const text of [L.tool.timeDependent, L.tool.timeDependentTrajectory, L.ui.timeDependentNote]) {
+        expect(text, `${locale}: ${text}`).not.toMatch(/only defined for autonomous|只对自治系统有定义|undefined for a non-autonomous/);
+        expect(text, `${locale}: ${text}`).toMatch(/[。.]$/);
+      }
+      expect(L.tool.timeDependent).toContain("{t}");
+      expect(L.tool.timeDependent).toContain("{evidence}");
+      expect(L.tool.timeDependentTrajectory).toContain("{evidence}");
+      expect(L.ui.timeDependentNote).toContain("{t}");
+      // The evidence sentences are full sentences; the measured one carries the number.
+      for (const key of ["timeDependenceMeasured", "timeDependenceNoChange", "timeDependenceDomainMoves", "timeDependenceUntested"] as const) {
+        expect(L.tool[key], `${locale}.${key}`).toMatch(/[。.]$/);
+      }
+      expect(L.tool.timeDependenceMeasured).toContain("{deviation}");
+    }
+    expect(labels("en").tool.timeDependent).toMatch(/tools for autonomous systems/);
+    expect(labels("en").tool.timeDependent).toMatch(/snapshot at t = \{t\}/);
+    expect(labels("zh").tool.timeDependent).toMatch(/针对自治系统的工具/);
+    expect(labels("zh").tool.timeDependent).toMatch(/t = \{t\} 时刻的快照/);
+  });
+
+  it("timeDependenceEvidence picks the sentence from the probe: measured, no change, moving domain, untested", async () => {
+    const { timeDependenceEvidence } = await import("./labels");
+    const L = labels("en");
+    expect(timeDependenceEvidence(L, { maxRelDeviation: 0.25, samples: 13 })).toBe(fill(L.tool.timeDependenceMeasured, { deviation: "2.5e-1" }));
+    expect(timeDependenceEvidence(L, { maxRelDeviation: 0, samples: 13 })).toBe(L.tool.timeDependenceNoChange);
+    expect(timeDependenceEvidence(L, { maxRelDeviation: Infinity, samples: 13 })).toBe(L.tool.timeDependenceDomainMoves);
+    expect(timeDependenceEvidence(L, { maxRelDeviation: 0, samples: 0 })).toBe(L.tool.timeDependenceUntested);
+  });
+
+  it("the truncation sentences are self-contained (no reference to a verdict 'above'), and the continuum sentence for singular points exists (J review C.7)", () => {
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      for (const text of [L.ui.equilibriaTruncated, L.ui.singularitiesTruncated]) {
+        expect(text, `${locale}: ${text}`).not.toMatch(/above|上面/);
+        expect(text, `${locale}: ${text}`).toContain("{max}");
+      }
+      expect(L.ui.singularitiesContinuum.length).toBeGreaterThan(30);
+      expect(L.ui.singularitiesContinuum).toMatch(/[。.]$/);
+    }
+  });
+
+  it("equilibriaNotices prints the cap once: the truncation sentence replaces the hit_limit warning; other warnings stay (J review C.7)", async () => {
+    const { equilibriaNotices } = await import("./labels");
+    const L = labels("en");
+    const thirty = new Array(30).fill(0);
+    expect(equilibriaNotices(L, { warning: "hit_limit", truncated: true, equilibria: thirty })).toEqual([fill(L.ui.equilibriaTruncated, { max: 30 })]);
+    expect(equilibriaNotices(L, { warning: "possible_continuum", truncated: true, equilibria: thirty })).toEqual([L.warning.possible_continuum, fill(L.ui.equilibriaTruncated, { max: 30 })]);
+    expect(equilibriaNotices(L, { warning: "none_found", equilibria: [] })).toEqual([L.warning.none_found]);
+    expect(equilibriaNotices(L, { equilibria: [1] })).toEqual([]);
+  });
+
+  it("every second-order refusal has a bilingual sentence, as a full sentence (J review C.8)", () => {
+    const keys = [
+      "secondOrderNotAffine", "secondOrderZeroCoefficient", "secondOrderNoEquation", "secondOrderDoubleEquals", "secondOrderTooManyEquals",
+      "secondOrderOtherPrime", "secondOrderHigherDerivative", "secondOrderPlaceholderTyped", "secondOrderUndefinedAtSamples", "secondOrderUnknownSymbol",
+    ] as const;
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      for (const key of keys) expect(L.ui[key], `${locale}.${key}`).toMatch(/[。.]$/);
+      expect(L.ui.secondOrderUnknownSymbol).toContain("{name}");
+    }
+    expect(labels("zh").ui.secondOrderNotAffine).toMatch(/线性/);
+    expect(labels("en").ui.secondOrderNotAffine).toMatch(/linearly/);
+  });
+
   it("caveats read as full sentences in both languages", () => {
     for (const locale of LOCALES) {
       for (const text of Object.values(labels(locale).caveat)) {

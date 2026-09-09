@@ -59,6 +59,14 @@ describe("computeFeatures", () => {
     expect(auto.equilibria).toHaveLength(1);
   });
 
+  it("carries the singular points' continuum verdict into the first-order view (J review C.7)", () => {
+    const spec = { kind: "differential" as const, M: "y", N: "y*t" };
+    const f = computeFeatures(compileSystem(toSystem(spec)), spec, box, "en");
+    expect(f.firstOrder?.singularitiesWarning).toBe("possible_continuum");
+    const isolated = { kind: "differential" as const, M: "2*t*y", N: "t^2 + y^2" };
+    expect(computeFeatures(compileSystem(toSystem(isolated)), isolated, box, "en").firstOrder?.singularitiesWarning).toBeUndefined();
+  });
+
   it("the verdict is static: 0*t + y, a 1e-6 forcing on a huge box and a forcing localized away from every sample all get timeDependent, never equilibria (J review C.5)", () => {
     // t appears in each of them; the probe measures 0, ~1e-10 and 0 respectively, and the origin
     // would otherwise be listed as a center for a system that has no equilibrium for all t.

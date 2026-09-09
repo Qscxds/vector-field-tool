@@ -48,7 +48,8 @@ export type LabelTable = {
     | "formsInconsistentLine" | "formsUntestableLine" | "exactImplicit" | "exactPathCheckFailed" | "listSeparator"
     | "parenOpen" | "parenClose"
     | "nonUniqueTrajectory"
-    | "timeDependent" | "timeDependentTrajectory" | "secondOrderReduced",
+    | "timeDependent" | "timeDependentTrajectory" | "secondOrderReduced"
+    | "timeDependenceMeasured" | "timeDependenceNoChange" | "timeDependenceDomainMoves" | "timeDependenceUntested",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -67,7 +68,11 @@ export type LabelTable = {
     | "equilibriaTruncated" | "singularitiesTruncated"
     | "nonUniqueTrajectory"
     | "timeDependentNote" | "snapshotT"
-    | "typeSecond" | "secondOrderLabel" | "secondOrderReduced" | "syntaxHintSecondOrder",
+    | "typeSecond" | "secondOrderLabel" | "secondOrderReduced" | "syntaxHintSecondOrder"
+    | "singularitiesContinuum"
+    | "secondOrderNotAffine" | "secondOrderZeroCoefficient" | "secondOrderNoEquation" | "secondOrderDoubleEquals"
+    | "secondOrderTooManyEquals" | "secondOrderOtherPrime" | "secondOrderHigherDerivative" | "secondOrderPlaceholderTyped"
+    | "secondOrderUndefinedAtSamples" | "secondOrderUnknownSymbol",
     string
   >;
 };
@@ -178,9 +183,13 @@ export const LABELS: Record<Locale, LabelTable> = {
       parenOpen: "（",
       parenClose: "）",
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
-      timeDependent: "这是非自治系统：向量场随 t 变化（在观察范围内取 5 个时刻采样，向量场的最大相对变化为 {deviation}），下面的采样场是 t = {t} 时刻的快照；平衡点与线性化稳定性分析在此不适用（它们只对自治系统有定义），因此没有给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
-      timeDependentTrajectory: "这是非自治系统（向量场随 t 变化，最大相对变化为 {deviation}）：轨线从 t = 0 出发，逆向部分是 t < 0 时的解；从同一点在另一个时刻出发会得到不同的曲线。",
+      timeDependent: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}采样场是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场本工具不做这项分析，因此没有给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
+      timeDependentTrajectory: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}轨线从 t = 0 出发，逆向部分是 t < 0 时的解；从同一点在另一个时刻出发会得到不同的曲线。",
       secondOrderReduced: "二阶方程 {equation}：令 y = x'，降阶为系统 x' = y，y' = {g}。",
+      timeDependenceMeasured: "在观察范围内取若干时刻采样，向量场的最大相对变化为 {deviation}。",
+      timeDependenceNoChange: "在观察范围内取若干时刻采样时没有测到变化（含 t 的项可能在这些时刻恰好为零或相互抵消），但 t 确实出现在方程中，因此同样不做上述分析。",
+      timeDependenceDomainMoves: "向量场在部分采样时刻有定义、在其他时刻无定义：它的定义域随 t 变化。",
+      timeDependenceUntested: "向量场在所有采样时刻都无法计算，因此无法测量它随 t 的变化幅度。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -242,15 +251,26 @@ export const LABELS: Record<Locale, LabelTable> = {
       lhsInExpressionSystem: "只需输入方程的右端，「x' =」「y' =」这一部分是默认的。",
       towardT: "到 t = {t}，{status}",
       trajectorySides: "一侧：{first}；另一侧：{second}",
-      equilibriaTruncated: "平衡点数量超过上限 {max}，只列出前 {max} 个（按 x 坐标排序）；上面的连续解集判断仍然基于全部找到的点。",
-      singularitiesTruncated: "方向场奇点数量超过上限 {max}，只列出前 {max} 个（按 t 坐标排序）；连续解集的判断仍然基于全部找到的点。",
+      equilibriaTruncated: "平衡点数量超过上限 {max}，只列出前 {max} 个（按 x 坐标排序）；是否构成连续平衡点集是根据全部找到的点判断的，不只是列出的这些。",
+      singularitiesTruncated: "方向场奇点数量超过上限 {max}，只列出前 {max} 个（按 t 坐标排序）；是否构成连续奇点集是根据全部找到的点判断的，不只是列出的这些。",
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
-      timeDependentNote: "这是非自治系统：向量场随 t 变化，图上显示的是 t = {t} 时刻的快照；平衡点与线性化稳定性分析在此不适用（它们只对自治系统有定义）。悬停和点击得到的解曲线从 t = {t} 出发。",
+      timeDependentNote: "这是非自治系统：右端出现了 t，向量场随 t 变化，图上显示的是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场这里不做这项分析。悬停和点击得到的解曲线从 t = {t} 出发。",
       snapshotT: "快照时刻 t",
       typeSecond: "二阶方程 x'' = F(x, x')",
       secondOrderLabel: "x'' = F(x, x')，或写成完整方程，例如 x'' + 0.5*x' + x = 0",
       secondOrderReduced: "令 y = x'，降阶为系统 x' = y，y' = {g}。横轴是 x（位置），纵轴是 y = x'（速度）。",
       syntaxHintSecondOrder: "语法：未知函数是 x，t 是时间；导数用直引号写成 x' 和 x''（例如 x'' + 0.5*x' + x = 0，或只写 x'' = F 的右端 F）。x'' 必须线性出现。乘号要写出来（x*x'，不是 xx'），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
+      singularitiesContinuum: "找到的方向场奇点排成一条线或一条曲线：方向很可能在整条曲线上都无定义，而不只是在孤立的点上；列表只给出其中的代表点。",
+      secondOrderNotAffine: "x'' 必须线性出现，例如 x'' + 0.5*x' + x = 0 或 x'' = -sin(x)；x''^2、sin(x'') 之类无法降阶。",
+      secondOrderZeroCoefficient: "x'' 的系数为零（至少在部分采样点和时刻上），方程无法解出 x''。请检查 x'' 是否真的出现，以及它的系数是否恒不为零。",
+      secondOrderNoEquation: "请写成带 = 的方程（x'' + x = 0），或只写 x'' = F 的右端 F。",
+      secondOrderDoubleEquals: "方程两边之间只用一个「=」（== 是比较运算）。",
+      secondOrderTooManyEquals: "方程必须恰好包含一个「=」。",
+      secondOrderOtherPrime: "只有未知函数 x 可以带撇号：x' 表示 dx/dt，x'' 表示二阶导数。未知函数是 x，t 是时间。",
+      secondOrderHigherDerivative: "只支持一阶和二阶导数 x' 与 x''；x''' 及更高阶导数无法降阶为平面系统。",
+      secondOrderPlaceholderTyped: "xd 和 xdd 是内部名称；请用 x' 和 x'' 表示 x 的导数。",
+      secondOrderUndefinedAtSamples: "方程在大多数用于检验的采样点上无定义（不是有限数），无法安全地降阶。",
+      secondOrderUnknownSymbol: "未知符号「{name}」。未知函数是 x，它的导数是 x'（dx/dt），二阶导数是 x''；t 是时间。允许的符号：x、x'、x''、t、pi、e。",
     },
   },
   en: {
@@ -358,9 +378,13 @@ export const LABELS: Record<Locale, LabelTable> = {
       parenOpen: " (",
       parenClose: ")",
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
-      timeDependent: "This is a non-autonomous system: the vector field changes with t (sampled at 5 times inside the viewing box, its largest relative change is {deviation}), so the sampled field below is a snapshot at t = {t}. Equilibrium points and linearized stability analysis do not apply here (they are only defined for autonomous systems), so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
-      timeDependentTrajectory: "This is a non-autonomous system (the vector field changes with t; its largest relative change is {deviation}): the trajectory starts at t = 0, and the backward part is the solution for t < 0. Starting from the same point at another time would give a different curve.",
+      timeDependent: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} The sampled field is a snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; this tool does not attempt them for a time-dependent field, so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
+      timeDependentTrajectory: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} Here the trajectory starts at t = 0, and the backward part is the solution for t < 0. Starting from the same point at another time would give a different curve.",
       secondOrderReduced: "Second-order equation {equation}: with y = x' it becomes the system x' = y, y' = {g}.",
+      timeDependenceMeasured: "Sampled at several times inside the viewing box, its largest relative change is {deviation}.",
+      timeDependenceNoChange: "At the several times sampled inside the viewing box no change was measured (the t term may vanish or cancel there), but t is present, so the analysis is withheld all the same.",
+      timeDependenceDomainMoves: "The field is defined at some of the sampled times and undefined at others: its domain moves with t.",
+      timeDependenceUntested: "The field could not be evaluated at any of the sampled times, so how much it changes with t could not be measured.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -422,15 +446,26 @@ export const LABELS: Record<Locale, LabelTable> = {
       lhsInExpressionSystem: "Enter only the right-hand side of each equation; the “x' =” / “y' =” part is implied.",
       towardT: "to t = {t}, {status}",
       trajectorySides: "one side: {first}; other side: {second}",
-      equilibriaTruncated: "More than {max} equilibria were found; only the first {max} are listed (sorted by x). The continuum verdict above is still based on all the points found.",
-      singularitiesTruncated: "More than {max} singular points of the direction field were found; only the first {max} are listed (sorted by t). The continuum verdict is still based on all the points found.",
+      equilibriaTruncated: "More than {max} equilibria were found; only the first {max} are listed (sorted by x). Whether they form a continuum was judged from all the points found, not only from the listed ones.",
+      singularitiesTruncated: "More than {max} singular points of the direction field were found; only the first {max} are listed (sorted by t). Whether they form a continuum was judged from all the points found, not only from the listed ones.",
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
-      timeDependentNote: "This is a non-autonomous system: the vector field changes with t, and the picture shows the snapshot at t = {t}; equilibrium points and linearized stability analysis do not apply here (they are only defined for autonomous systems). The solution curves you get by hovering and clicking start at t = {t}.",
+      timeDependentNote: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t, and the picture shows the snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; they are not attempted for a time-dependent field. The solution curves you get by hovering and clicking start at t = {t}.",
       snapshotT: "Snapshot time t",
       typeSecond: "Second-order equation x'' = F(x, x')",
       secondOrderLabel: "x'' = F(x, x'), or a full equation such as x'' + 0.5*x' + x = 0",
       secondOrderReduced: "With y = x' this becomes the system x' = y, y' = {g}. The horizontal axis is x (position), the vertical axis is y = x' (velocity).",
       syntaxHintSecondOrder: "Syntax: the unknown is x and t is the time; write the derivatives as x' and x'' with straight apostrophes (x'' + 0.5*x' + x = 0, or just the right-hand side F of x'' = F). x'' must appear linearly. Write multiplication explicitly (x*x', not xx'), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
+      singularitiesContinuum: "The singular points found line up along a line or a curve: the direction is most likely undefined on a whole curve, not just at isolated points; the list shows representative points only.",
+      secondOrderNotAffine: "x'' must appear linearly, e.g. x'' + 0.5*x' + x = 0 or x'' = -sin(x); x''^2, sin(x'') and the like cannot be reduced.",
+      secondOrderZeroCoefficient: "The coefficient of x'' vanishes (at least at some of the sample points and times), so the equation cannot be solved for x''. Check that x'' really appears and that its coefficient is never zero.",
+      secondOrderNoEquation: "Write an equation with = (x'' + x = 0) or just the right-hand side F of x'' = F.",
+      secondOrderDoubleEquals: "Use a single “=” between the two sides of the equation (== is a comparison).",
+      secondOrderTooManyEquals: "The equation must contain exactly one “=”.",
+      secondOrderOtherPrime: "Only the unknown x may carry primes: write x' for dx/dt and x'' for the second derivative. The unknown function is x and t is the time.",
+      secondOrderHigherDerivative: "Only the first and second derivatives x' and x'' are supported; x''' and higher cannot be reduced to a planar system.",
+      secondOrderPlaceholderTyped: "xd and xdd are internal names; write x' and x'' for the derivatives of x.",
+      secondOrderUndefinedAtSamples: "The equation is undefined (not a finite number) at most of the sample points used to check it, so it cannot be reduced safely.",
+      secondOrderUnknownSymbol: "Unknown symbol “{name}”. The unknown function is x, its derivative is x' (dx/dt) and its second derivative is x''; t is the time. Allowed symbols: x, x', x'', t, pi, e.",
     },
   },
 };
@@ -481,6 +516,37 @@ export function stabilitySentence(L: LabelTable, s: Pick<EquilibriumSolution, "s
  */
 export function noConstantSentence(L: LabelTable, autonomous: boolean | "untestable"): string {
   return autonomous === true ? L.tool.noConstantAutonomous : autonomous === false ? L.tool.noConstantGeneral : L.tool.noConstantUntestable;
+}
+
+/**
+ * The evidence sentence of the time-dependence probe (lib/core/time-dependence): the verdict is
+ * static (t appears), the probe only measured how much the field changed. Four cases: a measured
+ * change, no change at the sampled times, a domain that moves with t (Infinity), or nothing could
+ * be evaluated (0 samples). Shared by the tool summaries so the wording exists once.
+ */
+export function timeDependenceEvidence(L: LabelTable, td: { maxRelDeviation: number; samples: number }): string {
+  if (td.samples === 0) return L.tool.timeDependenceUntested;
+  if (!Number.isFinite(td.maxRelDeviation)) return L.tool.timeDependenceDomainMoves;
+  if (td.maxRelDeviation === 0) return L.tool.timeDependenceNoChange;
+  return fill(L.tool.timeDependenceMeasured, { deviation: td.maxRelDeviation.toExponential(1) });
+}
+
+/**
+ * The notice lines above an equilibria list: the search's warning, then the truncation sentence,
+ * then one line per singular point of the field (a candidate the vanishing test dropped because
+ * the field is undefined or discontinuous there). "hit_limit" only says that the cap was hit,
+ * which the truncation sentence says with the count, so it is not printed twice. Shared by the
+ * tool summary and both shells.
+ */
+export function equilibriaNotices(
+  L: LabelTable,
+  scene: { warning?: keyof LabelTable["warning"]; truncated?: boolean; equilibria?: readonly unknown[]; singularPoints?: readonly { x: number; y: number }[] },
+): string[] {
+  const lines: string[] = [];
+  if (scene.warning && !(scene.warning === "hit_limit" && scene.truncated)) lines.push(L.warning[scene.warning]);
+  if (scene.truncated) lines.push(fill(L.ui.equilibriaTruncated, { max: scene.equilibria?.length ?? 0 }));
+  for (const s of scene.singularPoints ?? []) lines.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
+  return lines;
 }
 
 /** Picks a locale from a BCP 47 tag (navigator.language): Chinese -> zh, everything else -> en. */

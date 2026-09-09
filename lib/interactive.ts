@@ -123,6 +123,7 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
         solutions: eq.solutions,
         singularities: singular.points,
         singularitiesTruncated: singular.truncated,
+        singularitiesWarning: singular.warning,
         forms,
         formsNote: reported.length === 0 ? NO_FORM_NOTE[locale] : undefined,
         implicit,

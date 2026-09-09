@@ -48,6 +48,12 @@ export type FirstOrderView = {
   singularities?: Vec2[];
   /** True when more singular points were found than are listed (the list holds the first maxPoints, sorted by t). */
   singularitiesTruncated?: boolean;
+  /**
+   * The search's verdict on the singular points: "possible_continuum" when they line up along a
+   * curve (the direction is probably undefined on a whole curve; the list shows representatives),
+   * "hit_limit" when only the cap stopped the list. Shown by both shells and the tool summary.
+   */
+  singularitiesWarning?: "possible_continuum" | "hit_limit";
   /** Numerically detected standard forms (never proofs; each carries a caveat). */
   forms?: FormDetection[];
   /** Positive statement shown when no standard form was detected. */
@@ -96,10 +102,13 @@ export type Scene = {
   /** Points where the field is undefined or discontinuous (a direction-dependent limit) that a Newton run ended at; not equilibria (lib/core/equilibria vanishing test). */
   singularPoints?: EquilibriaResult["singularPoints"];
   /**
-   * Set when the system is non-autonomous (f or g changes with t, measured by
-   * lib/core/time-dependence). The field is then a snapshot at `snapshotT`, traced curves start
-   * there, and the scene carries NO equilibria and NO warning: equilibrium points and linearized
-   * stability are not defined for a non-autonomous system. First-order scenes never set it.
+   * Set when the system is non-autonomous (the symbol t appears in f or g: the static rule of
+   * lib/core/time-dependence; `maxRelDeviation` is the probe's evidence of how much the field
+   * changed at the sampled times, 0 when no change was measured, Infinity when the domain moves
+   * with t). The field is then a snapshot at `snapshotT`, traced curves start there, and the
+   * scene carries NO equilibria and NO warning: equilibrium points and linearized stability are
+   * tools for autonomous systems that are not attempted for a time-dependent field. First-order
+   * scenes never set it.
    */
   timeDependent?: { snapshotT: number; maxRelDeviation: number };
   firstOrder?: FirstOrderView;
