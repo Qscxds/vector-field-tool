@@ -972,3 +972,118 @@ describe("J-fix2: acceptance without extrapolation, term-based rounding floor, u
     }
   });
 });
+
+/**
+ * J-fix3 (2026-09-09): rank-deficient roots, stalls versus discontinuities, coordinate snap,
+ * determinism. `scaled(k)` rewrites a system in coordinates X = x / k: F_k(X, Y) = F(kX, kY) / k,
+ * so a root r moves to r / k and the Jacobian at it is unchanged (a change of units must not change
+ * what is found or how it is classified).
+ */
+describe("findEquilibria: roots with a rank-deficient Jacobian (J-fix3 item 1)", () => {
+  const scaled = (f: string, g: string, k: string) => compileSystem({ f: `(${f.replace(/x/g, `(${k}*x)`).replace(/y/g, `(${k}*y)`)}) / ${k}`, g: `(${g.replace(/x/g, `(${k}*x)`).replace(/y/g, `(${k}*y)`)}) / ${k}` });
+  const scaleBox = (b: Box, k: number): Box => ({ x: { min: b.x.min / k, max: b.x.max / k }, y: { min: b.y.min / k, max: b.y.max / k } });
+  const grow = (b: Box, m: number): Box => ({ x: { min: b.x.min * m, max: b.x.max * m }, y: { min: b.y.min * m, max: b.y.max * m } });
+
+  // x' = x(1 - x) - xy, y' = y(x - 1): f = 0 on x = 0 or 1 - x - y = 0; g = 0 on y = 0 or x = 1.
+  // (0, 0): J = [[1, 0], [0, -1]] saddle. (1, 0): J = [[1 - 2x - y, -x], [y, x - 1]] = [[-1, -1], [0, 0]],
+  // det 0, non-hyperbolic. x = 1 on 1 - x - y = 0 gives y = 0 again: exactly two equilibria.
+  it("predator-prey with logistic prey: (0, 0) saddle and the non-hyperbolic (1, 0), on 1x, 10x and two unit scalings", () => {
+    const f = "x*(1 - x) - x*y", g = "y*(x - 1)";
+    for (const k of ["1", "1000", "0.001"]) {
+      for (const m of [1, 10]) {
+        const r = findEquilibria(scaled(f, g, k), scaleBox(grow(box(-1, 3), m), Number(k)));
+        const kk = Number(k);
+        expect(r.points.map((p) => [p.at.x * kk, p.at.y * kk, p.classification, p.caveat ?? ""])).toEqual([[0, 0, "saddle", ""], [expect.closeTo(1, 9), 0, "non_hyperbolic", "nonHyperbolic"]]);
+        expect(r.singularPoints).toBeUndefined();
+        expect(r.warning).toBeUndefined();
+      }
+    }
+  });
+
+  // x' = x(1 - x - y), y' = y(1 - x): (0, 0) with J = I (star node, repeated root admitted); (1, 0)
+  // with J = [[1 - 2x - y, -x], [-y, 1 - x]] = [[-1, -1], [0, 0]], non-hyperbolic; x = 1 on
+  // 1 - x - y = 0 gives (1, 0) again.
+  it("x' = x(1 - x - y), y' = y(1 - x): star node at the origin and the non-hyperbolic (1, 0)", () => {
+    for (const m of [1, 10]) {
+      const r = findEquilibria(compileSystem({ f: "x*(1 - x - y)", g: "y*(1 - x)" }), grow(box(-1, 3), m));
+      expect(r.points.map((p) => [p.at.x, p.at.y, p.classification, p.caveat ?? ""])).toEqual([[0, 0, "star_node", "repeatedRoot"], [expect.closeTo(1, 9), 0, "non_hyperbolic", "nonHyperbolic"]]);
+      expect(r.singularPoints).toBeUndefined();
+    }
+  });
+
+  // x' = xy, y' = x² - y: xy = 0 and y = x² give x = 0, y = 0 only; J = [[y, x], [2x, -1]] = [[0, 0], [0, -1]]
+  // there, rank 1, eigenvalues 0 and -1: non-hyperbolic.
+  // x' = y, y' = x² - y: y = 0 and x² = 0 give the origin only; J = [[0, 1], [0, -1]], eigenvalues 0, -1.
+  // (The xy system costs 1-2 s per box: the sign-change quadtree refines every cell along the
+  // x-axis, where f = xy vanishes and g crosses the parabola, and each run crawls to the origin
+  // with ratio 2/3. Correctness first; the cost is an open item.)
+  for (const [f, g] of [["x*y", "x^2 - y"], ["y", "x^2 - y"]] as const) {
+    it(`x' = ${f}, y' = ${g}: exactly the origin, non-hyperbolic (rank-one Jacobian), on 1x, 10x and two unit scalings`, () => {
+      for (const k of ["1", "1000", "0.001"]) {
+        for (const m of [1, 10]) {
+          const r = findEquilibria(scaled(f, g, k), scaleBox(grow(box(-3, 3), m), Number(k)));
+          expect(r.points.map((p) => [p.at.x, p.at.y, p.classification, p.caveat ?? ""])).toEqual([[0, 0, "non_hyperbolic", "nonHyperbolic"]]);
+          expect(r.singularPoints).toBeUndefined();
+        }
+      }
+    }, 30000);
+  }
+});
+
+describe("findEquilibria: a stall near a degenerate root is not a discontinuity (J-fix3 item 2)", () => {
+  it("polynomial fields report no singular points; xy / (x² + y²) and x² / (x² + y²) still report theirs", () => {
+    for (const [f, g] of [["x*(1 - x - y)", "y*(1 - x)"], ["x*(1 - x) - x*y", "y*(x - 1)"]] as const) {
+      const r = findEquilibria(compileSystem({ f, g }), box(-1, 3));
+      expect(r.singularPoints).toBeUndefined();
+      expect(r.points.filter((p) => near(p.at, 1, 0, 1e-9))).toHaveLength(1);
+    }
+    // xy / (x² + y²) is 0.5 along every diagonal and 0 along the axes at every distance: a
+    // direction-dependent limit at the origin, one singular point. x² / (x² + y²): 1 along the
+    // x-axis, 0 along the y-axis.
+    for (const [f, g] of [["x*y / (x^2 + y^2)", "y - x"], ["x^2 / (x^2 + y^2)", "-y"]] as const) {
+      const r = findEquilibria(compileSystem({ f, g }), box(-2, 2));
+      expect(r.points).toHaveLength(0);
+      expect(r.singularPoints).toHaveLength(1);
+      expect(near(r.singularPoints![0], 0, 0, 1e-9)).toBe(true);
+    }
+  });
+});
+
+describe("findEquilibria: a coordinate below the point's resolution is exactly 0 (J-fix3 item 3)", () => {
+  // x' = x(0.003 - x - 2y), y' = y(0.002 - x - y): (0, 0) with J = diag(0.003, 0.002), an unstable
+  // node; (0, 0.002); (0.003, 0); and x + 2y = 0.003, x + y = 0.002 -> (0.001, 0.001).
+  it("competing species in units of 1e-3: the origin prints as (0, 0) on the 1x, 10x and 100x boxes", () => {
+    const sys = compileSystem({ f: "x*(0.003 - x - 2*y)", g: "y*(0.002 - x - y)" });
+    const b1: Box = { x: { min: -0.0005, max: 0.004 }, y: { min: -0.0005, max: 0.004 } };
+    const centred = (m: number): Box => {
+      const cx = (b1.x.min + b1.x.max) / 2, half = ((b1.x.max - b1.x.min) / 2) * m;
+      return { x: { min: cx - half, max: cx + half }, y: { min: cx - half, max: cx + half } };
+    };
+    for (const m of [1, 10, 100]) {
+      const r = findEquilibria(sys, centred(m));
+      const origin = r.points.find((p) => near(p.at, 0, 0, 1e-9));
+      expect(origin?.at).toEqual({ x: 0, y: 0 });
+      expect(origin?.classification).toBe("unstable_node");
+      expect(r.points).toHaveLength(4);
+    }
+  });
+});
+
+describe("findEquilibria: determinism (J-fix3 item 5)", () => {
+  // Duffing x'' + 0.2x' - x + x³ = 0 as x' = y, y' = -0.2y + x - x³: x - x³ = 0 gives x = 0, ±1;
+  // J = [[0, 1], [1 - 3x², -0.2]]: det -1 at the origin (saddle), det 2 and trace -0.2 at ±1
+  // (stable spirals). Damped pendulum x' = y, y' = -sin(x) - 0.2y on [-7, 7] x [-3, 3]: x = kπ,
+  // k = -2..2; J = [[0, 1], [-cos x, -0.2]]: det 1 at even k (stable spirals), -1 at odd k (saddles).
+  it("Duffing and the damped pendulum give identical results 20 times in one process", () => {
+    const duffing = compileSystem({ f: "y", g: "-0.2*y + x - x^3" });
+    const pendulum = compileSystem({ f: "y", g: "-sin(x) - 0.2*y" });
+    const pBox: Box = { x: { min: -7, max: 7 }, y: { min: -3, max: 3 } };
+    const first = [findEquilibria(duffing, box(-3, 3)), findEquilibria(pendulum, pBox)];
+    expect(first[0].points.map((p) => [Math.round(p.at.x * 1e9) / 1e9, p.classification])).toEqual([[-1, "stable_spiral"], [0, "saddle"], [1, "stable_spiral"]]);
+    expect(first[1].points.map((p) => [Math.round((p.at.x / Math.PI) * 1e9) / 1e9, p.classification])).toEqual([[-2, "stable_spiral"], [-1, "saddle"], [0, "stable_spiral"], [1, "saddle"], [2, "stable_spiral"]]);
+    for (let i = 0; i < 20; i++) {
+      expect(findEquilibria(duffing, box(-3, 3))).toEqual(first[0]);
+      expect(findEquilibria(pendulum, pBox)).toEqual(first[1]);
+    }
+  });
+});
