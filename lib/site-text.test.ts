@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { PRESETS } from "../app/vector-field/presets";
 import { ALLOWED_FUNCTIONS } from "./core/parse";
 import { LOCALES } from "./labels";
 import {
   bilingual,
+  HOME_EXAMPLE_PRESET_IDS,
   EMBED_HEIGHT_WITH_CONTROLS,
   EMBED_HEIGHT_WITHOUT_CONTROLS,
   EMBED_PATH,
@@ -98,6 +100,16 @@ describe("help function list", () => {
   it("equals the parser whitelist keys, in order", () => {
     expect(helpFunctionNames()).toEqual([...ALLOWED_FUNCTIONS.keys()]);
     expect(helpFunctionNames()).toContain("sqrt");
+  });
+});
+
+describe("home examples", () => {
+  it("every example card points at an existing preset", () => {
+    const ids = new Set(PRESETS.map((p) => p.id));
+    for (const [card, id] of Object.entries(HOME_EXAMPLE_PRESET_IDS)) {
+      expect(ids.has(id), card).toBe(true);
+      expect(card in SITE_TEXT.zh.home.examples, card).toBe(true);
+    }
   });
 });
 

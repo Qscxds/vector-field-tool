@@ -29,6 +29,14 @@ export function helpFunctionNames(): string[] {
   return [...ALLOWED_FUNCTIONS.keys()];
 }
 
+/** The four example cards of the home page: card key -> preset id (app/vector-field/presets.ts). */
+export const HOME_EXAMPLE_PRESET_IDS: Record<"logistic" | "damped" | "exact" | "lotka", string> = {
+  logistic: "logistic",
+  damped: "damped2",
+  exact: "exact",
+  lotka: "lotka",
+};
+
 /** Appends the page language to an application link so the app opens in the same language. */
 export function withLocale(url: string, locale: Locale): string {
   return `${url}${url.includes("?") ? "&" : "?"}loc=${locale}`;
