@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, ParseError } from "./parse";
+import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, normalizeOperators, ParseError } from "./parse";
 
 const near = (a: number, b: number, eps = 1e-12) => Math.abs(a - b) <= eps;
 
@@ -447,5 +447,32 @@ describe("roundingBound: the expression's own rounding error and underflow (J-fi
     expect(p.error).toBeCloseTo(24 * EPS, 28);
     expect(boundOf("x*log(abs(x))", 0).error).toBe(Infinity);
     expect(boundOf("1/x", 0).error).toBe(Infinity);
+  });
+});
+
+describe("operator look-alikes pasted from Word / iOS (unicode minus, ×, ·, ÷)", () => {
+  it("normalizeOperators maps −, ×, · and ÷ to -, *, * and / and leaves ASCII text unchanged", () => {
+    expect(normalizeOperators("2×x − y·t ÷ 4")).toBe("2*x - y*t / 4");
+    expect(normalizeOperators("2*x - y")).toBe("2*x - y");
+  });
+
+  it("compiles the same values as the ASCII operators in both modes (derived: 2*1 - 2*0.5/4 = 1.75; -2 = -2)", () => {
+    const p = { x: 1, y: 2 };
+    // 2×x − y·x ÷ 4 = 2 - 2*1/4 = 1.5
+    expect(compileScalar("2×x − y·x ÷ 4")(p)).toBe(1.5);
+    expect(compileScalar("−x")(p)).toBe(-1);
+    // "ty" mode: t is p.x. t×y − 1 = 1*2 - 1 = 1
+    expect(compileScalar("t×y − 1", undefined, { variables: "ty" })(p)).toBe(1);
+  });
+
+  it("an error keeps the student's own text as expr (a lone = after a unicode minus still hints at ==)", () => {
+    const expr = "−x = 1";
+    try {
+      compileScalar(expr);
+      throw new Error("expected a ParseError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ParseError);
+      expect((e as ParseError).expr).toBe(expr);
+    }
   });
 });

@@ -64,6 +64,25 @@ export const COMPARISON_HINT = "If you meant a comparison, write ==.";
  */
 const LHS_PATTERN = /^(?:d\s*y\s*\/\s*d\s*([xt])|[xy]\s*['′]|([xy]))\s*=(?!=)/;
 
+/**
+ * Operator look-alikes that Word, iOS and Chinese input methods substitute: the unicode minus
+ * (U+2212), the multiplication sign, the middle dot and the division sign. They are turned into
+ * the ASCII operators before parsing, in every mode; error messages keep the student's own text.
+ */
+const OPERATOR_LOOKALIKES: ReadonlyArray<readonly [RegExp, string]> = [
+  [/−/g, "-"],
+  [/×/g, "*"],
+  [/·/g, "*"],
+  [/÷/g, "/"],
+];
+
+/** The text with −, ×, · and ÷ replaced by -, *, * and /; the same string when none occurs. */
+export function normalizeOperators(text: string): string {
+  let out = text;
+  for (const [pattern, ascii] of OPERATOR_LOOKALIKES) out = out.replace(pattern, ascii);
+  return out;
+}
+
 /** True when the text contains an "=" that is not part of ==, <=, >=, != (a likely typo for ==). */
 function hasLoneEquals(expr: string): boolean {
   return /(^|[^=<>!])=(?!=)/.test(expr);
@@ -224,7 +243,7 @@ function parseChecked(expr: string, paramNames: string[], mode: VariableMode, op
   assertNoLeftHandSide(expr, mode);
   let node: MathNode;
   try {
-    node = math.parse(expr);
+    node = math.parse(normalizeOperators(expr));
   } catch (cause) {
     const error = toParseError(expr, cause, "Could not parse expression");
     throw new ParseError(expr, withComparisonHint(expr, error.message));
