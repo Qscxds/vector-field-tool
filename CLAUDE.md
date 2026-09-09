@@ -85,7 +85,34 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   its expressions use t and y only); `app/mcp/budget.ts` (2 s wall-clock budget per call via kernel checkpoints) and
   `app/mcp/rate-limit.ts` (per-process sliding window, best effort only on serverless).
 - `app/widget/page.tsx` MCP Apps widget (compiles the Scene's equation locally, falls back to the
-  static picture if compiling is blocked); `app/vector-field/` the web shell; `app/page.tsx` home.
+  static picture if compiling is blocked); `app/page.tsx` home.
+- `lib/url-state.ts` the web shell's URL state (pure): `AppState` (mode first / diff / system /
+  second, g f M N eq, the ENTERED box, `locale | null` = follow the browser, equalScale, density,
+  arrowMode, snapshotT, trajectoryStarts) with `DEFAULT_STATE`; `encodeState` (short names,
+  defaults omitted, readable parentheses; tmin/tmax for first-order pictures, xmin/xmax for planar
+  ones); `decodeState(query, fallback)` never throws: 4096-char query cap, 200-char expressions
+  validated through the SAME parser whitelist as the page (compileScalar "ty" / "xy",
+  reduceSecondOrder), finite bounded numbers, per-field fallback with reason keys rendered by the
+  shell; `buildShareUrl`, `queryFromSearchParams`. A link is a public attack surface: no relaxation.
+- `components/VectorFieldApp.tsx` the shared application body of `app/vector-field/page.tsx` and
+  `app/embed/page.tsx` (both thin async server components that decode `searchParams`, so the
+  first render shows the linked state). Props `{ initial, embed?, controls?, urlProblems? }`.
+  Keeps the address bar in sync (history.replaceState, 500 ms debounce, only when the state
+  compiles, never on hover, entered range not the zoomed view; not in embed mode), "Copy link"
+  with a selected read-only fallback, the ignored-parameters notice, a `<select>` of presets with
+  one `<optgroup>` per chapter, fixed trajectory starts passed to the hook as
+  `initialTrajectoryStarts` (the hook exposes `trajectoryStarts`), a vf- prefixed `<style>` layout
+  (two columns, one column below 800 px) and a container-sized canvas (ResizeObserver, width
+  clamped 300..900, height = round(width * 0.72)).
+- `app/embed/` the embeddable route for the course site (Google Sites iframes): same parameters,
+  compact top bar (language + "Open full page"), `controls=0` hides the form, robots noindex.
+  HEADERS RULE: `next.config.ts` sends `Content-Security-Policy: frame-ancestors *` for source
+  `/embed` ONLY. Never add X-Frame-Options or frame-ancestors to any other route: `/widget` is
+  rendered inside the MCP host sandbox and any such header blanks it.
+- `app/vector-field/presets.ts` the preset library: `PRESET_GROUPS` (chapters) and `PRESETS` of
+  `{ id, group, mode: AppMode, name, note, expressions, box, starts? }` with hand-derived honest
+  notes; `presetState`, `presetUrl` (a shareable link per preset), `presetsByGroup`. Tests check
+  compilation per mode, both languages, unique ids, link round trips and derived key features.
 - `scripts/smoke.mjs` HTTP smoke test against a running server (`npm run smoke`).
 
 ## Architecture rules (long-lived, do not change)

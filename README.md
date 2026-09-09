@@ -49,8 +49,11 @@ app/mcp/route.ts           MCP 端点 /mcp（Streamable HTTP，无状态，无�
 app/mcp/server.ts          每请求新建 McpServer；widget 资源（版本号在这里）；ping
 app/mcp/tools.ts           五个分析工具：zod 参数校验、给 AI 看的 description、按 locale 查表的摘要
 app/widget/page.tsx        widget 页面：接收工具结果的 Scene，本地编译方程，交互式绘制
-app/vector-field/page.tsx  网页外壳：表单 + 预设 + 语言切换 + 交互画布 + 结果列表
-app/vector-field/presets.ts 预设例子（双语）
+app/vector-field/page.tsx  网页外壳路由（服务端组件：解码地址栏参数后渲染 VectorFieldApp）
+app/embed/page.tsx         可嵌入路由：同样的参数，无标题；controls=0 隐藏表单；只有它带 frame-ancestors 头
+app/vector-field/presets.ts 预设库：按章节分组，每个预设 = 完整页面状态 + 固定轨线起点 + 双语说明，presetUrl 生成分享链接
+components/VectorFieldApp.tsx 网页外壳主体（两个路由共用）：表单 + 预设下拉 + 语言切换 + 交互画布 + 结果列表；地址栏同步、复制链接、vf- 布局
+lib/url-state.ts           地址栏状态：AppState 的编码 / 解码（默认值省略；解码有长度上限并走解析白名单，绝不抛异常）
 app/page.tsx               首页说明
 app/layout.tsx             根布局（含 iframe 内的 history 补丁，不要删）
 base-url.ts                公网地址：BASE_URL 或 Vercel 系统变量，喂给 assetPrefix
@@ -90,6 +93,35 @@ docs/                      交接文档
 - 悬停预览经过该点的解曲线：按**屏幕弧长**积分，正逆各画两条画布对角线的长度就停（与场的快慢、与缩放无关，最后一段精确切在限长处），步数只作兜底；`requestAnimationFrame` 节流。靠近方向场奇点时不画预览，改为提示「方向无定义」。
 - 点击固定的轨线按解自身的性质延伸：停止盒是输入范围的 20 倍，视野只负责裁剪，缩小视野不会露出断头。
 - 视图变化时场立即重采样。平衡点、常数解、奇点、类型、等值线的计算范围：复位视图（未缩放、未平移）时就是输入范围，两种等比模式都一样——等比留出的边缘只画箭头，所以切换「等比」或在另一种长宽比的画布（手机 / 桌面）上打开同一个链接，列出的平衡点 / 常数解 / 类型不会变；缩放或平移后在停止操作 250 毫秒后按可见范围重算。列表上方注明所用范围。
+
+## 分享链接与嵌入
+
+网页外壳的全部状态都在地址栏里（`lib/url-state.ts`）：任何改动 500 毫秒后写回地址栏（`history.replaceState`；只编码输入的范围，不编码滚轮缩放后的视野；悬停不触发），「复制链接」按钮复制 `https://tools.studycase.net/vector-field?...`（剪贴板不可用时显示一个已选中的只读输入框）。默认值一律省略，所以手写链接很短。参数：
+
+| 参数 | 含义 |
+|---|---|
+| `m` | `first`（dy/dt = g(t, y)）/ `diff`（M dt + N dy = 0）/ `system`（默认）/ `second`（二阶方程） |
+| `g` | 一阶：g(t, y)；系统：y' = g(x, y) |
+| `f` | 系统：x' = f(x, y) |
+| `M`、`N` | 微分形式的 M(t, y)、N(t, y) |
+| `eq` | 二阶方程原文，如 `x'' + 0.5*x' + x = 0` |
+| `tmin`、`tmax` | 一阶方程的 t 范围（`m=first` / `m=diff`） |
+| `xmin`、`xmax` | 系统 / 二阶方程的 x 范围 |
+| `ymin`、`ymax` | y 范围（默认 -3..3；横向默认也是 -3..3） |
+| `loc` | `zh` / `en`；省略时跟随浏览器语言 |
+| `eqs` | `0` = 关闭等比（默认开启） |
+| `d` | 网格密度 5..40（默认 20） |
+| `arrows` | `scaled` = 箭头长度表示模长（默认 `unit`） |
+| `t0` | 非自治系统的快照时刻（默认 0） |
+| `traj` | 固定轨线起点 `x,y;x,y`（最多 20 个；点击固定的轨线也会写进来） |
+
+例：`/vector-field?m=first&g=y*(1-y)&tmin=0&tmax=10&ymin=-0.5&ymax=1.5&loc=en`；`/vector-field?m=system&f=y&g=-x-0.5*y&traj=1,0;2,1`；`/vector-field?m=diff&M=2*t*y&N=t^2%2By^2&tmin=-2&tmax=2&ymin=-2&ymax=2`（`+` 在 query 里要写成 `%2B`）。
+
+校验（链接是公开的攻击面）：整条 query 超过 4096 字符则全部忽略；每个表达式最长 200 字符，并走与页面完全相同的解析白名单（一阶只许 t、y，系统 x、y，二阶走 `reduceSecondOrder`）；数字必须有限且 |值| ≤ 1e6，范围 min < max 且边长 ≥ 1e-9；密度是 5..40 的整数；无效的参数回退到默认值，并在表单上方用一句话列出「链接里的这些参数无效，已忽略并使用默认值：…」；未知参数忽略；解码绝不抛异常。
+
+嵌入：`/embed?...` 用同样的参数，没有标题和站点链接，顶部只有语言选择和「在新窗口打开」（带同样参数的 `/vector-field`）；画布随容器宽度变化（300..900 像素，高度 = 宽 × 0.72）；加 `controls=0` 隐藏表单（仍显示方程文本、预设说明和结果）。Google Sites 里用「嵌入 → 通过网址」贴 `https://tools.studycase.net/embed?...&controls=0`。只有 `/embed` 发送 `Content-Security-Policy: frame-ancestors *`（任何站点都可以 iframe 它）；`/widget` 和其他路由绝不能加任何 frame 相关头（X-Frame-Options、frame-ancestors），否则 MCP 宿主沙箱里的 widget 会变成空白。`/embed` 标记 `noindex`。
+
+预设（`app/vector-field/presets.ts`）按章节分组：一阶·可分离 / 线性 / 恰当 / Bernoulli / 齐次 / 解不出来的 / 唯一性失效，二阶/系统，非自治；每个预设自带范围、固定轨线起点和一句双语说明，`presetUrl(preset)` 给出它的分享链接。
 
 ## 本地运行
 
