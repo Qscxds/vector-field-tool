@@ -5,7 +5,7 @@
  * a form instead of by Claude. Independent route; /mcp and /widget are untouched.
  * The interaction model (zoom / pan / hover / click-to-keep) lives in useInteractiveScene.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
@@ -104,8 +104,64 @@ type Compiled =
   | { sys: CompiledSystem; spec: SystemSpec; firstOrder: FirstOrderSpec | null; secondOrder: ReducedSecondOrder | null; box: Box; error: null }
   | { sys: null; spec: null; firstOrder: null; secondOrder: null; box: null; error: string };
 
-const CANVAS_W = 720;
-const CANVAS_H = 520;
+/** Canvas width before the container is measured (server render) and its clamp; height follows the width. */
+const CANVAS_DEFAULT_W = 720;
+const CANVAS_MIN_W = 300;
+const CANVAS_MAX_W = 900;
+const CANVAS_ASPECT = 0.72;
+
+/**
+ * Layout, prefixed vf- so a later pass can extend it: two columns (form | picture) when wide,
+ * one column below 800 px (form above, picture below). Embed mode drops the page chrome padding.
+ */
+const VF_STYLE = `
+.vf-app { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; font-size: 14px; line-height: 1.5; }
+.vf-app.vf-embed { max-width: none; padding: 6px 10px 12px; }
+.vf-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; color: #52606d; }
+.vf-columns { display: flex; gap: 24px; align-items: flex-start; }
+.vf-form { width: 300px; flex: 0 0 300px; display: grid; gap: 10px; }
+.vf-canvas { flex: 1 1 0; min-width: 0; }
+@media (max-width: 800px) {
+  .vf-columns { flex-direction: column; gap: 14px; }
+  .vf-form { width: auto; flex: none; }
+  .vf-canvas { width: 100%; }
+}
+`;
+
+/** Width of the picture column, measured with a ResizeObserver; null until mounted (server render). */
+function useMeasuredWidth(): [React.RefObject<HTMLDivElement | null>, number | null] {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState<number | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) setWidth(entry.contentRect.width);
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  return [ref, width];
+}
+
+function canvasSize(containerWidth: number | null): { width: number; height: number } {
+  const width = containerWidth === null ? CANVAS_DEFAULT_W : Math.round(Math.min(CANVAS_MAX_W, Math.max(CANVAS_MIN_W, containerWidth)));
+  return { width, height: Math.round(width * CANVAS_ASPECT) };
+}
+
+/** The equation as one line of text (shown in place of the form when the controls are hidden). */
+function equationText(form: Form, L: LabelTable, secondOrder: ReducedSecondOrder | null): string {
+  switch (form.mode) {
+    case "system":
+      return fill(L.ui.equationSystem, { f: form.f, g: form.g });
+    case "explicit":
+      return fill(L.ui.equationExplicit, { g: form.g });
+    case "differential":
+      return fill(L.ui.equationDifferential, { M: form.M, N: form.N });
+    case "second":
+      return fill(L.ui.equationSecond, { equation: secondOrder?.equation ?? form.second });
+  }
+}
 
 function fromPreset(p: Preset, density: number, arrowMode: ArrowMode): Form {
   return {
@@ -252,13 +308,17 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   }, [snapshotTText]);
   const compiled = useMemo(() => compile(form, L), [form, L]);
 
+  // The picture fills its column: measured after mount, clamped, height from the width.
+  const [canvasWrapRef, wrapWidth] = useMeasuredWidth();
+  const { width: canvasW, height: canvasH } = canvasSize(wrapWidth);
+
   const interactive = useInteractiveScene({
     sys: compiled.sys,
     spec: compiled.spec,
     firstOrder: compiled.firstOrder,
     homeBox: compiled.box,
-    width: CANVAS_W,
-    height: CANVAS_H,
+    width: canvasW,
+    height: canvasH,
     density: form.density,
     locale,
     kind: form.mode === "system" || form.mode === "second" ? "analyze_system" : "analyze_first_order",
@@ -348,27 +408,47 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   useEffect(() => {
     if (fallbackUrl) fallbackInputRef.current?.select();
   }, [fallbackUrl]);
+  // Embed top bar: the full page with the same state (the last state that compiled).
+  const lastQueryRef = useRef(query ?? "");
+  if (query !== null) lastQueryRef.current = query;
+  const fullPageHref = `/vector-field${lastQueryRef.current ? `?${lastQueryRef.current}` : ""}`;
 
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : undefined;
   const groups = groupTrajectories(trajectories);
   const lastGroup = groups.length ? groups[groups.length - 1] : null;
   const hv = horizontalName(form.mode);
 
-  return (
-    <main style={{ maxWidth: 1180, margin: "0 auto", padding: "20px 24px 48px", fontSize: 14, lineHeight: 1.5 }}>
-      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
-        <h1 style={{ fontSize: 22, margin: "0 0 4px" }}>{L.ui.title}</h1>
-        <label style={{ display: "flex", gap: 6, alignItems: "center", color: "#52606d" }}>
-          <span>{L.ui.language}</span>
-          <select value={locale} onChange={(e) => chooseLocale(e.target.value as Locale)} style={inputStyle} name="locale">
-            <option value="zh">中文</option>
-            <option value="en">English</option>
-          </select>
-        </label>
-      </div>
-      <p style={{ margin: "0 0 16px", color: "#52606d" }}>{L.ui.subtitle}</p>
+  const languageSelect = (
+    <label style={{ display: "flex", gap: 6, alignItems: "center", color: "#52606d" }}>
+      <span>{L.ui.language}</span>
+      <select value={locale} onChange={(e) => chooseLocale(e.target.value as Locale)} style={inputStyle} name="locale">
+        <option value="zh">中文</option>
+        <option value="en">English</option>
+      </select>
+    </label>
+  );
 
-      <section style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
+  return (
+    <main className={embed ? "vf-app vf-embed" : "vf-app"} data-embed={embed ? "true" : undefined}>
+      <style>{VF_STYLE}</style>
+      {embed ? (
+        <div className="vf-topbar">
+          {languageSelect}
+          <a href={fullPageHref} target="_blank" rel="noopener noreferrer" data-open-full-page>
+            {L.ui.openFullPage}
+          </a>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+            <h1 style={{ fontSize: 22, margin: "0 0 4px" }}>{L.ui.title}</h1>
+            {languageSelect}
+          </div>
+          <p style={{ margin: "0 0 16px", color: "#52606d" }}>{L.ui.subtitle}</p>
+        </>
+      )}
+
+      {controls ? <section style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
         <span style={{ alignSelf: "center", color: "#52606d" }}>{L.ui.presets}</span>
         {PRESETS.map((p) => (
           <button
@@ -381,7 +461,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             {p.name[locale]}
           </button>
         ))}
-      </section>
+      </section> : null}
 
       {urlProblems && urlProblems.length > 0 ? (
         <p role="alert" data-url-problems style={{ padding: "8px 12px", margin: "0 0 14px", background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a", borderRadius: 6 }}>
@@ -391,8 +471,19 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
         </p>
       ) : null}
 
-      <div style={{ display: "flex", gap: 24, alignItems: "flex-start", flexWrap: "wrap" }}>
-        <form style={{ width: 300, display: "grid", gap: 10 }} onSubmit={(e) => e.preventDefault()}>
+      <div className="vf-columns">
+        {!controls ? (
+          <div className="vf-form" data-equation-text>
+            <p style={{ margin: 0, color: "#1f2933", fontWeight: 600 }}>{equationText(form, L, compiled.secondOrder)}</p>
+            {compiled.secondOrder ? (
+              <p style={{ margin: 0, color: "#1f2933" }} data-second-order-reduced>
+                {fill(L.ui.secondOrderReduced, { g: compiled.secondOrder.reduced.g })}
+              </p>
+            ) : null}
+            {preset ? <p style={{ margin: 0, color: "#52606d" }}>{preset.note[locale]}</p> : null}
+          </div>
+        ) : (
+        <form className="vf-form" onSubmit={(e) => e.preventDefault()}>
           <label style={labelStyle}>
             <span>{L.ui.type}</span>
             <select value={form.mode} onChange={(e) => update({ mode: e.target.value as PresetMode })} style={inputStyle} name="mode">
@@ -493,8 +584,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             {form.mode === "system" ? L.ui.syntaxHint : form.mode === "second" ? L.ui.syntaxHintSecondOrder : L.ui.syntaxHintFirstOrder}
           </p>
         </form>
+        )}
 
-        <div style={{ flex: "1 1 720px", minWidth: 0 }}>
+        <div className="vf-canvas" ref={canvasWrapRef}>
           {compiled.error ? (
             <div role="alert" style={{ padding: "10px 12px", marginBottom: 10, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6 }}>
               {compiled.error}
@@ -505,8 +597,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <VectorFieldCanvas
                 scene={scene}
                 viewport={viewport}
-                width={CANVAS_W}
-                height={CANVAS_H}
+                width={canvasW}
+                height={canvasH}
                 arrowMode={form.arrowMode}
                 overlay={overlay}
                 overlayHint={hint}
@@ -536,7 +628,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </p>
             </>
           ) : (
-            <div style={{ width: CANVAS_W, height: CANVAS_H, border: "1px dashed #d1d5db", borderRadius: 6, display: "grid", placeItems: "center", color: "#6b7280" }}>
+            <div style={{ width: canvasW, height: canvasH, border: "1px dashed #d1d5db", borderRadius: 6, display: "grid", placeItems: "center", color: "#6b7280" }}>
               {L.ui.fixErrorHint}
             </div>
           )}

@@ -76,7 +76,8 @@ export type LabelTable = {
     | "copyLink" | "copied" | "copyLinkFallback" | "urlProblems"
     | "urlReasonQueryTooLong" | "urlReasonTooLong" | "urlReasonInvalidExpression" | "urlReasonNotANumber"
     | "urlReasonNotInteger" | "urlReasonOutOfRange" | "urlReasonInvertedRange" | "urlReasonTooNarrow"
-    | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode",
+    | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode"
+    | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond",
     string
   >;
 };
@@ -291,6 +292,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonTooMany: "轨线起点超过 20 个，只保留前 20 个",
       urlReasonMalformedPair: "有格式错误的轨线起点，已跳过",
       urlReasonUnusedInMode: "当前方程类型不使用这个参数",
+      openFullPage: "在新窗口打开",
+      equationSystem: "x' = {f}，y' = {g}",
+      equationExplicit: "dy/dt = {g}",
+      equationDifferential: "({M}) dt + ({N}) dy = 0",
+      equationSecond: "{equation}",
     },
   },
   en: {
@@ -502,6 +508,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonTooMany: "more than 20 trajectory starts; only the first 20 kept",
       urlReasonMalformedPair: "malformed trajectory start skipped",
       urlReasonUnusedInMode: "not used by this equation type",
+      openFullPage: "Open full page",
+      equationSystem: "x' = {f}, y' = {g}",
+      equationExplicit: "dy/dt = {g}",
+      equationDifferential: "({M}) dt + ({N}) dy = 0",
+      equationSecond: "{equation}",
     },
   },
 };

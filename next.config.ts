@@ -11,6 +11,17 @@ const nextConfig: NextConfig = {
   allowedDevOrigins: ["**.claudemcpcontent.com", "**.trycloudflare.com"],
   // Keep the dev-mode indicator badge out of the widget iframe.
   devIndicators: false,
+  // /embed ONLY: a public teaching tool without login that any site (Google Sites included) may
+  // frame. Never add a frame-related header (X-Frame-Options, frame-ancestors) to any other route:
+  // /widget is rendered inside the MCP host's sandbox and such a header would blank it.
+  async headers() {
+    return [
+      {
+        source: "/embed",
+        headers: [{ key: "Content-Security-Policy", value: "frame-ancestors *" }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
