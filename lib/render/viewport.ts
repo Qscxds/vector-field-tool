@@ -119,3 +119,14 @@ export function panBy(v: Viewport, dxScreen: number, dyScreen: number): Viewport
 export function resetViewport(originalBox: Box, width: number, height: number, opts?: FitOptions): Viewport {
   return fitViewport(originalBox, width, height, opts);
 }
+
+/**
+ * One pinch step as ONE viewport update: the world point that was under `from` (the previous
+ * midpoint of the two fingers) ends up under `to` (the current midpoint), and the pixel scale is
+ * multiplied by `factor`. Composed as zoomAt about `from` (which holds that world point fixed)
+ * followed by panBy(to - from); applying the two as separate updates from the same stale viewport
+ * would discard one of them.
+ */
+export function pinchAt(v: Viewport, from: Vec2, to: Vec2, factor: number, limits?: ZoomLimits): Viewport {
+  return panBy(zoomAt(v, from, factor, limits), to.x - from.x, to.y - from.y);
+}

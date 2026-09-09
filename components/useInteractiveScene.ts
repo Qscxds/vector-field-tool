@@ -23,7 +23,7 @@ import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
 import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
 import { labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
-import { fitViewport, panBy, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
+import { fitViewport, panBy, pinchAt, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
 import type { FieldStyle, Scene, SceneKind, TrajectoryView } from "@/lib/scene";
 
 export type InteractiveInput = {
@@ -72,6 +72,8 @@ export type InteractiveHandlers = {
   onHoverWorld: (world: Vec2 | null, screen: Vec2 | null) => void;
   onWheelZoom: (screen: Vec2, factor: number) => void;
   onPan: (dx: number, dy: number) => void;
+  /** One touch pinch step as one viewport update (see pinchAt). */
+  onPinch: (from: Vec2, to: Vec2, factor: number) => void;
   onDoubleClick: () => void;
 };
 
@@ -218,21 +220,51 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const hoverRef = useRef<{ world: Vec2; screen: Vec2 } | null>(null);
   const rafRef = useRef<number | null>(null);
 
-  const onWheelZoom = useCallback((screen: Vec2, factor: number) => {
+  // Viewport updates are FUNCTIONAL: two updates dispatched in the same event (a pinch used to be
+  // a pan then a zoom) each build on the other's result, not on the stale viewportRef. The
+  // previous state is trusted only when it belongs to the current canvas size; otherwise the
+  // fitted viewport (viewportRef) is the base, exactly as the `viewport` memo decides.
+  const baseView = (prev: Viewport | null): Viewport | null => {
     const cur = viewportRef.current;
-    const home = homeBoxRef.current;
-    if (!cur || !home) return;
-    setView(zoomAt(cur, screen, factor, { original: home }));
+    if (!cur) return null;
+    return prev && prev.width === cur.width && prev.height === cur.height ? prev : cur;
+  };
+  const dropPreview = () => {
     // The preview under the cursor belongs to the old view; drop it and let the next move recompute.
     lastHoverScreen.current = null;
     setOverlay([]);
     setHint(null);
+  };
+
+  const onWheelZoom = useCallback((screen: Vec2, factor: number) => {
+    const home = homeBoxRef.current;
+    if (!viewportRef.current || !home) return;
+    setView((prev) => {
+      const cur = baseView(prev);
+      return cur ? zoomAt(cur, screen, factor, { original: home }) : prev;
+    });
+    dropPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onPan = useCallback((dx: number, dy: number) => {
-    const cur = viewportRef.current;
-    if (!cur) return;
-    setView(panBy(cur, dx, dy));
+    if (!viewportRef.current) return;
+    setView((prev) => {
+      const cur = baseView(prev);
+      return cur ? panBy(cur, dx, dy) : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const onPinch = useCallback((from: Vec2, to: Vec2, factor: number) => {
+    const home = homeBoxRef.current;
+    if (!viewportRef.current || !home) return;
+    setView((prev) => {
+      const cur = baseView(prev);
+      return cur ? pinchAt(cur, from, to, factor, { original: home }) : prev;
+    });
+    dropPreview();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onDoubleClick = useCallback(() => setView(null), []);
@@ -299,6 +331,6 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     trajectories,
     trajectoryStarts,
     clearTrajectories,
-    handlers: { onClickWorld, onHoverWorld, onWheelZoom, onPan, onDoubleClick },
+    handlers: { onClickWorld, onHoverWorld, onWheelZoom, onPan, onPinch, onDoubleClick },
   };
 }

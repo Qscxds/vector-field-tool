@@ -16,17 +16,15 @@ function run(events: GestureEvent[], start: GestureState = IDLE_GESTURE): { stat
 describe("pinch", () => {
   it("distance 100 -> 150 gives factor 1.5 about the midpoint", () => {
     // Fingers at (100, 100) and (200, 100): distance 100, midpoint (150, 100).
-    // Second finger moves to (250, 100): distance 150, midpoint (175, 100) -> pan by +25 and factor 150/100.
+    // Second finger moves to (250, 100): distance 150, midpoint (175, 100) -> ONE action: the
+    // midpoint went from (150, 100) to (175, 100) and the factor is 150/100.
     const { state, actions } = run([
       { type: "down", id: 1, x: 100, y: 100, t: 0 },
       { type: "down", id: 2, x: 200, y: 100, t: 10 },
       { type: "move", id: 2, x: 250, y: 100, t: 30 },
     ]);
     expect(state.phase).toBe("pinch");
-    expect(actions).toEqual([
-      { type: "pan", dx: 25, dy: 0 },
-      { type: "pinch", center: { x: 175, y: 100 }, factor: 1.5 },
-    ]);
+    expect(actions).toEqual([{ type: "pinch", from: { x: 150, y: 100 }, center: { x: 175, y: 100 }, factor: 1.5 }]);
   });
 
   it("a symmetric pinch returns the midpoint and zooms by the distance ratio", () => {
@@ -37,12 +35,10 @@ describe("pinch", () => {
       { type: "move", id: 1, x: 75, y: 100, t: 20 },
       { type: "move", id: 2, x: 225, y: 100, t: 20 },
     ]);
-    // First move: distance 125, midpoint (137.5, 100) -> pan -12.5 and factor 1.25; second: 150, back to (150, 100) -> pan +12.5, factor 1.2.
+    // First move: distance 125, midpoint (150, 100) -> (137.5, 100), factor 1.25; second: 150, midpoint back to (150, 100), factor 1.2.
     expect(actions).toEqual([
-      { type: "pan", dx: -12.5, dy: 0 },
-      { type: "pinch", center: { x: 137.5, y: 100 }, factor: 1.25 },
-      { type: "pan", dx: 12.5, dy: 0 },
-      { type: "pinch", center: { x: 150, y: 100 }, factor: 1.2 },
+      { type: "pinch", from: { x: 150, y: 100 }, center: { x: 137.5, y: 100 }, factor: 1.25 },
+      { type: "pinch", from: { x: 137.5, y: 100 }, center: { x: 150, y: 100 }, factor: 1.2 },
     ]);
   });
 
@@ -60,6 +56,51 @@ describe("pinch", () => {
     expect(actions.slice(2)).toEqual([]);
     expect(state.phase).toBe("idle");
     expect(state.pointers).toEqual([]);
+  });
+
+  it("a pure midpoint drift (both fingers move together) is one pinch action with factor 1", () => {
+    // (100, 100) / (200, 100) both move by (+10, +5): distance stays 100, midpoint (150, 100) -> (160, 105).
+    // The first finger's move alone changes the distance, so the derived test moves them in one event each and checks the SUM.
+    const { actions } = run([
+      { type: "down", id: 1, x: 100, y: 100, t: 0 },
+      { type: "down", id: 2, x: 200, y: 100, t: 0 },
+      { type: "move", id: 1, x: 110, y: 105, t: 20 },
+      { type: "move", id: 2, x: 210, y: 105, t: 20 },
+    ]);
+    expect(actions.every((a) => a.type === "pinch")).toBe(true);
+    const last = actions[actions.length - 1];
+    expect(last).toMatchObject({ type: "pinch", center: { x: 160, y: 105 } });
+    // Distance after the second move is back to 100: the product of the factors is 1.
+    const product = actions.reduce((p, a) => (a.type === "pinch" ? p * a.factor : p), 1);
+    expect(product).toBeCloseTo(1, 12);
+    expect(actions[0]).toMatchObject({ from: { x: 150, y: 100 } });
+  });
+
+  it("a third finger lifting does not end the pinch; the next move still pinches", () => {
+    const { state, actions } = run([
+      { type: "down", id: 1, x: 100, y: 100, t: 0 },
+      { type: "down", id: 2, x: 200, y: 100, t: 0 },
+      { type: "down", id: 3, x: 300, y: 300, t: 10 },
+      { type: "up", id: 3, x: 300, y: 300, t: 20 },
+      { type: "move", id: 2, x: 250, y: 100, t: 30 },
+    ]);
+    expect(state.phase).toBe("pinch");
+    expect(state.pointers.map((p) => p.id)).toEqual([1, 2]);
+    expect(actions).toEqual([{ type: "pinch", from: { x: 150, y: 100 }, center: { x: 175, y: 100 }, factor: 1.5 }]);
+  });
+
+  it("a pinch leaves no double-tap memory: a tap right after it is a plain tap", () => {
+    const { actions } = run([
+      { type: "down", id: 1, x: 10, y: 20, t: 0 },
+      { type: "up", id: 1, x: 10, y: 20, t: 50 },
+      { type: "down", id: 2, x: 10, y: 20, t: 100 },
+      { type: "down", id: 3, x: 110, y: 20, t: 110 },
+      { type: "up", id: 3, x: 110, y: 20, t: 150 },
+      { type: "up", id: 2, x: 10, y: 20, t: 160 },
+      { type: "down", id: 4, x: 10, y: 20, t: 200 },
+      { type: "up", id: 4, x: 10, y: 20, t: 240 },
+    ]);
+    expect(actions.map((a) => a.type)).toEqual(["tap", "tap"]);
   });
 
   it("a one-finger pan becomes a pinch when the second finger touches", () => {
@@ -165,6 +206,33 @@ describe("tap and double tap", () => {
     expect(actions).toEqual([{ type: "pan", dx: 10, dy: 0 }]);
     expect(state.phase).toBe("idle");
     expect(state.lastTap).toBeNull();
+  });
+
+  it("a tap, then a pan, then a tap within DOUBLE_TAP_MS of the first is NOT a double tap", () => {
+    // Tap at t = 50; pan 100..150; tap released at t = 240 (190 ms after the first, within 30 px of it).
+    const { actions } = run([
+      { type: "down", id: 1, x: 10, y: 20, t: 0 },
+      { type: "up", id: 1, x: 10, y: 20, t: 50 },
+      { type: "down", id: 2, x: 10, y: 20, t: 100 },
+      { type: "move", id: 2, x: 60, y: 20, t: 120 },
+      { type: "up", id: 2, x: 60, y: 20, t: 150 },
+      { type: "down", id: 3, x: 12, y: 20, t: 200 },
+      { type: "up", id: 3, x: 12, y: 20, t: 240 },
+    ]);
+    expect(actions.map((a) => a.type)).toEqual(["tap", "pan", "tap"]);
+  });
+
+  it("a cancelled touch clears the previous tap's memory: the next tap is a plain tap", () => {
+    const { state, actions } = run([
+      { type: "down", id: 1, x: 10, y: 20, t: 0 },
+      { type: "up", id: 1, x: 10, y: 20, t: 50 },
+      { type: "down", id: 2, x: 10, y: 20, t: 100 },
+      { type: "cancel", id: 2, t: 120 },
+      { type: "down", id: 3, x: 10, y: 20, t: 200 },
+      { type: "up", id: 3, x: 10, y: 20, t: 240 },
+    ]);
+    expect(actions.map((a) => a.type)).toEqual(["tap", "tap"]);
+    expect(state.lastTap).toEqual({ x: 10, y: 20, t: 240 });
   });
 
   it("a cancel drops everything without a tap", () => {

@@ -8,6 +8,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
+import { useCoarsePointer } from "@/components/useCoarsePointer";
 import { exportScenePng } from "@/components/exportScenePng";
 import { exportFileName, exportFooterText } from "@/lib/export-footer";
 import { reportedForms } from "@/lib/core/detect-form";
@@ -135,20 +136,6 @@ const VF_STYLE = `
   .vf-app input[type="checkbox"] { width: 22px; height: 22px; }
 }
 `;
-
-/** Whether the primary pointer is a finger (the interaction hint then names taps, not clicks); false until mounted. */
-function useCoarsePointer(): boolean {
-  const [coarse, setCoarse] = useState(false);
-  useEffect(() => {
-    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
-    const query = window.matchMedia("(pointer: coarse)");
-    const update = () => setCoarse(query.matches);
-    update();
-    query.addEventListener("change", update);
-    return () => query.removeEventListener("change", update);
-  }, []);
-  return coarse;
-}
 
 
 /** Width of the picture column, measured with a ResizeObserver; null until mounted (server render). */

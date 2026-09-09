@@ -30,6 +30,12 @@ export type VectorFieldCanvasProps = {
   onHoverWorld?: (world: Vec2 | null, screen: Vec2 | null) => void;
   onWheelZoom?: (screenPoint: Vec2, factor: number) => void;
   onPan?: (dxScreen: number, dyScreen: number) => void;
+  /**
+   * One touch pinch step: the world point under `from` must end under `to` and the scale is
+   * multiplied by `factor`, as ONE viewport update (see pinchAt). Without it the step falls back to
+   * onPan then onWheelZoom, which lose the midpoint's motion when both read the same stale viewport.
+   */
+  onPinch?: (from: Vec2, to: Vec2, factor: number) => void;
   onDoubleClick?: () => void;
   className?: string;
 };
@@ -53,11 +59,16 @@ export function VectorFieldCanvas({
   onHoverWorld,
   onWheelZoom,
   onPan,
+  onPinch,
   onDoubleClick,
   className,
 }: VectorFieldCanvasProps) {
   const baseRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  // Whether the last pointer that touched the canvas was a finger: only then is the context menu
+  // (the long-press menu) suppressed and the overlay hint drawn one size larger. Mouse and pen
+  // behave exactly as before the touch support.
+  const lastPointerWasTouch = useRef(false);
   const drag = useRef<{ x: number; y: number; moved: boolean; active: boolean }>({ x: 0, y: 0, moved: false, active: false });
   const v: Viewport | null = viewport ?? (scene.box ? fitViewport(scene.box, width, height) : null);
 
@@ -98,7 +109,7 @@ export function VectorFieldCanvas({
     }
     if (overlayHint) {
       const s = worldToScreen(v, overlayHint.at);
-      ctx.font = "12px system-ui, sans-serif";
+      ctx.font = `${lastPointerWasTouch.current ? 12 : 11}px system-ui, sans-serif`;
       ctx.fillStyle = "#92400e";
       ctx.textAlign = "left";
       ctx.textBaseline = "bottom";
@@ -137,7 +148,11 @@ export function VectorFieldCanvas({
         onHoverWorld?.(null, null);
         return;
       case "pinch":
-        onWheelZoom?.(a.center, a.factor);
+        if (onPinch) onPinch(a.from, a.center, a.factor);
+        else {
+          onPan?.(a.center.x - a.from.x, a.center.y - a.from.y);
+          onWheelZoom?.(a.center, a.factor);
+        }
         onHoverWorld?.(null, null);
         return;
       case "tap":
@@ -181,6 +196,7 @@ export function VectorFieldCanvas({
 
   const handleDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     const s = screenOf(event);
+    lastPointerWasTouch.current = isTouch(event);
     if (isTouch(event)) {
       event.currentTarget.setPointerCapture(event.pointerId);
       dispatchTouch({ type: "down", id: event.pointerId, x: s.x, y: s.y, t: performance.now() });
@@ -270,7 +286,7 @@ export function VectorFieldCanvas({
     onHoverWorld?.(null, null);
   };
 
-  const interactive = Boolean(onClickWorld || onHoverWorld || onPan || onWheelZoom);
+  const interactive = Boolean(onClickWorld || onHoverWorld || onPan || onWheelZoom || onPinch);
   return (
     <div className={className} style={{ position: "relative", width, height, borderRadius: 6, border: "1px solid #e5e7eb", overflow: "hidden", background: "#fff" }}>
       <canvas ref={baseRef} style={{ position: "absolute", left: 0, top: 0, display: "block" }} role="img" aria-label="Phase portrait" />
@@ -283,7 +299,10 @@ export function VectorFieldCanvas({
         onPointerLeave={handleLeave}
         onPointerCancel={handleCancel}
         onDoubleClick={handleDoubleClick}
-        onContextMenu={(event) => event.preventDefault()}
+        onContextMenu={(event) => {
+          // A finger held on the canvas is a "keep" gesture, not a menu request; the mouse keeps its menu.
+          if (lastPointerWasTouch.current) event.preventDefault();
+        }}
       />
     </div>
   );

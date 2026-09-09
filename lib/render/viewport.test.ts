@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fitViewport, panBy, pixelScale, resetViewport, screenToWorld, worldToScreen, zoomAt, type Viewport } from "./viewport";
+import { fitViewport, panBy, pinchAt, pixelScale, resetViewport, screenToWorld, worldToScreen, zoomAt, type Viewport } from "./viewport";
 
 const box = { x: { min: -3, max: 3 }, y: { min: -2, max: 2 } };
 
@@ -232,5 +232,34 @@ describe("resetViewport", () => {
   it("passes the equal-scale option through", () => {
     expect(resetViewport(box, 600, 600, { equalScale: false })).toEqual(fitViewport(box, 600, 600, { equalScale: false }));
     expect(resetViewport(box, 600, 600, { equalScale: false }).box).toEqual(box);
+  });
+});
+
+describe("pinchAt", () => {
+  // Box [0, 10] x [0, 10] on a 100 x 100 canvas: 10 px per unit, screen (50, 50) is world (5, 5).
+  const v: Viewport = { box: { x: { min: 0, max: 10 }, y: { min: 0, max: 10 } }, width: 100, height: 100 };
+
+  it("a pinch whose midpoint moves by (10, 0) px at factor 2 keeps the world point under the midpoint and shifts the view by 10 px", () => {
+    const r = pinchAt(v, { x: 50, y: 50 }, { x: 60, y: 50 }, 2);
+    // Scale doubles: 20 px per unit, the box is 5 units wide. World (5, 5) sits at screen (60, 50):
+    // xMin = 5 - 60/20 = 2, xMax = 7; yMax = 5 + 50/20 = 7.5, yMin = 2.5.
+    expect(r.box.x.min).toBeCloseTo(2, 12);
+    expect(r.box.x.max).toBeCloseTo(7, 12);
+    expect(r.box.y.min).toBeCloseTo(2.5, 12);
+    expect(r.box.y.max).toBeCloseTo(7.5, 12);
+    const under = screenToWorld(r, { x: 60, y: 50 });
+    expect(under.x).toBeCloseTo(5, 12);
+    expect(under.y).toBeCloseTo(5, 12);
+    // The same gesture applied as two updates from the SAME stale viewport loses the pan.
+    const stale = zoomAt(v, { x: 50, y: 50 }, 2);
+    expect(screenToWorld(stale, { x: 60, y: 50 }).x).toBeCloseTo(5.5, 12);
+  });
+
+  it("equals zoomAt then panBy in that order, and a midpoint that does not move is a plain zoom", () => {
+    const r = pinchAt(v, { x: 30, y: 70 }, { x: 30, y: 70 }, 0.5);
+    const z = zoomAt(v, { x: 30, y: 70 }, 0.5);
+    expect(r).toEqual(z);
+    const s = pinchAt(v, { x: 30, y: 70 }, { x: 35, y: 60 }, 0.5);
+    expect(s).toEqual(panBy(z, 5, -10));
   });
 });

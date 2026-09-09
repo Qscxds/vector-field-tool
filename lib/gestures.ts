@@ -4,11 +4,15 @@
  * The canvas feeds touch pointer events in and gets back a list of actions to dispatch to its
  * callbacks. Mouse events never come here (the mouse path of the canvas is unchanged).
  *
- * Gestures: one-finger pan; two-finger pinch (distance ratio -> zoom about the midpoint, and the
- * midpoint's motion -> pan); a short tap without movement (preview); two taps within
+ * Gestures: one-finger pan; two-finger pinch (ONE action per step: the distance ratio is the zoom
+ * factor and the midpoint's motion `from` -> `center` is the pan, so the shell applies both as a
+ * single viewport update); a short tap without movement (preview); two taps within
  * DOUBLE_TAP_MS and DOUBLE_TAP_PX (reset); a hold of LONG_PRESS_MS with less than TAP_MOVE_PX of
- * movement (keep; the release is then not a tap). Lifting one of two fingers ends the pinch and
- * the remaining finger does nothing until it is lifted too.
+ * movement (keep; the release is then not a tap). Lifting one of the two pinching fingers ends
+ * the pinch and the remaining fingers do nothing until they are lifted too; a third finger is
+ * ignored and may lift without ending the pinch. Only a tap leaves a double-tap memory: a pan, a
+ * pinch, a long press or a cancelled touch clears it, so a later tap never pairs with a tap made
+ * before them.
  */
 import type { Vec2 } from "@/lib/core/types";
 
@@ -27,7 +31,8 @@ export type GestureEvent =
 
 export type GestureAction =
   | { type: "pan"; dx: number; dy: number }
-  | { type: "pinch"; center: Vec2; factor: number }
+  /** One pinch step: the world point under `from` (previous midpoint) moves to `center`, the scale is multiplied by `factor`. */
+  | { type: "pinch"; from: Vec2; center: Vec2; factor: number }
   | { type: "tap"; at: Vec2 }
   | { type: "doubleTap"; at: Vec2 }
   | { type: "longPress"; at: Vec2 };
@@ -85,8 +90,8 @@ function withoutPointer(state: GestureState, id: number): GestureState["pointers
   return state.pointers.filter((p) => p.id !== id);
 }
 
-/** Every finger lifted: back to idle, keeping only the last-tap memory. */
-function settle(state: GestureState, pointers: GestureState["pointers"], lastTap = state.lastTap): GestureState {
+/** A gesture ended: idle once every finger lifted, else "spent". Only a tap (passed explicitly) keeps a double-tap memory. */
+function settle(state: GestureState, pointers: GestureState["pointers"], lastTap: GestureState["lastTap"] = null): GestureState {
   if (pointers.length === 0) return { ...IDLE_GESTURE, lastTap };
   return { ...state, pointers, phase: "spent", origin: null, last: null, pinchDistance: null, pinchCenter: null, lastTap };
 }
@@ -121,11 +126,10 @@ export function reduceGesture(state: GestureState, event: GestureEvent): { state
         const [a, b] = pointers;
         const d = distance(a, b);
         const center = midpoint(a, b);
-        const actions: GestureAction[] = [];
-        const dx = center.x - state.pinchCenter.x;
-        const dy = center.y - state.pinchCenter.y;
-        if (dx !== 0 || dy !== 0) actions.push({ type: "pan", dx, dy });
-        if (state.pinchDistance > 0 && d > 0 && d !== state.pinchDistance) actions.push({ type: "pinch", center, factor: d / state.pinchDistance });
+        const moved = center.x !== state.pinchCenter.x || center.y !== state.pinchCenter.y;
+        const scaled = state.pinchDistance > 0 && d > 0 && d !== state.pinchDistance;
+        const factor = scaled ? d / state.pinchDistance : 1;
+        const actions: GestureAction[] = moved || scaled ? [{ type: "pinch", from: state.pinchCenter, center, factor }] : [];
         return { state: { ...state, pointers, pinchDistance: d, pinchCenter: center }, actions };
       }
       if ((state.phase === "press" || state.phase === "pan") && index === 0 && state.origin && state.last) {
@@ -150,6 +154,10 @@ export function reduceGesture(state: GestureState, event: GestureEvent): { state
           return { state: settle(state, pointers, null), actions: [{ type: "doubleTap", at }] };
         }
         return { state: settle(state, pointers, { x: at.x, y: at.y, t: event.t }), actions: [{ type: "tap", at }] };
+      }
+      // A third finger (never part of the pinch) lifting leaves the pinch intact.
+      if (state.phase === "pinch" && state.pointers.findIndex((p) => p.id === event.id) >= 2) {
+        return { state: { ...state, pointers }, actions: [] };
       }
       // A pan end, a pinch losing a finger, or a spent gesture: no action; the rest of the
       // fingers do nothing until they lift too.

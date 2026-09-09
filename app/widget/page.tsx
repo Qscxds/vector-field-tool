@@ -15,6 +15,7 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
+import { useCoarsePointer } from "@/components/useCoarsePointer";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
@@ -75,6 +76,7 @@ export default function WidgetPage() {
   const [fallbackText, setFallbackText] = useState<string>("");
   const [isError, setIsError] = useState(false);
   const [browserLocale, setBrowserLocale] = useState<Locale>("en");
+  const coarsePointer = useCoarsePointer();
   // Counts tool results so a new result with the same equation still resets trajectories and previews.
   const [resultSeq, setResultSeq] = useState(0);
   const { ref, width } = useContainerWidth<HTMLDivElement>(640);
@@ -172,7 +174,7 @@ export default function WidgetPage() {
               yMin: formatNumber(live.viewport.box.y.min, 3),
               yMax: formatNumber(live.viewport.box.y.max, 3),
             })}{" "}
-            · {L.ui.interactionHint}
+            · {coarsePointer ? L.ui.interactionHintTouch : L.ui.interactionHint}
           </p>
           {live.overlay.some((t) => t.nonUnique) ? (
             <p role="status" data-non-unique-preview style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
