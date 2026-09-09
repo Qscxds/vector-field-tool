@@ -1222,3 +1222,118 @@ describe("constant-solution notes in the first-order summary (J-fix2)", () => {
     expect(r.text).not.toContain("semi-stable");
   });
 });
+
+describe("Phase J results are exposed in the Scene and the summary, in both locales (L.2)", () => {
+  // Every case below reuses a kernel test case (lib/core/equilibria.test.ts, slope-field.test.ts)
+  // whose verdict was derived there; here only the exposure through the tool is checked.
+  it("analyze_system: a direction-dependent singularity is carried as singularPoints and printed as the singular-point line, never as an equilibrium", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_system", { f: "x*y/(x^2 + y^2)", g: "y - x", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.equilibria, locale).toEqual([]);
+      expect(r.scene.warning, locale).toBe("none_found");
+      expect(r.scene.singularPoints, locale).toHaveLength(1);
+      const L = labels(locale);
+      expect(r.text, locale).toContain(L.warning.none_found);
+      expect(r.text, locale).toContain(fill(L.tool.singularPoint, { point: formatPoint(r.scene.singularPoints![0]) }));
+    }
+  });
+
+  it("analyze_system: the underflow plateau of x' = y, y' = 2^x on [-1e4, 1e4]² is a flag on the scene and one notice line", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_system", { f: "y", g: "2^x", xMin: -1e4, xMax: 1e4, yMin: -1e4, yMax: 1e4, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.underflowPlateau, locale).toBe(true);
+      expect(r.scene.equilibria, locale).toEqual([]);
+      const L = labels(locale);
+      expect(r.text.split("\n").filter((l) => l === L.tool.underflowPlateau), locale).toHaveLength(1);
+    }
+  });
+
+  it("analyze_system: a field vanishing on a region (max(x - 1, 0), max(y - 1, 0)) carries region_of_equilibria and prints that warning, every listed point non-hyperbolic", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_system", { f: "max(x - 1, 0)", g: "max(y - 1, 0)", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.warning, locale).toBe("region_of_equilibria");
+      expect(r.scene.equilibria!.length, locale).toBeGreaterThan(0);
+      for (const p of r.scene.equilibria!) expect(p.classification, locale).toBe("non_hyperbolic");
+      expect(r.text, locale).toContain(labels(locale).warning.region_of_equilibria);
+    }
+  });
+
+  it("analyze_system: the uniqueness sentence of an equilibrium (x' = sqrt(|x|), y' = -y) is printed in Chinese too, right after its line", async () => {
+    const r = await call("analyze_system", { f: "sqrt(abs(x))", g: "-y", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
+    expect(r.isError).toBeFalsy();
+    const [e] = r.scene.equilibria!;
+    expect(e.uniqueness).toMatchObject({ verdict: "unbounded", along: "x" });
+    const L = labels("zh");
+    const sentence = fill(L.uniqueness.unboundedPoint, { point: formatPoint(e.at), alpha: "0.5" });
+    const lines = r.text.split("\n");
+    const at = lines.indexOf(sentence);
+    expect(at).toBeGreaterThan(0);
+    expect(lines[at - 1]).toContain(formatPoint(e.at));
+  });
+
+  it("trace_trajectory: the non-unique flag and its sentence are printed in Chinese too", async () => {
+    const r = await call("trace_trajectory", { f: "sqrt(abs(x))", g: "-y", x0: 0.25, y0: 0, tSpan: 5, xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.trajectories!.find((t) => t.direction === "backward")!.nonUnique).toBe(true);
+    const L = labels("zh");
+    expect(r.text.split("\n").filter((l) => l === L.tool.nonUniqueTrajectory)).toHaveLength(1);
+    expect(r.text.indexOf(L.tool.nonUniqueTrajectory)).toBeGreaterThan(r.text.indexOf(L.tool.backward));
+  });
+
+  it("analyze_system: the truncated-equilibria sentence is printed in Chinese too, with the count", async () => {
+    const r = await call("analyze_system", { f: "sin(pi*x)", g: "sin(pi*y)", xMin: -5, xMax: 5, yMin: -5, yMax: 5, locale: "zh" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.truncated).toBe(true);
+    expect(r.text.split("\n")[1]).toBe(labels("zh").ui.equilibriaTruncated.replace(/\{max\}/g, String(r.scene.equilibria!.length)));
+    expect(r.text).not.toContain(labels("zh").warning.hit_limit);
+  });
+
+  it("analyze_first_order: dy/dt = 0 is identically zero: the flag, no solutions, the identically-zero sentence and the scan resolution", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_first_order", { expr: "0", xMin: -1, xMax: 1, yMin: -1, yMax: 1, locale });
+      expect(r.isError, locale).toBeFalsy();
+      const fo = r.scene.firstOrder!;
+      expect(fo.identicallyZero, locale).toBe(true);
+      expect(fo.solutions, locale).toEqual([]);
+      expect(fo.resolution, locale).toBe(2 / 400);
+      const L = labels(locale);
+      expect(r.text.split("\n").filter((l) => l === L.tool.identicallyZero), locale).toHaveLength(1);
+      expect(r.text, locale).toContain(fill(L.tool.scanResolution, { dy: "0.005" }));
+      expect(r.text, locale).not.toContain(L.tool.noConstantAutonomous);
+    }
+  });
+
+  it("analyze_second_order: the Scene is an analyze_system scene with secondOrder, and the summary starts with the reduction line, in both locales", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_second_order", { equation: "x'' + 0.5*x' + x = 0", locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.kind, locale).toBe("analyze_system");
+      expect(r.scene.secondOrder?.equation, locale).toBe("x'' + 0.5*x' + x = 0");
+      expect(r.scene.secondOrder?.reduced.f, locale).toBe("y");
+      expect(r.scene.system?.f, locale).toBe("y");
+      expect(r.scene.system?.g, locale).toBe(r.scene.secondOrder?.reduced.g);
+      const L = labels(locale);
+      expect(r.text.split("\n")[0], locale).toBe(fill(L.tool.secondOrderReduced, { equation: "x'' + 0.5*x' + x = 0", g: r.scene.secondOrder!.reduced.g }));
+    }
+  });
+
+  it("non-autonomous scenes carry the snapshot t and print the note with it in both locales (analyze_system, analyze_second_order, sample_field)", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const L = labels(locale);
+      const sys = await call("analyze_system", { f: "y", g: "-x + sin(t)", t: 1.5, locale });
+      expect(sys.scene.timeDependent?.snapshotT, locale).toBe(1.5);
+      expect(sys.scene.equilibria, locale).toBeUndefined();
+      expect(sys.text, locale).toContain(L.tool.timeDependent.slice(0, 12));
+      expect(sys.text, locale).toContain("1.5");
+      const second = await call("analyze_second_order", { equation: "x'' + x = cos(t)", t: 2, locale });
+      expect(second.scene.timeDependent?.snapshotT, locale).toBe(2);
+      expect(second.scene.secondOrder, locale).toBeTruthy();
+      const field = await call("sample_field", { f: "t", g: "0", density: 5, t: 0.25, locale });
+      expect(field.scene.timeDependent?.snapshotT, locale).toBe(0.25);
+      expect(field.text, locale).toContain("0.25");
+    }
+  });
+});
