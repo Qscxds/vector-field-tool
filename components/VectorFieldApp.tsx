@@ -759,7 +759,7 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
       <div>
         <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.constantSolutionsHeading}</h2>
         {fo.solutions.length === 0 ? (
-          <p style={{ margin: 0 }}>{noConstantSentence(L, fo.autonomous, fo.untestableReason)}</p>
+          <p style={{ margin: 0 }}>{noConstantSentence(L, fo.autonomous, fo.untestableReason, fo.identicallyZero)}</p>
         ) : (
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             {fo.solutions.map((s) => {

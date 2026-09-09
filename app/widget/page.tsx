@@ -227,7 +227,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
   for (const group of groupTrajectories(scene.trajectories ?? [])) items.push(...trajectoryLines(scene, group, L));
   const fo = scene.firstOrder;
   if (fo) {
-    if (fo.solutions.length === 0) items.push(noConstantSentence(L, fo.autonomous, fo.untestableReason));
+    if (fo.solutions.length === 0) items.push(noConstantSentence(L, fo.autonomous, fo.untestableReason, fo.identicallyZero));
     // Per line: the sentence, then the plateau / probe-count notes and the uniqueness sentence when
     // they apply; then the zero-plateau notice and the scan resolution.
     for (const s of fo.solutions) items.push(...constantSolutionLines(L, s, fo.spec));
