@@ -1,10 +1,17 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
+import { configuredBaseUrl } from "@/base-url";
+import { bilingual, SITE_NAME_BILINGUAL } from "@/lib/site-text";
 
+// Site-wide metadata (per-page titles and descriptions live on each page). The OG image is
+// app/opengraph-image.tsx, resolved against metadataBase; the favicon is app/icon.svg.
 export const metadata: Metadata = {
-  title: "vector-field-tool",
-  description:
-    "Vector field teaching tool for ODE courses. MCP server for Claude plus a web page, sharing one pure computation core.",
+  metadataBase: new URL(configuredBaseUrl ?? "http://localhost:3000"),
+  title: { template: `%s · ${SITE_NAME_BILINGUAL}`, default: SITE_NAME_BILINGUAL },
+  description: bilingual("homeDescription"),
+  applicationName: SITE_NAME_BILINGUAL,
+  openGraph: { type: "website", siteName: SITE_NAME_BILINGUAL, locale: "zh_CN", alternateLocale: ["en_US"] },
+  twitter: { card: "summary_large_image" },
 };
 
 /**

@@ -3,8 +3,16 @@
  * the first render already shows the linked state (no flash of a default), then the whole body,
  * shared with /embed, lives in components/VectorFieldApp. /mcp and /widget are untouched.
  */
+import type { Metadata } from "next";
 import { VectorFieldApp } from "@/components/VectorFieldApp";
+import { bilingual } from "@/lib/site-text";
 import { decodeState, DEFAULT_STATE, encodeState, queryFromSearchParams } from "@/lib/url-state";
+
+export const metadata: Metadata = {
+  title: bilingual("appTitle"),
+  description: bilingual("appDescription"),
+  alternates: { canonical: "/vector-field" },
+};
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
 

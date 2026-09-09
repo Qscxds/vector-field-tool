@@ -6,10 +6,15 @@
  */
 import type { Metadata } from "next";
 import { VectorFieldApp } from "@/components/VectorFieldApp";
+import { bilingual } from "@/lib/site-text";
 import { decodeState, DEFAULT_STATE, encodeState, queryFromSearchParams } from "@/lib/url-state";
 
+// noindex and no Open Graph card: this route only lives inside other pages' iframes.
 export const metadata: Metadata = {
+  title: bilingual("embedTitle"),
   robots: { index: false, follow: false },
+  openGraph: null,
+  twitter: null,
 };
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;

@@ -116,6 +116,16 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   HEADERS RULE: `next.config.ts` sends `Content-Security-Policy: frame-ancestors *` for source
   `/embed` ONLY. Never add X-Frame-Options or frame-ancestors to any other route: `/widget` is
   rendered inside the MCP host sandbox and any such header blanks it.
+- Site pages: `app/page.tsx` (home) and `app/help/page.tsx` are thin server components reading
+  `?loc=` (`app/site-locale.ts`) and rendering `components/HomeContent.tsx` /
+  `components/HelpContent.tsx` inside `components/SitePage.tsx` (language toggle in component
+  state only, footer, copy button with a read-only fallback). ALL their copy lives in
+  `lib/site-text.ts` (zh / en, identical key structure, tested), never in the components; the
+  help page's function list is `ALLOWED_FUNCTIONS` from the parser, never retyped. Metadata:
+  `app/layout.tsx` (metadataBase from `base-url.ts`, title template, OG / twitter defaults),
+  per-page `metadata` exports (`/embed` is noindex with no OG card), `app/opengraph-image.tsx`
+  (next/og, drawn at build time), `app/icon.svg`, `app/robots.ts` (disallow /embed, /mcp),
+  `app/sitemap.ts`.
 - `app/vector-field/presets.ts` the preset library: `PRESET_GROUPS` (chapters) and `PRESETS` of
   `{ id, group, mode: AppMode, name, note, expressions, box, starts? }` with hand-derived honest
   notes; `presetState`, `presetUrl` (a shareable link per preset), `presetsByGroup`. Tests check

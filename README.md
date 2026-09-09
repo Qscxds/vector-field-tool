@@ -54,8 +54,13 @@ app/embed/page.tsx         可嵌入路由：同样的参数，无标题；contr
 app/vector-field/presets.ts 预设库：按章节分组，每个预设 = 完整页面状态 + 固定轨线起点 + 双语说明，presetUrl 生成分享链接
 components/VectorFieldApp.tsx 网页外壳主体（两个路由共用）：表单 + 预设下拉 + 语言切换 + 交互画布 + 结果列表；地址栏同步、复制链接、vf- 布局
 lib/url-state.ts           地址栏状态：AppState 的编码 / 解码（默认值省略；解码有长度上限并走解析白名单，绝不抛异常）
-app/page.tsx               首页说明
-app/layout.tsx             根布局（含 iframe 内的 history 补丁，不要删）
+app/page.tsx               首页（服务端组件读 ?loc=，正文在 components/HomeContent.tsx：一句话说明、进入按钮、四个例子卡片、能做什么 / 限制、页脚）
+app/help/page.tsx          使用说明 /help（正文在 components/HelpContent.tsx：记号约定、操作说明、结果怎么读、已知限制、嵌入说明、连接 Claude）
+components/SitePage.tsx    站点页面外壳：语言切换（?loc= 或 navigator.language，只存组件状态，无 cookie / localStorage）、页脚、带回退的复制按钮
+lib/site-text.ts           站点页面与 metadata 的全部文案（zh / en 键结构一致，有测试）；iframe 代码片段、MCP 端点、函数列表取自解析白名单
+app/layout.tsx             根布局（含 iframe 内的 history 补丁，不要删；站点 metadata：metadataBase 来自 base-url.ts，标题模板、OG / twitter 卡片）
+app/opengraph-image.tsx    OG 图（next/og ImageResponse，1200×630，画 logistic 斜率场 + 站名，构建时静态生成）
+app/icon.svg / robots.ts / sitemap.ts  站标；robots.txt（禁 /embed 与 /mcp）；sitemap.xml（/、/vector-field、/help）
 base-url.ts                公网地址：BASE_URL 或 Vercel 系统变量，喂给 assetPrefix
 components/VectorFieldCanvas.tsx   两层 canvas：底层画场 / 等值线 / 轨线 / 标记，overlay 画悬停预览；上报指针与滚轮
 components/useInteractiveScene.ts  交互状态机：视口、重采样、防抖重算、hover 节流、点击固定
