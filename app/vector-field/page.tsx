@@ -13,7 +13,7 @@ import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSyste
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
@@ -420,7 +420,7 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             {fo.solutions.map((s) => (
               <li key={s.y} data-domain-edge={s.domainEdge} data-uniqueness={s.uniqueness?.verdict}>
-                {fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] })}
+                {fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: stabilitySentence(L, s) })}
                 <UniquenessNote text={uniquenessSentence(L, s.uniqueness, { y: s.y })} />
               </li>
             ))}

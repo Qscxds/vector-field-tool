@@ -30,7 +30,7 @@ describe("label tables", () => {
   it("placeholders match between languages", () => {
     const placeholders = (s: string) => (s.match(/\{\w+\}/g) ?? []).sort();
     const zh = LABELS.zh, en = LABELS.en;
-    for (const section of ["tool", "ui", "uniqueness"] as const) {
+    for (const section of ["tool", "ui", "uniqueness", "stability"] as const) {
       for (const key of Object.keys(zh[section]) as Array<keyof typeof zh[typeof section]>) {
         expect(placeholders(zh[section][key]), `${section}.${String(key)}`).toEqual(placeholders(en[section][key]));
       }
@@ -104,6 +104,40 @@ describe("label tables", () => {
     expect(labels("zh").stability.edge_leave).toContain("定义域边界");
     expect(labels("en").stability.edge_approach).toContain("edge of the domain");
     expect(labels("en").uniqueness.unbounded).toMatch(/unbounded/);
+  });
+
+  it("domain-edge sentences name the defined side, a one-sided 'varies' has its own sentence, and the canvas tags are words (review J)", async () => {
+    const { stabilitySentence } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      for (const key of ["edge_approach", "edge_leave", "edge_varies"] as const) {
+        expect(L.stability[key], `${locale}.${key}`).toContain("{side}");
+        // the hint about fractional powers of a negative base (review J: 3*y^(2/3) reads as one-sided here)
+        if (key !== "edge_varies") expect(L.stability[key], `${locale}.${key}`).toMatch(/abs\(y\)\^\(2\/3\)/);
+      }
+      for (const key of ["stable", "unstable", "semi_stable", "varies"] as const) expect(L.stability[key], `${locale}.${key}`).not.toContain("{side}");
+      // filled sentences: the side word appears, no placeholder is left
+      const above = stabilitySentence(L, { stability: "edge_leave", domainEdge: "above" });
+      const below = stabilitySentence(L, { stability: "edge_approach", domainEdge: "below" });
+      expect(above).toContain(L.side.above);
+      expect(below).toContain(L.side.below);
+      expect(above).not.toContain("{side}");
+      expect(above).not.toBe(below);
+      // a one-sided line whose sign pattern changes with t gets edge_varies, not the two-sided 'varies'
+      const oneSided = stabilitySentence(L, { stability: "varies", domainEdge: "above" });
+      expect(oneSided).toBe(fill(L.stability.edge_varies, { side: L.side.above }));
+      expect(oneSided).not.toBe(L.stability.varies);
+      expect(stabilitySentence(L, { stability: "varies" })).toBe(L.stability.varies);
+      expect(stabilitySentence(L, { stability: "stable" })).toBe(L.stability.stable);
+      // short canvas tags exist for every stability value and are not the internal keys
+      for (const key of ["stable", "unstable", "semi_stable", "varies", "edge_approach", "edge_leave"] as const) {
+        expect(L.stabilityShort[key], `${locale}.${key}`).not.toMatch(/_/);
+        expect(L.stabilityShort[key].length, `${locale}.${key}`).toBeLessThan(L.stability[key].length);
+      }
+    }
+    expect(labels("en").stabilityShort.edge_leave).toBe("domain edge, left");
+    expect(labels("zh").side.above).toBe("上方");
+    expect(labels("en").stability.edge_leave).toContain("defined only {side} this line");
   });
 
   it("uniquenessSentence speaks only for unbounded and borderline verdicts", async () => {

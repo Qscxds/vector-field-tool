@@ -7,7 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { NO_FORM_NOTE } from "@/lib/core/detect-form";
-import { fill, labels } from "@/lib/labels";
+import { fill, labels, stabilitySentence } from "@/lib/labels";
 import type { Scene } from "@/lib/scene";
 import { SlidingWindowLimiter } from "./rate-limit";
 import { createMcpServer } from "./server";
@@ -807,21 +807,52 @@ describe("uniqueness failure and domain-edge constant solutions (J.2)", () => {
     expect(s).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave", uniqueness: { verdict: "unbounded", probesFailing: 7, probesTotal: 7, side: "above" } });
     expect(s.uniqueness!.exponent).toBeCloseTo(0.5, 6);
     const L = labels("en");
-    const solutionLine = fill(L.tool.constantSolution, { y: "0", stability: L.stability.edge_leave });
+    const solutionLine = fill(L.tool.constantSolution, { y: "0", stability: stabilitySentence(L, s) });
     const sentence = fill(L.uniqueness.unbounded, { y: "0", alpha: "0.5" });
     expect(r.text).toContain(solutionLine);
     expect(r.text).toContain(sentence);
     expect(r.text.indexOf(sentence)).toBe(r.text.indexOf(solutionLine) + solutionLine.length + 1); // the very next line
     expect(r.text).not.toContain("semi-stable");
     const zh = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -0.31, yMax: 1.2, locale: "zh" });
-    expect(zh.text).toContain(labels("zh").stability.edge_leave);
+    expect(zh.text).toContain(stabilitySentence(labels("zh"), s));
+    expect(zh.text).toContain("上方");
     expect(zh.text).toContain("Lipschitz 条件不成立");
   });
 
   it("dy/dt = -sqrt(y) is approached from the defined side", async () => {
     const r = await call("analyze_first_order", { expr: "-sqrt(y)", yMin: -0.31, yMax: 1.2, locale: "en" });
     expect(r.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_approach" });
-    expect(r.text).toContain(labels("en").stability.edge_approach);
+    expect(r.text).toContain(stabilitySentence(labels("en"), r.scene.firstOrder!.solutions[0]));
+    expect(r.text).toContain("defined only above this line");
+  });
+
+  it("dy/dt = 3*y^(2/3): a domain edge in this tool (a negative base with a fractional exponent is NaN), and the sentence and the tool description say how to get the real branch (review J)", async () => {
+    const r = await call("analyze_first_order", { expr: "3*y^(2/3)", yMin: -2, yMax: 2, locale: "en" });
+    expect(r.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave", uniqueness: { verdict: "unbounded" } });
+    expect(r.scene.firstOrder!.solutions[0].uniqueness!.exponent).toBeCloseTo(1 / 3, 6);
+    expect(r.text).toContain("abs(y)^(2/3)");
+    const zh = await call("analyze_first_order", { expr: "3*y^(2/3)", yMin: -2, yMax: 2, locale: "zh" });
+    expect(zh.text).toContain("abs(y)^(2/3)");
+    const { tools } = await client.listTools();
+    expect(tools.find((t) => t.name === "analyze_first_order")!.description).toMatch(/fractional power of a negative base is undefined/);
+    // written with the real branch, the same equation is an interior cusp root, semi-stable
+    const real = await call("analyze_first_order", { expr: "3*abs(y)^(2/3)", yMin: -2, yMax: 2, locale: "en" });
+    expect(real.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, stability: "semi_stable", uniqueness: { verdict: "unbounded" } });
+    expect(real.scene.firstOrder!.solutions[0].domainEdge).toBeUndefined();
+  });
+
+  it("a range on which the equation is undefined: the autonomy verdict is untestable and the sentence says so, never 'depends on t' (review J)", async () => {
+    const r = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -4, yMax: -0.001, locale: "en" });
+    expect(r.scene.firstOrder!.autonomous).toBe("untestable");
+    expect(r.scene.firstOrder!.solutions).toEqual([]);
+    expect(r.text).toContain(labels("en").tool.noConstantUntestable);
+    expect(r.text).not.toContain("depends on t");
+    const zh = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -4, yMax: -0.001, locale: "zh" });
+    expect(zh.text).toContain(labels("zh").tool.noConstantUntestable);
+    // on y in [-4, 0] the line y = 0 is the only defined sample and it is reported, as a domain edge
+    const edge = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -4, yMax: 0, locale: "en" });
+    expect(edge.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave" });
+    expect(edge.scene.firstOrder!.autonomous).toBe(true);
   });
 
   it("says nothing about uniqueness for the logistic equation (bounded is not a proof, so it is not claimed)", async () => {

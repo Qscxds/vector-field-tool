@@ -17,7 +17,7 @@ import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
@@ -231,7 +231,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
   if (fo) {
     if (fo.solutions.length === 0) items.push(noConstantSentence(L, fo.autonomous));
     for (const s of fo.solutions) {
-      items.push(fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stability[s.stability] }));
+      items.push(fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: stabilitySentence(L, s) }));
       // Uniqueness right under its line; silent for a bounded result.
       const uniqueness = uniquenessSentence(L, s.uniqueness, { y: s.y });
       if (uniqueness) items.push(uniqueness);

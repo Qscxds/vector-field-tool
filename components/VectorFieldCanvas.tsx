@@ -12,7 +12,7 @@ import type { Vec2 } from "@/lib/core/types";
 import { arrowPolygon, scaleArrows, type ArrowMode } from "@/lib/render/arrows";
 import { axisNameAnchors } from "@/lib/render/axis-names";
 import { chooseTicks } from "@/lib/render/ticks";
-import { formatNumber } from "@/lib/labels";
+import { formatNumber, labels } from "@/lib/labels";
 import { fitViewport, screenToWorld, worldToScreen, type Viewport } from "@/lib/render/viewport";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 
@@ -416,6 +416,7 @@ function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, color: s
 }
 
 function drawFirstOrderLines(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene): void {
+  const { stabilityShort } = labels(scene.locale ?? "en");
   for (const sol of scene.firstOrder?.solutions ?? []) {
     const s = worldToScreen(v, { x: v.box.x.min, y: sol.y });
     const approached = sol.stability === "stable" || sol.stability === "edge_approach";
@@ -447,7 +448,8 @@ function drawFirstOrderLines(ctx: CanvasRenderingContext2D, v: Viewport, scene: 
     ctx.font = "11px system-ui, sans-serif";
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    ctx.fillText(`y = ${Number(sol.y.toFixed(4))} (${sol.stability})${nonUnique ? " !" : ""}`, v.width - 6, s.y - (nonUnique ? 6 : 3));
+    // The tag is a short label in the scene's language (never the internal key).
+    ctx.fillText(`y = ${Number(sol.y.toFixed(4))} (${stabilityShort[sol.stability]})${nonUnique ? " !" : ""}`, v.width - 6, s.y - (nonUnique ? 6 : 3));
   }
 }
 

@@ -19,7 +19,16 @@ export const LOCALES: readonly Locale[] = ["zh", "en"];
 
 export type LabelTable = {
   classification: Record<Classification, string>;
-  stability: Record<EquilibriumSolution["stability"], string>;
+  /**
+   * Full sentences per stability value; the domain-edge ones take `{side}` (the side where the
+   * equation is defined, from `side`), and a domain-edge line whose sign pattern changes with t
+   * uses `edge_varies` instead of `varies` (which speaks of two sides). Fill through stabilitySentence.
+   */
+  stability: Record<EquilibriumSolution["stability"] | "edge_varies", string>;
+  /** Short tags for the constant-solution line label drawn on the canvas. */
+  stabilityShort: Record<EquilibriumSolution["stability"], string>;
+  /** The side of a horizontal line, as a word for the `{side}` placeholder. */
+  side: Record<NonNullable<EquilibriumSolution["domainEdge"]>, string>;
   status: Record<IntegrationStatus, string>;
   warning: Record<"none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit", string>;
   caveat: Record<CaveatKey, string>;
@@ -81,8 +90,21 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable: "不稳定（两侧的解都离开它）",
       semi_stable: "半稳定（一侧趋向、一侧离开）",
       varies: "稳定性随 t 变化（在观察范围内两侧解的走向不一致）",
-      edge_approach: "定义域边界上的常数解：方程只在这条线的一侧有定义；该侧的解趋向它",
-      edge_leave: "定义域边界上的常数解：方程只在这条线的一侧有定义；该侧的解离开它",
+      edge_approach: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解趋向它（提示：这里负数的分数次幂没有定义，例如 y^(2/3) 在 y < 0 时；要取实数分支，请写 abs(y)^(2/3) 或 sign(y)*abs(y)^p）",
+      edge_leave: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解离开它（提示：这里负数的分数次幂没有定义，例如 y^(2/3) 在 y < 0 时；要取实数分支，请写 abs(y)^(2/3) 或 sign(y)*abs(y)^p）",
+      edge_varies: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解是趋向还是离开它随 t 变化（在观察范围内两种情况都出现）",
+    },
+    stabilityShort: {
+      stable: "稳定",
+      unstable: "不稳定",
+      semi_stable: "半稳定",
+      varies: "随 t 变化",
+      edge_approach: "定义域边界，趋向",
+      edge_leave: "定义域边界，离开",
+    },
+    side: {
+      above: "上方",
+      below: "下方",
     },
     status: {
       completed: "积分到指定时间结束",
@@ -248,8 +270,21 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable: "unstable (solutions leave it on both sides)",
       semi_stable: "semi-stable (approached on one side, left on the other)",
       varies: "stability varies with t (the sign pattern differs across the viewing range)",
-      edge_approach: "a constant solution on the edge of the domain: the equation is defined on one side of this line only, and the solutions on that side approach it",
-      edge_leave: "a constant solution on the edge of the domain: the equation is defined on one side of this line only, and the solutions on that side leave it",
+      edge_approach: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side approach it (hint: a fractional power of a negative number is undefined here, e.g. y^(2/3) for y < 0; write abs(y)^(2/3) or sign(y)*abs(y)^p for the real branch)",
+      edge_leave: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side leave it (hint: a fractional power of a negative number is undefined here, e.g. y^(2/3) for y < 0; write abs(y)^(2/3) or sign(y)*abs(y)^p for the real branch)",
+      edge_varies: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and whether the solutions on that side approach or leave it changes with t (both happen across the viewing range)",
+    },
+    stabilityShort: {
+      stable: "stable",
+      unstable: "unstable",
+      semi_stable: "semi-stable",
+      varies: "varies with t",
+      edge_approach: "domain edge, approached",
+      edge_leave: "domain edge, left",
+    },
+    side: {
+      above: "above",
+      below: "below",
     },
     status: {
       completed: "integrated to the requested time",
@@ -425,6 +460,17 @@ export function uniquenessSentence(
   const alpha = formatNumber(u.exponent, 2);
   if ("y" in subject) return fill(u.verdict === "unbounded" ? L.uniqueness.unbounded : L.uniqueness.borderline, { y: formatNumber(subject.y, 6), alpha });
   return fill(u.verdict === "unbounded" ? L.uniqueness.unboundedPoint : L.uniqueness.borderlinePoint, { point: formatPoint(subject.point), alpha });
+}
+
+/**
+ * The stability sentence of a constant solution: a domain-edge line names the side where the
+ * equation is defined, and one whose sign pattern changes with t gets `edge_varies` (the plain
+ * `varies` sentence speaks of both sides, which a one-sided line does not have). Shared by the
+ * tool summary and both shells.
+ */
+export function stabilitySentence(L: LabelTable, s: Pick<EquilibriumSolution, "stability" | "domainEdge">): string {
+  const key = s.domainEdge && s.stability === "varies" ? "edge_varies" : s.stability;
+  return fill(L.stability[key], { side: s.domainEdge ? L.side[s.domainEdge] : "" });
 }
 
 /**

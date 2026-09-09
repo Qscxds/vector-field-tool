@@ -25,7 +25,7 @@ import {
 } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { EXACT_PATH_TOL, markNonUnique, withUniqueness } from "@/lib/interactive";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, stabilitySentence, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
@@ -578,7 +578,9 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "equations). Returns: the slope/direction field inside the viewing box (undirected segments for the " +
         "differential form, which has no natural direction); constant solutions y = c with their stability " +
         "(stable / unstable / semi-stable / varies with t; a line on the edge of the equation's domain, such as " +
-        "y = 0 for dy/dt = sqrt(y), is judged on its defined side only: approached or left), each with a " +
+        "y = 0 for dy/dt = sqrt(y), is judged on its defined side only: approached or left; note that a fractional " +
+        "power of a negative base is undefined in this tool, so 3*y^(2/3) is reported as defined for y >= 0 only, " +
+        "and the real branch must be written abs(y)^(2/3) or sign(y)*abs(y)^p), each with a " +
         "uniqueness check (whether the Lipschitz condition fails there, as it does for sqrt(y) at y = 0: then " +
         "infinitely many solutions pass through the line, and the sentence saying so must be read to the student); " +
         "points where the direction is undefined (M = N = 0); " +
@@ -690,7 +692,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         }
         if (eq.solutions.length) {
           for (const s of eq.solutions) {
-            lines.push(fill(L.tool.constantSolution, { y: fmt(s.y, 6), stability: L.stability[s.stability] }));
+            lines.push(fill(L.tool.constantSolution, { y: fmt(s.y, 6), stability: stabilitySentence(L, s) }));
             // The uniqueness sentence follows its line; nothing is printed for a bounded result.
             const uniqueness = uniquenessSentence(L, s.uniqueness, { y: s.y });
             if (uniqueness) lines.push(uniqueness);
