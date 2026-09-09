@@ -667,17 +667,27 @@ export function localeFromLanguageTag(tag: string | undefined | null): Locale {
   return typeof tag === "string" && /^zh\b/i.test(tag) ? "zh" : "en";
 }
 
+/**
+ * Numbers for students, by significant digits, never collapsed to "0" by the units or the zoom:
+ * a value with |v| < 1e-3 or |v| >= 1e6, or one whose fixed form would show no nonzero digit,
+ * prints in exponential form with `digits` significant digits (1e-5, -2.5e-7, 1e+30); everything
+ * else prints with `digits` decimals and trailing zeros stripped (2.5, 0.0045). Only an exact 0
+ * prints as "0" (a root found at 3e-17 is shown as 3e-17: what was measured, not what was hoped).
+ */
 export function formatNumber(v: number, digits = 4): string {
   if (!Number.isFinite(v)) return String(v);
-  const fixed = v.toFixed(digits);
-  // toFixed switches to exponential notation at 1e21; stripping "zeros" there would eat the exponent.
-  if (/e/i.test(fixed)) return fixed;
-  const s = fixed.replace(/\.?0+$/, "");
-  return s === "" || s === "-0" || s === "-" ? "0" : s;
+  if (v === 0) return "0";
+  const magnitude = Math.abs(v);
+  const fixed = magnitude < 1e-3 || magnitude >= 1e6 ? null : v.toFixed(digits);
+  if (fixed === null || /^-?0(\.0*)?$/.test(fixed)) {
+    return v.toExponential(Math.max(0, digits - 1)).replace(/\.?0+e/, "e");
+  }
+  return fixed.replace(/\.?0+$/, "");
 }
 
+/** A pair is printed as complex whenever the imaginary part is not negligible RELATIVE to the real part (never an absolute floor). */
 export function formatEigenvalue(e: Complex, digits = 5): string {
-  if (Math.abs(e.im) < 1e-15) return formatNumber(e.re, digits);
+  if (Math.abs(e.im) <= 1e-15 * Math.abs(e.re)) return formatNumber(e.re, digits);
   return `${formatNumber(e.re, digits)} ${e.im >= 0 ? "+" : "-"} ${formatNumber(Math.abs(e.im), digits)}i`;
 }
 

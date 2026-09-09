@@ -262,8 +262,45 @@ describe("formatNumber", () => {
     const { formatNumber } = await import("./labels");
     expect(formatNumber(1e30)).toBe("1e+30");
     expect(formatNumber(2.5)).toBe("2.5");
-    expect(formatNumber(-0.00001)).toBe("0");
+    // [J-fix2] decision: -0.00001 used to collapse to "0" (toFixed(4)); only an exact 0 prints as "0" now.
+    expect(formatNumber(-0.00001)).toBe("-1e-5");
     expect(formatNumber(1e21 * 3)).toBe("3e+21");
+  });
+
+  it("[J-fix2] small and large magnitudes keep their significant digits (derived strings)", async () => {
+    const { formatNumber } = await import("./labels");
+    expect(formatNumber(0)).toBe("0");
+    expect(formatNumber(-0)).toBe("0");
+    expect(formatNumber(1e-5)).toBe("1e-5");
+    expect(formatNumber(-2.5e-7)).toBe("-2.5e-7");
+    expect(formatNumber(1.23456e-5, 3)).toBe("1.23e-5");
+    expect(formatNumber(2e-6, 5)).toBe("2e-6");
+    expect(formatNumber(0.00447)).toBe("0.0045");
+    expect(formatNumber(0.00447, 5)).toBe("0.00447");
+    expect(formatNumber(0.004, 2)).toBe("4e-3");
+    expect(formatNumber(-0.004, 2)).toBe("-4e-3");
+    expect(formatNumber(1e6)).toBe("1e+6");
+    expect(formatNumber(123456.789)).toBe("123456.789");
+    expect(formatNumber(-1.5)).toBe("-1.5");
+    expect(formatNumber(Infinity)).toBe("Infinity");
+  });
+
+  it("[J-fix2] the same number is formatted the same at every scale: v and v * 1e-6 differ only in the exponent", async () => {
+    const { formatNumber } = await import("./labels");
+    expect(formatNumber(2.5e-6)).toBe("2.5e-6");
+    expect(formatNumber(2.5e6)).toBe("2.5e+6");
+  });
+
+  it("[J-fix2] formatPoint tells two small-scale equilibria apart and formatEigenvalue keeps a small complex pair complex", async () => {
+    const { formatEigenvalue, formatPoint } = await import("./labels");
+    expect(formatPoint({ x: -1e-5, y: 0 })).toBe("(-1e-5, 0)");
+    expect(formatPoint({ x: 1e-5, y: 0 })).toBe("(1e-5, 0)");
+    expect(formatPoint({ x: -1e-5, y: 0 })).not.toBe(formatPoint({ x: 1e-5, y: 0 }));
+    expect(formatEigenvalue({ re: -5e-7, im: 8.66e-7 })).toBe("-5e-7 + 8.66e-7i");
+    expect(formatEigenvalue({ re: -5e-7, im: -8.66e-7 })).toBe("-5e-7 - 8.66e-7i");
+    expect(formatEigenvalue({ re: 2e-6, im: 0 })).toBe("2e-6");
+    expect(formatEigenvalue({ re: 1, im: 1e-16 })).toBe("1");
+    expect(formatEigenvalue({ re: 0, im: 1e-9 })).toBe("0 + 1e-9i");
   });
 });
 
