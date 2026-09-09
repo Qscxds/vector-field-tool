@@ -1,7 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { rewriteForSandbox } from "./server";
+import { rewriteForSandbox, WIDGET_URI, WIDGET_VERSION } from "./server";
 
 const BASE = "https://example.trycloudflare.com";
+
+describe("widget resource URI", () => {
+  it("carries the current widget version (Phase L: l-1); a bump means the connector must be reconnected in Claude", () => {
+    // Claude caches the tool list with this URI per connection. Change this expectation ONLY
+    // together with a real widget change, and say in the round report that the user must
+    // disconnect and reconnect the connector.
+    expect(WIDGET_VERSION).toBe("l-1");
+    expect(WIDGET_URI).toBe("ui://vector-field-tool/widget.html?v=l-1");
+  });
+});
 
 describe("rewriteForSandbox", () => {
   it("injects <base href> right after <head>", () => {

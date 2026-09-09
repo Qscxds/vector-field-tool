@@ -107,6 +107,10 @@ if (widget) {
   const c = read.msg?.result?.contents?.[0];
   const html = c?.text ?? "";
   const csp = c?._meta?.ui?.csp ?? {};
+  // The widget version (app/mcp/server.ts WIDGET_VERSION): a stale build would still answer with
+  // the previous URI, and Claude caches the URI per connection (reconnect after a bump).
+  const WIDGET_VERSION = "l-1";
+  check(`resources/list and resources/read carry the ${WIDGET_VERSION} widget URI`, widget.uri.endsWith(`?v=${WIDGET_VERSION}`) && c?.uri === widget.uri, `${widget.uri} / ${c?.uri}`);
   check("resources/read returns widget HTML", html.toLowerCase().startsWith("<!doctype html") && html.includes("<base href="), JSON.stringify(read.msg).slice(0, 300));
   check("resources/read CSP declares connect/resource/baseUri domains", ["connectDomains", "resourceDomains", "baseUriDomains"].every((k) => Array.isArray(csp[k]) && csp[k].length > 0), JSON.stringify(csp));
   // Relative /_next URLs are correct for a local build without BASE_URL (the widget is only ever

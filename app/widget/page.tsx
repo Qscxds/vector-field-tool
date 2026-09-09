@@ -79,6 +79,8 @@ export default function WidgetPage() {
   const coarsePointer = useCoarsePointer();
   // Counts tool results so a new result with the same equation still resets trajectories and previews.
   const [resultSeq, setResultSeq] = useState(0);
+  // Same pixels per unit on both axes (the web shell's toggle); off fills the canvas with the tool's box.
+  const [equalScale, setEqualScale] = useState(true);
   const { ref, width } = useContainerWidth<HTMLDivElement>(640);
 
   useEffect(() => {
@@ -124,6 +126,7 @@ export default function WidgetPage() {
     initialTrajectories: scene?.trajectories,
     start: scene?.start,
     withFeatures: kind === "analyze_system" || kind === "analyze_first_order",
+    equalScale,
     // The tool's snapshot time (its t parameter) is the instant the widget keeps showing.
     snapshotT: scene?.timeDependent?.snapshotT ?? 0,
   });
@@ -166,8 +169,14 @@ export default function WidgetPage() {
             overlayHint={live.hint}
             {...live.handlers}
           />
+          {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
+          {!equalScale ? (
+            <p role="status" data-scale-warning style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
+              {L.ui.equalScaleWarning}
+            </p>
+          ) : null}
           <p style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }} data-shown-range>
-            {fill(L.ui.shownRange, {
+            {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
               hv: horizontalName(live.scene),
               xMin: formatNumber(live.viewport.box.x.min, 3),
               xMax: formatNumber(live.viewport.box.x.max, 3),
@@ -176,6 +185,10 @@ export default function WidgetPage() {
             })}{" "}
             · {coarsePointer ? L.ui.interactionHintTouch : L.ui.interactionHint}
           </p>
+          <label style={{ display: "flex", gap: 6, alignItems: "flex-start", margin: "4px 0 0", color: "#52606d", fontSize: 11, cursor: "pointer" }}>
+            <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" style={{ marginTop: 1 }} />
+            <span>{fill(L.ui.equalScale, { hv: horizontalName(live.scene) })}</span>
+          </label>
           {live.overlay.some((t) => t.nonUnique) ? (
             <p role="status" data-non-unique-preview style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
               {L.ui.nonUniqueTrajectory}
@@ -280,7 +293,8 @@ function SceneSummary({ scene }: { scene: Scene }) {
         <ol style={{ margin: "4px 0 0", paddingLeft: 18 }}>
           {scene.equilibria.map((p, i) => (
             <li key={i} style={{ margin: "2px 0" }}>
-              <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}; λ = {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable}
+              <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}; λ = {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable}; tr ={" "}
+              {formatNumber(p.trace, 5)}, det = {formatNumber(p.determinant, 5)}.
               {p.caveat ? <span style={{ color: "#92400e" }}> {L.caveat[p.caveat]}</span> : null}
               {uniquenessSentence(L, p.uniqueness, { point: p.at }) ? <span style={{ color: "#92400e" }}> {uniquenessSentence(L, p.uniqueness, { point: p.at })}</span> : null}
             </li>
