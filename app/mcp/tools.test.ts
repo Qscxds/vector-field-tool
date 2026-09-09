@@ -927,8 +927,50 @@ describe("truncated lists are said in full sentences (J.5b)", () => {
     expect(r.isError).toBeFalsy();
     expect(r.scene.firstOrder?.singularitiesTruncated).toBe(true);
     expect(r.scene.firstOrder?.singularities).toHaveLength(20);
-    expect(r.text).toContain(labels("zh").tool.truncated);
-    expect(r.text).toContain(labels("zh").ui.singularitiesTruncated.replace(/\{max\}/g, "20"));
+    // [J-fix2] the truncation is stated once: by the full sentence, not also by the "(list truncated)" tag.
+    expect(r.text).not.toContain(labels("zh").tool.truncated);
+    const sentence = labels("zh").ui.singularitiesTruncated.replace(/\{max\}/g, "20");
+    expect(r.text).toContain(sentence);
+    expect(r.text.indexOf(sentence)).toBe(r.text.lastIndexOf(sentence));
+  });
+});
+
+describe("[J-fix2] summary wording", () => {
+  it("a Bernoulli fit with n = 0 (dy/dt = -1/t from M = y, N = y*t) is listed as ruled out by definition, never as a failed test, in both locales", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const L = labels(locale);
+      const r = await call("analyze_first_order", { M: "y", N: "y*t", xMin: 0.5, xMax: 3, yMin: 0.5, yMax: 3, locale });
+      expect(r.isError).toBeFalsy();
+      const bernoulli = r.scene.firstOrder?.forms?.find((f) => f.form === "bernoulli");
+      expect(bernoulli?.excluded).toBe(true);
+      expect(bernoulli?.reason).toContain("n = 0");
+      const excludedLine = r.text.split("\n").find((line) => line.startsWith(L.tool.formsExcludedLine.split("{list}")[0]));
+      expect(excludedLine).toBeDefined();
+      expect(excludedLine).toContain(L.form.bernoulli);
+      expect(excludedLine).toContain("n = 0");
+      const failedLine = r.text.split("\n").find((line) => line.startsWith(L.tool.formsInconsistentLine.split("{list}")[0]));
+      expect(failedLine).toBeDefined();
+      expect(failedLine).not.toContain(L.form.bernoulli);
+    }
+  });
+
+  it("the non-autonomous trajectory sentence names the direction actually traced", async () => {
+    const L = labels("en");
+    const base = { f: "y", g: "-x + sin(t)", x0: 1, y0: 0, tSpan: 1 };
+    const forward = await call("trace_trajectory", { ...base, direction: "forward", locale: "en" });
+    expect(forward.text).toContain(L.tool.tracedForward);
+    expect(forward.text).not.toContain(L.tool.tracedBackward);
+    expect(forward.text).not.toContain(L.tool.tracedBoth);
+    const backward = await call("trace_trajectory", { ...base, direction: "backward", locale: "en" });
+    expect(backward.text).toContain(L.tool.tracedBackward);
+    expect(backward.text).not.toContain(L.tool.tracedForward);
+    const both = await call("trace_trajectory", { ...base, direction: "both", locale: "zh" });
+    expect(both.text).toContain(labels("zh").tool.tracedBoth);
+    expect(both.text).not.toContain("{traced}");
+    // The no-change evidence sentence stands alone: it names no analysis "above".
+    for (const locale of ["en", "zh"] as const) {
+      expect(labels(locale).tool.timeDependenceNoChange).not.toMatch(/withheld|上述/);
+    }
   });
 });
 

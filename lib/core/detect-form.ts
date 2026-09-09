@@ -55,6 +55,10 @@ export type FormDetection = {
   details?: Record<string, number>;
   /** Bernoulli only: the exponent as a simple fraction when it snapped to one ("1/2", "-1", "3"). */
   exponent?: string;
+  /** Set when the form is ruled out by a textbook rule, not by a deviation above the threshold. */
+  excluded?: true;
+  /** The exclusion rule in the caller's locale (a clause, no final period), only with `excluded`. */
+  reason?: string;
 };
 
 export const ALL_FORMS: readonly OdeForm[] = [
@@ -371,6 +375,7 @@ export function detectForms(spec: FirstOrderSpec, box: Box, locale: Locale = "en
       dropped: r.dropped,
       details,
       exponent,
+      ...(word === "excluded" ? { excluded: true as const, reason: extra } : {}),
     });
   };
 

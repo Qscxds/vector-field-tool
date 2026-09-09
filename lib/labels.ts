@@ -52,7 +52,8 @@ export type LabelTable = {
     | "timeDependent" | "timeDependentTrajectory" | "secondOrderReduced"
     | "timeDependenceMeasured" | "timeDependenceNoChange" | "timeDependenceDomainMoves" | "timeDependenceUntested"
     | "underflowPlateau"
-    | "constantSolutionProbes" | "constantSolutionPlateau" | "zeroPlateau" | "scanResolution" | "fractionalPowerHint" | "noConstantAllZero",
+    | "constantSolutionProbes" | "constantSolutionPlateau" | "zeroPlateau" | "scanResolution" | "fractionalPowerHint" | "noConstantAllZero"
+    | "formsExcludedLine" | "tracedBoth" | "tracedForward" | "tracedBackward",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -195,10 +196,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       parenClose: "）",
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
       timeDependent: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}采样场是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场本工具不做这项分析，因此没有给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
-      timeDependentTrajectory: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}轨线从 t = 0 出发，逆向部分是 t < 0 时的解；从同一点在另一个时刻出发会得到不同的曲线。",
+      timeDependentTrajectory: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}{traced}从同一点在另一个时刻出发会得到不同的曲线。",
       secondOrderReduced: "二阶方程 {equation}：令 y = x'，降阶为系统 x' = y，y' = {g}。",
       timeDependenceMeasured: "在观察范围内取若干时刻采样，向量场的最大相对变化为 {deviation}。",
-      timeDependenceNoChange: "在观察范围内取若干时刻采样时没有测到变化（含 t 的项可能在这些时刻恰好为零或相互抵消），但 t 确实出现在方程中，因此同样不做上述分析。",
+      timeDependenceNoChange: "在观察范围内取若干时刻采样时没有测到变化（含 t 的项可能在这些时刻恰好为零或相互抵消），但 t 确实出现在方程中，因此仍按非自治系统处理。",
       timeDependenceDomainMoves: "向量场在部分采样时刻有定义、在其他时刻无定义：它的定义域随 t 变化。",
       timeDependenceUntested: "向量场在所有采样时刻都无法计算，因此无法测量它随 t 的变化幅度。",
       underflowPlateau: "注意：在观察范围的一部分区域里，方程右端的值小于计算机能表示的最小数，计算结果恰好为 0；这些点并不是平衡点，因此没有列出。",
@@ -208,6 +209,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       scanResolution: "扫描分辨率为 Δy = {dy}；间距小于它的常数解可能被合并或漏掉。",
       fractionalPowerHint: "提示：这里负数的分数次幂没有定义，例如 y^(2/3) 在 y < 0 时；要取实数分支，请写 abs(y)^(2/3) 或 sign(y)*abs(y)^p。",
       noConstantAllZero: "在观察范围内没有找到常数解：右端在每个采样点的计算结果都恰为 0（那里它恒为 0，或低于最小可表示的数）或无定义，因此常数解和方程是否自治都无法检验。",
+      formsExcludedLine: "按定义排除的形式（括号内为原因）：{list}。",
+      tracedBoth: "轨线从 t = 0 出发：正向部分是 t > 0 时的解，逆向部分是 t < 0 时的解。",
+      tracedForward: "轨线从 t = 0 出发并正向积分，因此它是 t > 0 时的解。",
+      tracedBackward: "轨线从 t = 0 出发并逆向积分，因此它是 t < 0 时的解。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -421,10 +426,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       parenClose: ")",
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
       timeDependent: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} The sampled field is a snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; this tool does not attempt them for a time-dependent field, so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
-      timeDependentTrajectory: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} Here the trajectory starts at t = 0, and the backward part is the solution for t < 0. Starting from the same point at another time would give a different curve.",
+      timeDependentTrajectory: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} {traced} Starting from the same point at another time would give a different curve.",
       secondOrderReduced: "Second-order equation {equation}: with y = x' it becomes the system x' = y, y' = {g}.",
       timeDependenceMeasured: "Sampled at several times inside the viewing box, its largest relative change is {deviation}.",
-      timeDependenceNoChange: "At the several times sampled inside the viewing box no change was measured (the t term may vanish or cancel there), but t is present, so the analysis is withheld all the same.",
+      timeDependenceNoChange: "At the several times sampled inside the viewing box no change was measured (the t term may vanish or cancel there), but t is present, so the system is treated as non-autonomous all the same.",
       timeDependenceDomainMoves: "The field is defined at some of the sampled times and undefined at others: its domain moves with t.",
       timeDependenceUntested: "The field could not be evaluated at any of the sampled times, so how much it changes with t could not be measured.",
       underflowPlateau: "Note: in part of this viewing box the right-hand side is below the smallest number the computer can represent and evaluates to exactly 0; those points are not equilibria and are not listed.",
@@ -434,6 +439,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       scanResolution: "The scan resolution was Δy = {dy}; constant solutions closer together than that may have been merged or missed.",
       fractionalPowerHint: "Hint: a fractional power of a negative number is undefined here, e.g. y^(2/3) for y < 0; write abs(y)^(2/3) or sign(y)*abs(y)^p for the real branch.",
       noConstantAllZero: "No constant solution was found in the viewing range: at every sample the right-hand side evaluates to exactly 0 (it is identically 0 there, or below the smallest representable number) or is undefined, so neither constant solutions nor autonomy could be tested.",
+      formsExcludedLine: "Forms ruled out by definition (reason in brackets): {list}.",
+      tracedBoth: "Here the trajectory starts at t = 0: the forward part is the solution for t > 0 and the backward part the solution for t < 0.",
+      tracedForward: "Here the trajectory starts at t = 0 and runs forward, so it is the solution for t > 0.",
+      tracedBackward: "Here the trajectory starts at t = 0 and runs backward, so it is the solution for t < 0.",
     },
     ui: {
       title: "Vector field / phase portrait",

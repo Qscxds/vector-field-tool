@@ -230,9 +230,15 @@ export function describeForms(forms: FormDetection[], locale: Locale): string[] 
   } else {
     lines.push(NO_FORM_NOTE[locale]);
   }
-  const rejected = forms.filter((f) => f.verdict === "inconsistent");
+  // A form ruled out by a textbook rule (Bernoulli with n = 0 or 1) is not a failed test: its
+  // deviation may be far below the threshold, so the rule is printed instead of the deviation.
+  const rejected = forms.filter((f) => f.verdict === "inconsistent" && !f.excluded);
   if (rejected.length) {
     lines.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${formatDeviation(f.maxRelDeviation ?? NaN)}${L.tool.parenClose}`).join(L.tool.listSeparator) }));
+  }
+  const excluded = forms.filter((f) => f.excluded);
+  if (excluded.length) {
+    lines.push(fill(L.tool.formsExcludedLine, { list: excluded.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${f.reason ?? ""}${L.tool.parenClose}`).join(L.tool.listSeparator) }));
   }
   const untestable = forms.filter((f) => f.verdict === "untestable");
   if (untestable.length) {
@@ -519,7 +525,10 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           });
           return t.nonUnique ? [line, L.tool.nonUniqueTrajectory] : [line];
         });
-        if (td.dependsOnT) lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td) }));
+        if (td.dependsOnT) {
+          const traced = input.direction === "both" ? L.tool.tracedBoth : input.direction === "forward" ? L.tool.tracedForward : L.tool.tracedBackward;
+          lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced }));
+        }
         return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: spec.g })}\n${lines.join("\n")}`, scene);
       }),
   );
@@ -695,7 +704,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           lines.push(
             fill(L.tool.directionSingular, {
               points: singular.points.map((p) => formatPoint(p)).join(L.tool.listSeparator),
-              truncated: singular.truncated ? L.tool.truncated : "",
+              // The truncation is stated once, by the singularitiesTruncated sentence below.
+              truncated: "",
             }),
           );
           if (singular.warning === "possible_continuum") lines.push(L.ui.singularitiesContinuum);
