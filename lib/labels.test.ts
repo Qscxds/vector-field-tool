@@ -204,6 +204,24 @@ describe("label tables", () => {
     expect(equilibriaNotices(L, { equilibria: [1] })).toEqual([]);
   });
 
+  it("equilibriaNotices lists the field's singular points after the warning and the truncation sentence, one line each, in both locales", async () => {
+    const { equilibriaNotices, formatPoint } = await import("./labels");
+    const singularPoints = [
+      { x: 0, y: 0 },
+      { x: 1.5, y: -2 },
+    ];
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      const lines = equilibriaNotices(L, { warning: "none_found", equilibria: [], singularPoints });
+      expect(lines).toEqual([
+        L.warning.none_found,
+        fill(L.tool.singularPoint, { point: formatPoint(singularPoints[0]) }),
+        fill(L.tool.singularPoint, { point: formatPoint(singularPoints[1]) }),
+      ]);
+      expect(equilibriaNotices(L, { equilibria: [1], singularPoints: [] })).toEqual([]);
+    }
+  });
+
   it("every second-order refusal has a bilingual sentence, as a full sentence (J review C.8)", () => {
     const keys = [
       "secondOrderNotAffine", "secondOrderZeroCoefficient", "secondOrderNoEquation", "secondOrderDoubleEquals", "secondOrderTooManyEquals",
