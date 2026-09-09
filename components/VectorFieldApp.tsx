@@ -9,6 +9,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useCoarsePointer } from "@/components/useCoarsePointer";
+import { useDocumentLang } from "@/components/useDocumentLang";
 import { exportScenePng } from "@/components/exportScenePng";
 import { exportFileName, exportFooterText } from "@/lib/export-footer";
 import { reportedForms } from "@/lib/core/detect-form";
@@ -18,6 +19,7 @@ import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/s
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
+import { identicallyZeroLine } from "@/lib/labels-forms";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
 import { buildShareUrl, encodeState, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
@@ -289,6 +291,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     setLocale(next);
     setChosenLocale(next);
   };
+  useDocumentLang(locale);
   const L = labels(locale);
 
   const [form, setForm] = useState<Form>(() => fromAppState(initial));
@@ -806,12 +809,17 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
   const reported = reportedForms(all);
   const consistent = reported.find((f) => f.verdict === "consistent");
   const borderline = reported.find((f) => f.verdict === "borderline");
-  const rejected = all.filter((f) => f.verdict === "inconsistent");
+  // A form ruled out by a textbook rule (Bernoulli with n = 0 or 1) is not a failed test: its
+  // deviation may be far below the threshold, so the rule is printed instead of the deviation
+  // (the same split as the tool summary in app/mcp/tools.ts).
+  const rejected = all.filter((f) => f.verdict === "inconsistent" && !f.excluded);
+  const excluded = all.filter((f) => f.excluded);
   const untestable = all.filter((f) => f.verdict === "untestable");
   const dev = (d: number | null) => (d === null || !Number.isFinite(d) ? "—" : d.toExponential(1));
   return (
     <div>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.formsHeading}</h2>
+      {identicallyZeroLine(fo, L) ? <p style={{ margin: "0 0 6px" }} data-identically-zero>{identicallyZeroLine(fo, L)}</p> : null}
       {reported.length ? (
         <>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
@@ -830,6 +838,11 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
       {rejected.length ? (
         <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>
           {fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${dev(f.maxRelDeviation)}${L.tool.parenClose}`).join(L.tool.listSeparator) })}
+        </p>
+      ) : null}
+      {excluded.length ? (
+        <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-forms-excluded>
+          {fill(L.tool.formsExcludedLine, { list: excluded.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${f.reason ?? ""}${L.tool.parenClose}`).join(L.tool.listSeparator) })}
         </p>
       ) : null}
       {untestable.length ? (

@@ -8,9 +8,11 @@ import { PRESETS, presetUrl } from "@/app/vector-field/presets";
 import type { Locale } from "@/lib/labels";
 import { HOME_EXAMPLE_PRESET_IDS, siteText, withLocale } from "@/lib/site-text";
 import { SitePage, useSiteLocale } from "./SitePage";
+import { useDocumentLang } from "./useDocumentLang";
 
 export function HomeContent({ initialLocale }: { initialLocale: Locale | null }) {
   const [locale, setLocale] = useSiteLocale(initialLocale);
+  useDocumentLang(locale);
   const T = siteText(locale);
   const cards = (Object.keys(HOME_EXAMPLE_PRESET_IDS) as Array<keyof typeof HOME_EXAMPLE_PRESET_IDS>).flatMap((key) => {
     const preset = PRESETS.find((p) => p.id === HOME_EXAMPLE_PRESET_IDS[key]);

@@ -8,6 +8,7 @@ import Link from "next/link";
 import type { Locale } from "@/lib/labels";
 import { embedSnippet, helpFunctionNames, MCP_ENDPOINT, siteText, withLocale } from "@/lib/site-text";
 import { CopySnippet, SitePage, useSiteLocale } from "./SitePage";
+import { useDocumentLang } from "./useDocumentLang";
 
 function List({ items }: { items: string[] }) {
   return (
@@ -31,6 +32,7 @@ function Steps({ items }: { items: string[] }) {
 
 export function HelpContent({ initialLocale }: { initialLocale: Locale | null }) {
   const [locale, setLocale] = useSiteLocale(initialLocale);
+  useDocumentLang(locale);
   const T = siteText(locale);
   const H = T.help;
   const functions = helpFunctionNames();

@@ -20,6 +20,7 @@ import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
+import { identicallyZeroLine } from "@/lib/labels-forms";
 import type { Scene, SceneKind } from "@/lib/scene";
 
 const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order"]);
@@ -235,12 +236,15 @@ function SceneSummary({ scene }: { scene: Scene }) {
     for (const s of fo.solutions) items.push(...constantSolutionLines(L, s, fo.spec));
     items.push(...constantSolutionNotices(L, fo));
     if (fo.singularities?.length) {
-      items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: fo.singularitiesTruncated ? L.tool.truncated : "" }));
+      // The truncation is stated once, by the singularitiesTruncated sentence below (as in tools.ts).
+      items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: "" }));
       if (fo.singularitiesWarning === "possible_continuum") items.push(L.ui.singularitiesContinuum);
       if (fo.singularitiesTruncated) items.push(fill(L.ui.singularitiesTruncated, { max: fo.singularities.length }));
     }
     const all = fo.forms ?? [];
     const reported = reportedForms(all);
+    const zeroLine = identicallyZeroLine(fo, L);
+    if (zeroLine) items.push(zeroLine);
     if (reported.length) {
       items.push(L.tool.formsHeader);
       for (const f of reported) items.push(fill(f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine, { form: L.form[f.form], evidence: f.evidence }));
@@ -251,9 +255,14 @@ function SceneSummary({ scene }: { scene: Scene }) {
     } else if (fo.formsNote) {
       items.push(fo.formsNote);
     }
-    const rejected = all.filter((f) => f.verdict === "inconsistent");
+    // A form ruled out by definition (Bernoulli with n = 0 or 1) is listed with its rule, not a deviation.
+    const rejected = all.filter((f) => f.verdict === "inconsistent" && !f.excluded);
     if (rejected.length) {
       items.push(fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${f.maxRelDeviation === null || !Number.isFinite(f.maxRelDeviation) ? "—" : f.maxRelDeviation.toExponential(1)}${L.tool.parenClose}`).join(L.tool.listSeparator) }));
+    }
+    const excluded = all.filter((f) => f.excluded);
+    if (excluded.length) {
+      items.push(fill(L.tool.formsExcludedLine, { list: excluded.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${f.reason ?? ""}${L.tool.parenClose}`).join(L.tool.listSeparator) }));
     }
     const untestable = all.filter((f) => f.verdict === "untestable");
     if (untestable.length) items.push(fill(L.tool.formsUntestableLine, { list: untestable.map((f) => L.form[f.form]).join(L.tool.listSeparator) }));
