@@ -110,6 +110,12 @@ export const FLOOR_WINDOW = 4;
  * the descent: an offset carried to 1e-6 keeps the exponent of a δ^-1/2 law good to about 1e-7.
  */
 export const POSITION_GUARD = 1e6;
+/**
+ * A probe around a point known only to a resolution r (Equilibrium.resolution) starts its offsets
+ * at this many times r: an offset d sees the field at distance d ± r from the true root, and at
+ * d >= 10 r a power law |F| ~ d^β is read to within (1 ± 0.1)^β (J-fix2 item 7).
+ */
+export const RESOLUTION_FACTOR = 10;
 
 const EPS = 2.220446049250313e-16;
 
@@ -258,12 +264,24 @@ export function lipschitzProbe(h: (d: number) => number, scale: number, opts: Li
  * root found to 1e-9 does not read as a 1/δ growth, and |F(q)| + |F(p)| is the magnitude the
  * rounding floor is measured against. The first offset is 1e-2 of the longer side of the box; the
  * verdict is decided at the finest scales and does not depend on the box.
+ *
+ * A point may carry its `resolution` (Equilibrium.resolution, the radius the root search located
+ * it to): the descent then stops at RESOLUTION_FACTOR times it (`minOffset`), because offsets
+ * below it step around a point that may not be the equilibrium (J-fix2 item 7: the cusp of
+ * x' = |x|^(1/3) located to x = -1e-13 is smooth at that off-cusp point, and the quotients
+ * leveled off below 1e-13 into "bounded"; above it they grow like δ^-2/3), and |F(q)| itself is
+ * probed, WITHOUT subtracting the residual F(p): at offsets d >= 10 r from a point within r of the
+ * root, |F(q)| is the field's own law to within (1 ± 0.1)^β, whereas subtracting F(p) = |r|^(1/3)
+ * (not small at a Hölder root) halves the differences at the finest levels and read α = 0.47 for
+ * the true 2/3. Without a resolution (a bare point) the residual is subtracted as before, so a
+ * root found to 1e-9 does not read as a 1/δ growth.
  */
-export function equilibriaUniqueness(sys: CompiledSystem, points: readonly Vec2[], box: Box, opts: LipschitzProbeOptions = {}): UniquenessResult[] {
+export function equilibriaUniqueness(sys: CompiledSystem, points: readonly (Vec2 & { resolution?: number })[], box: Box, opts: LipschitzProbeOptions = {}): UniquenessResult[] {
   const scale = Math.max(box.x.max - box.x.min, box.y.max - box.y.min);
   return points.map((p) => {
+    const minOffset = p.resolution !== undefined ? RESOLUTION_FACTOR * p.resolution : 0;
     const f0 = sys.eval(p);
-    const base = Number.isFinite(f0.x) && Number.isFinite(f0.y) ? f0 : { x: 0, y: 0 };
+    const base = p.resolution === undefined && Number.isFinite(f0.x) && Number.isFinite(f0.y) ? f0 : { x: 0, y: 0 };
     const baseMagnitude = Math.hypot(base.x, base.y);
     const h = (q: Vec2) => {
       const f = sys.eval(q);
@@ -273,8 +291,8 @@ export function equilibriaUniqueness(sys: CompiledSystem, points: readonly Vec2[
       const f = sys.eval(q);
       return Math.hypot(f.x, f.y) + baseMagnitude;
     };
-    const alongX = lipschitzProbe((d) => h({ x: p.x + d, y: p.y }), scale, { checkpoint: opts.checkpoint, center: p.x, magnitude: (d) => magnitude({ x: p.x + d, y: p.y }) });
-    const alongY = lipschitzProbe((d) => h({ x: p.x, y: p.y + d }), scale, { checkpoint: opts.checkpoint, center: p.y, magnitude: (d) => magnitude({ x: p.x, y: p.y + d }) });
+    const alongX = lipschitzProbe((d) => h({ x: p.x + d, y: p.y }), scale, { checkpoint: opts.checkpoint, center: p.x, minOffset, magnitude: (d) => magnitude({ x: p.x + d, y: p.y }) });
+    const alongY = lipschitzProbe((d) => h({ x: p.x, y: p.y + d }), scale, { checkpoint: opts.checkpoint, center: p.y, minOffset, magnitude: (d) => magnitude({ x: p.x, y: p.y + d }) });
     const worstX = worse(alongX.sides.above, alongX.sides.below);
     const worstY = worse(alongY.sides.above, alongY.sides.below);
     const pick = RANK[worstY.verdict] > RANK[worstX.verdict] ? alongY : alongX;
