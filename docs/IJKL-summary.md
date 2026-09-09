@@ -345,3 +345,15 @@ j-math-done k-website-done l-mcp-done night-final p0-verified s-spike-done
 10. **Claude：「dy/dt = sqrt(y)」** —— widget 里 y = 0 常数解带「在这一点 ∂g/∂y 无界，Lipschitz 条件不成立，解的唯一性不能保证」的完整句子和 '!' 标记；从 (0, 0) 附近点出发的轨线说「数值解只是其中一条」；y = 0 的稳定性是「方程只在这条线上方有定义，该侧的解离开它」，不是「半稳定」。失败：`i-notation-done`（J 之前）。
 11. **Claude：「x'' + 0.5*x' + x = 0」** —— 调 `analyze_second_order`，第一行是降阶 `x' = y, y' = -(0.5 * y + x)`，(0, 0) 稳定螺旋 −0.25 ± 0.968i，tr = −0.5, det = 1。失败：`i-notation-done`。
 12. **`npm run smoke -- https://tools.studycase.net/mcp`** —— 19/19，`widget asset URLs are absolute` PASS 且指向你的域名，widget uri `?v=l-1`。失败：`k-website-done`（回到 h-2，重连连接器）；`[base-url]` 警告看 Vercel 构建日志。
+
+---
+
+## 编排者追加：推送状态
+
+**没有推。**会话末尾执行 `git push origin main` 时被会话的自动权限分类器拦下（推送 = 生产部署，需要你本人操作）。main 在本地领先 origin/main 86 个提交（h2-reviewed 之后的 85 个 + 本行所在的 docs 提交），四个 tag 也只在本地。要上线时：
+
+```bash
+cd E:\project\vector-field-tool && git push origin main && git push origin i-notation-done j-math-done k-website-done l-mcp-done
+```
+
+推完等 Vercel 部署结束，跑 `npm run smoke -- https://tools.studycase.net/mcp`（应看到 widget uri `?v=l-1`、19/19），然后在 Claude 里断开并重新连接连接器。
