@@ -4,16 +4,17 @@
 
 微分方程课的向量场教学工具。目标不只是画图，而是让 AI 通过工具调用回答学生关于微分方程的问题：AI 把自然语言翻译成参数、把数值结果翻译成解释，**所有数学计算由确定性代码完成**，AI 一个数字都不许自己算。
 
-当前状态（2026-09-03，H 轮之后）：
+当前状态（2026-09-09，I–L 轮之后）：
 
 - **计算内核**（`lib/core/`）：表达式解析、场采样、RK4 与自适应 Dormand–Prince 积分（爆破只看位置、不看速度；状态 completed / left_box / reached_equilibrium / blew_up / singular / arc_length / max_steps）、雅可比、平衡点分类（带诚实的 caveat：中心或弱螺旋、非双曲、近重根；按问题尺度判零）、数值求平衡点（连续解集需要计数与几何两条判据）；一阶方程以微分形式 `M(t, y) dt + N(t, y) dy = 0` 为底层（`dy/dt = g(t, y)` 是特例；学生面对的自变量是 t，表达式里写 x 会被拒绝并提示改成 t），常数解沿整条直线检验、方向场奇点、八种标准形式的数值识别（每种都返回三档判定 + 实测偏差 + 阈值，Bernoulli 指数贴合到简单分数）、恰当方程的势函数与隐式解等值线（路径自检失败会明说）。
 - **MCP 工具层**：`analyze_system`、`trace_trajectory`、`sample_field`、`analyze_first_order`（`expr` 或 `M`+`N`）、`analyze_second_order`（`equation`，降阶后复用 `analyze_system` 的分析体 `analyzePlanar`），加链路探针 `ping`。每个工具的 `locale` 参数（`zh` / `en`）**必填**，摘要文字全部来自双语文案表（英文为美式拼写）。每次调用有 2 秒预算，进程内有限流减速带。
-- **网页外壳** `/vector-field`：中英切换、三种输入（二维系统 / 显式一阶 `dy/dt = g(t, y)` / 微分形式 `M dt + N dy = 0`，一阶模式下范围输入叫 t 最小 / t 最大）、十个预设、等比视口（默认等比；「等比」复选框关掉后输入范围填满画布，范围行写「填满输入范围」，画布下方常驻一行「横纵比例不同，图上的角度不代表真实斜率。」；widget 始终等比）、画布上标出坐标轴名（一阶方程为 t、y，二维系统为 x、y）、滚轮缩放、拖动平移、双击复位、悬停预览解曲线（屏幕长度固定为两条对角线，与场速和缩放无关）、点击固定轨线（延伸到原始范围的 20 倍才停，不受视野裁剪；「最近一条轨线」按类型措辞：显式一阶方程给出终点的 t 坐标，微分形式只列两侧的终止原因）；结果列表上方注明它按哪个范围计算（复位时是输入范围，缩放或平移后是可见范围）。
-- **widget**：Scene 里带着方程，widget 用同一份内核本地编译，缩放 / 平移 / 悬停 / 点击都在沙箱里算（S 阶段证实 mathjs 编译不需要 `unsafe-eval`）；编译被挡时退回静态图并说明。**Claude 实机验证 widget 交互待人工做**（版本号 e-2 → g-1，Claude 里必须断开重连连接器）。
-- 单测 409 个，期望值全部来自数学推导。
-- **上线准备完成**（H1）：显式 `BASE_URL` 优先级最高并有启动自检；每次调用 2 秒预算 + 进程内限流 + 参数上界；首页有交互页面入口。**H2 数学优先拍板完成**（爆破判据、hover 弧长、轨线延伸、三档类型识别、Bernoulli 有理指数、恰当自检、连续解集几何判据、近重根 caveat、locale 必填、美式拼写）。未做：实际部署到 Vercel（见下文步骤）。
+- **网页外壳** `/vector-field`：中英切换、四种输入（二维系统 / 显式一阶 `dy/dt = g(t, y)` / 微分形式 `M dt + N dy = 0` / 二阶方程 `x'' = F(x, x')`，一阶模式下范围输入叫 t 最小 / t 最大）、20 个按章节分组的预设（每个都是可分享链接）、等比视口（默认等比；「等比」复选框关掉后输入范围填满画布，范围行写「填满输入范围」，画布下方常驻一行「横纵比例不同，图上的角度不代表真实斜率。」；widget 始终等比）、画布上标出坐标轴名（一阶方程为 t、y，二维系统为 x、y）、滚轮缩放、拖动平移、双击复位、悬停预览解曲线（屏幕长度固定为两条对角线，与场速和缩放无关）、点击固定轨线（延伸到原始范围的 20 倍才停，不受视野裁剪；「最近一条轨线」按类型措辞：显式一阶方程给出终点的 t 坐标，微分形式只列两侧的终止原因）；结果列表上方注明它按哪个范围计算（复位时是输入范围，缩放或平移后是可见范围）。
+- **widget**：Scene 里带着方程，widget 用同一份内核本地编译，缩放 / 平移 / 悬停 / 点击都在沙箱里算（S 阶段证实 mathjs 编译不需要 `unsafe-eval`）；编译被挡时退回静态图并说明。**Claude 实机验证 widget 交互待人工做**（版本 l-1，Claude 里必须断开重连连接器）。
+- 单测 811 个（808 通过 + 3 个 `it.fails` 标记的预期失败，见 `docs/IJKL-open-questions.md`），期望值全部来自数学推导。
+- **上线准备完成**（H1）：显式 `BASE_URL` 优先级最高并有启动自检；每次调用 2 秒预算 + 进程内限流 + 参数上界；首页有交互页面入口。**H2 数学优先拍板完成**（爆破判据、hover 弧长、轨线延伸、三档类型识别、Bernoulli 有理指数、恰当自检、连续解集几何判据、近重根 caveat、locale 必填、美式拼写）。已部署到 <https://tools.studycase.net>。
+- **I–L 轮完成**（2026-09-08/09，tags `i-notation-done` / `j-math-done` / `k-website-done` / `l-mcp-done`）：一阶方程记号改为 `dy/dt = g(t, y)`（写 x 会被拒绝并提示）+ 等比开关；平衡点搜索改为局部接受判据 + 变号四叉树 + 消失性检验（奇点单列）、唯一性失效探测（`dy/dt = sqrt(y)` 的 y = 0 报「Lipschitz 不成立、唯一性不能保证」）、非自治静态规则（出现 t 就只画快照、不报平衡点）、二阶方程自动降阶 `analyze_second_order`，三轮对抗式审查与修复；网站：URL 状态与「复制链接」、`/embed`（只在该路由加 `frame-ancestors *`）、首页与 `/help`、20 个预设、触屏手势、PNG 导出、OG 图 / favicon / robots；MCP：每个分析工具的 description 以「先调用本工具」开头，widget 版本 l-1。推 origin 即 Vercel 生产部署，部署后 Claude 里重连连接器。
 
-文档：`docs/P0-handoff.md`（P0）、`docs/NIGHT-*.md`（夜跑 A–E）、`docs/FG-*.md`（S/F/G）、`docs/H-summary.md`（H 轮进度、验证清单、审查结果）、`docs/H-decisions.md`（所有偏离原计划的决定）、`docs/H-open-questions.md`（待拍板事项）。
+文档：`docs/P0-handoff.md`（P0）、`docs/NIGHT-*.md`（夜跑 A–E）、`docs/FG-*.md`（S/F/G）、`docs/H-summary.md`（H 轮进度、验证清单、审查结果）、`docs/H-decisions.md`（所有偏离原计划的决定）、`docs/H-open-questions.md`（待拍板事项）、`docs/IJKL-summary.md`（I–L 轮进度、网站验收结果、验证清单）、`docs/IJKL-decisions.md`（I–L 轮所有偏离与拍板）、`docs/IJKL-open-questions.md`（待拍板、`it.fails`、性能、审查未修的发现）。
 
 ## 架构（长期有效）
 
@@ -240,7 +241,7 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 
 ## 决策记录
 
-日常决策见 `docs/NIGHT-decisions.md`（A–E）和 `docs/FG-decisions.md`（S/F/G）。骨架期的两条：
+日常决策见 `docs/NIGHT-decisions.md`（A–E）、`docs/FG-decisions.md`（S/F/G）、`docs/H-decisions.md`（H）和 `docs/IJKL-decisions.md`（I–L）。骨架期的两条：
 
 - 2026-09-02：不用 mcp-handler，直接用 sdk 1.x（ext-apps 只兼容 sdk 1.x）。隧道用 cloudflared。Vercel Deployment Protection 有意关闭。
 - 2026-09-02：widget 走 `assetPrefix`（BASE_URL / Vercel 系统变量），不在请求时改写地址。`/mcp` 对 GET/DELETE 返回 405；对不认识的协议版本头降级。
@@ -250,5 +251,6 @@ Vercel 将于 2026-10-01 弃用 Node 20 运行时，本项目 `engines` 允许 �
 - ~~P1 计算内核~~、~~P2 MCP 工具~~、~~P3 widget 静态渲染~~、~~P4 网页外壳~~：2026-09-02 夜跑完成。
 - ~~S 沙箱探针~~、~~F 微分形式与类型识别~~、~~G 双语 / 等比视口 / 缩放平移 / hover / widget 本地计算~~：2026-09-03 完成。
 - ~~H1 上线准备~~、~~H2 数学优先拍板~~、~~H2 对抗式审查 14 条修复~~：2026-09-03 完成（tags `h1-deploy-ready`、`h2-math-done`、`h2-reviewed`）。
-- 下一步：部署 Vercel（绑域名后设 `BASE_URL`）；Claude 实机验证 widget 交互（版本 h-2，重连连接器）；看 `locale` 必填后模型是否按规则传参；`docs/H-open-questions.md` 里的拍板项。
+- ~~I 记号改为 dy/dt~~、~~J 数学正确性（三轮审查与修复）~~、~~K 网站完整化~~、~~L MCP 收尾~~：2026-09-08/09 完成（tags `i-notation-done`、`j-math-done`、`k-website-done`、`l-mcp-done`）。
+- 下一步：推 origin（= Vercel 生产部署）；Claude 里重连连接器（widget l-1）并实测「先调用本工具」规则；部署后跑 `npm run smoke -- https://tools.studycase.net/mcp`；嵌进 Google Sites 后按实际调 iframe 高度；`docs/IJKL-open-questions.md` 里的拍板项。
 - P5：绑子域名，按 endpoint 限流（不要按 IP：MCP 请求全部来自 Anthropic 云端的少数几个 IP）。

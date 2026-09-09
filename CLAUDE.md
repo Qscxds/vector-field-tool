@@ -7,7 +7,11 @@ tools; every number comes from deterministic code in `lib/core`. The AI only tra
 parameters and results to explanations. README.md (Chinese) has run / tunnel / deploy steps.
 `docs/NIGHT-*.md` record the 2026-09-02 overnight build (stages A-E); `docs/FG-*.md` the 2026-09-03
 S/F/G round (sandbox spike, differential forms, bilingual labels, interaction); `docs/H-*.md` the
-H round (deploy readiness, cost caps, and the math-first re-decisions listed below).
+H round (deploy readiness, cost caps, and the math-first re-decisions listed below);
+`docs/IJKL-*.md` the 2026-09-08/09 I-L round (dy/dt notation and the equal-scale toggle; the
+equilibria / uniqueness / non-autonomous / second-order math with three review-and-fix rounds; the
+website: URL state, /embed, /help, presets, touch gestures, PNG export, metadata; the call-first
+rule in every tool description and widget l-1).
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 ## Module map
