@@ -301,10 +301,12 @@ describe("firstOrderEquilibria", () => {
     expect(r.solutions).toEqual([]);
   });
 
-  it("returns no solutions when g never vanishes, and none for an everywhere-singular field", () => {
+  it("returns no solutions when g never vanishes, and none for an everywhere-singular field (whose autonomy is untestable, not 'depends on t')", () => {
     expect(firstOrderEquilibria("y^2 + 1", { min: -2, max: 2 }).solutions).toEqual([]);
+    // sqrt(-1 - y²) is undefined at every sample: no pair of finite slopes can be compared, so
+    // neither "autonomous" nor "depends on t" may be claimed (review J: the old answer was false).
     const r = firstOrderEquilibria("sqrt(-1 - y^2)", { min: -1, max: 1 });
-    expect(r.autonomous).toBe(false);
+    expect(r.autonomous).toBe("untestable");
     expect(r.solutions).toEqual([]);
   });
 
@@ -550,5 +552,209 @@ describe("domain-edge constant solutions, one-sided stability and uniqueness (J.
     expect(r.solutions[0].stability).toBe("edge_leave");
     expect(r.solutions[0].uniqueness).toMatchObject({ verdict: "unbounded", probesFailing: 7, probesTotal: 7 });
     expect(r.solutions[0].uniqueness!.exponent).toBeCloseTo(0.5, 6);
+  });
+});
+
+describe("constant solutions are accepted by a local criterion, never by a box-wide tolerance (review J)", () => {
+  const tRange = { min: -2, max: 2 };
+  const summary = (r: ReturnType<typeof firstOrderEquilibria>) => r.solutions.map((s) => [s.y, s.stability, s.domainEdge, s.uniqueness?.verdict]);
+
+  it("dy/dt = y^8 + 1, y^2 + 1, y^4 + 1 have no constant solution on any range (M >= 1 everywhere)", () => {
+    // |M| has a local minimum of 1 at y = 0; the ladder values 1 + δ^8 level off at 1 (β = 0), so
+    // the candidate is not a root. Before: max|M| over the range set the tolerance, and on
+    // [-100, 100] (max|M| = 1e16) every |y| < 7.5 passed as a constant solution.
+    for (const [g, ranges] of [
+      ["y^8 + 1", [[-10, 10], [-100, 100], [-1e5, 1e5]]],
+      ["y^2 + 1", [[-2, 2], [-1e5, 1e5]]],
+      ["y^4 + 1", [[-1000, 1000]]],
+    ] as const) {
+      for (const [min, max] of ranges) expect(firstOrderEquilibria(g, { min, max }, { tRange }).solutions, `${g} on [${min}, ${max}]`).toEqual([]);
+    }
+  });
+
+  it("dy/dt = 1 - exp(-100 y) has exactly one constant solution, y = 0, unstable, on [-1, 1], [-10, 10] and [-100, 100]", () => {
+    // g' = 100 e^{-100y} > 0: below the line g < 0 (moving down, away), above g > 0 (up, away):
+    // unstable. exp(-100 y) is 2.7e43 at y = -1, which used to make the tolerance 2.7e34 and turn
+    // 145 samples with |g| < 1 into constant solutions. The uniqueness probe below the line
+    // starts at 1e-2 of the span: e^2 and e^20 at half-widths 1 and 10 (bounded, D levels off at
+    // 100); at half-width 100 it starts at e^200, next to which every finer value looks like
+    // rounding residue, so that side is untestable (see uniqueness.test.ts): no claim is made.
+    for (const half of [1, 10, 100]) {
+      const r = firstOrderEquilibria("1 - exp(-100*y)", { min: -half, max: half }, { tRange: { min: -5, max: 5 } });
+      expect(r.solutions, `half-width ${half}`).toHaveLength(1);
+      expect(r.solutions[0].y).toBe(0);
+      expect(r.solutions[0].stability).toBe("unstable");
+      expect(r.solutions[0].uniqueness?.verdict).toBe(half === 100 ? "untestable" : "bounded_at_tested_scales");
+    }
+  });
+
+  it("dy/dt = tanh(y) - 0.5 on [-3, 3], [-1e5, 1e5] and [-1e8, 1e8] finds y = atanh(1/2) = ln(3)/2 to the last bit, unstable", () => {
+    // atanh(1/2) = (1/2) ln((1 + 1/2) / (1 - 1/2)) = ln(3) / 2 = 0.5493061443340548. The scan sees
+    // the sign change between the samples around 0 (tanh saturates to exactly ±1 far out, so the
+    // rest of the column is ±0.5), bisection continues to adjacent doubles whatever the cell size,
+    // and the residual is compared with |M_y| times the spacing of doubles at c, never with the box.
+    // g' = sech² > 0 at the root: unstable.
+    for (const half of [3, 1e5, 1e8]) {
+      const r = firstOrderEquilibria("tanh(y) - 0.5", { min: -half, max: half }, { tRange });
+      expect(r.solutions, `half-width ${half}`).toHaveLength(1);
+      expect(r.solutions[0].y).toBeCloseTo(Math.log(3) / 2, 15);
+      expect(r.solutions[0].stability).toBe("unstable");
+    }
+  });
+
+  it("scale invariance: multiplying M and N by 1e-6 or 1e6 changes nothing", () => {
+    for (const k of ["1e-6", "1e6"]) {
+      const scaled = firstOrderEquilibria({ kind: "differential", M: `-${k}*(tanh(y) - 0.5)`, N: k }, { min: -1e5, max: 1e5 }, { tRange });
+      expect(scaled.solutions.map((s) => [s.stability, s.uniqueness?.verdict])).toEqual([["unstable", "bounded_at_tested_scales"]]);
+      expect(scaled.solutions[0].y).toBeCloseTo(Math.log(3) / 2, 15);
+      expect(firstOrderEquilibria({ kind: "differential", M: `-${k}*(y^8 + 1)`, N: k }, { min: -100, max: 100 }, { tRange }).solutions).toEqual([]);
+    }
+  });
+
+  it("a plateau where the arithmetic underflows to exactly 0 is not a sheet of constant solutions: y·exp(-y²) on [-200, 200]", () => {
+    // y e^{-y²} underflows to exactly 0 for y² > 745 (|y| > 27.3), so 345 of the 401 samples are
+    // exactly 0. A side on which M is 0 at every ladder level is "flat": consistent with a root but
+    // no evidence, and a candidate needs a side with a measured vanishing law. Only y = 0 remains
+    // (g' = 1 there: unstable).
+    const r = firstOrderEquilibria("y*exp(-y^2)", { min: -200, max: 200 }, { tRange });
+    expect(summary(r)).toEqual([[0, "unstable", undefined, "bounded_at_tested_scales"]]);
+    // The same rule keeps the boundary of a genuinely flat region (M ≡ 0 on y <= 1) and drops its inside.
+    const flat = firstOrderEquilibria("max(0, y - 1)", { min: 0, max: 2 }, { tRange });
+    expect(flat.solutions.map((s) => s.y)).toEqual([1]);
+  });
+
+  it("the location does not degrade with the position of the box: y(1 - y) shifted to y = 1e6", () => {
+    // (y - 1e6)(1 - (y - 1e6)) has roots at exactly 1e6 and 1e6 + 1 (both representable). The
+    // vanishing ladder uses offsets carried by c to 1e-3 (1e3 · eps · 1e6 = 2.2e-7), leaving 8 of
+    // its 16 levels from the 7.5e-3 cell; the bisection ends at adjacent doubles.
+    const r = firstOrderEquilibria("(y - 1e6)*(1 - (y - 1e6))", { min: 1e6 - 1, max: 1e6 + 2 }, { tRange });
+    expect(summary(r)).toEqual([
+      [1e6, "unstable", undefined, "bounded_at_tested_scales"],
+      [1e6 + 1, "stable", undefined, "bounded_at_tested_scales"],
+    ]);
+  });
+
+  it("a root within the rounding floor of the scanned coordinates is reported as exactly 0", () => {
+    // y - 1e-20 on [-1, 1]: the bracket around the sign change shrinks to 2^-200 of a cell and
+    // ends at 1e-20, which is below eps · 1 = 2.2e-16, the floor of the coordinates of this scan:
+    // the root is reported as 0. The residual there, 1e-20, is within |M_y| · 1e-20 (the snap
+    // distance counts as location tolerance). sqrt(y - 1e-20) is NOT snapped: 0 is undefined for
+    // it, so the point stays where the edge bisection put it.
+    const r = firstOrderEquilibria("y - 1e-20", { min: -1, max: 1 }, { tRange });
+    expect(r.solutions.map((s) => s.y)).toEqual([0]);
+    expect(Object.is(r.solutions[0].y, -0)).toBe(false);
+    const edge = firstOrderEquilibria("sqrt(y - 1e-20)", { min: -1, max: 1 }, { tRange });
+    expect(edge.solutions).toHaveLength(1);
+    expect(edge.solutions[0].y).toBeCloseTo(1e-20, 35);
+    expect(edge.solutions[0].domainEdge).toBe("above");
+  });
+
+  it("dy/dt = 0 (M ≡ 0) and dy/dt = sign(y) list nothing; sin(y) on [-10, 10] lists its 7 roots at kπ to the last bit", () => {
+    expect(firstOrderEquilibria("0", { min: -1, max: 1 }, { tRange })).toEqual({ autonomous: true, solutions: [] });
+    // sign(y) is 0 at y = 0 but does not vanish continuously (|M| = 1 on both sides): not a root.
+    expect(firstOrderEquilibria("sign(y)", { min: -1, max: 1 }, { tRange }).solutions).toEqual([]);
+    const r = firstOrderEquilibria("sin(y)", { min: -10, max: 10 }, { tRange });
+    expect(r.solutions.map((s) => s.y)).toEqual([-3, -2, -1, 0, 1, 2, 3].map((k) => expect.closeTo(k * Math.PI, 14)));
+    // cos(kπ) alternates: y' = sin(y) has g' = 1 at even k (unstable) and -1 at odd k (stable).
+    expect(r.solutions.map((s) => s.stability)).toEqual(["stable", "unstable", "stable", "unstable", "stable", "unstable", "stable"]);
+  });
+});
+
+describe("domain edges on the box edge, and an untestable autonomy (review J)", () => {
+  const tRange = { min: -3, max: 3 };
+  const line = (r: ReturnType<typeof firstOrderEquilibria>) => r.solutions.map((s) => [s.y, s.stability, s.domainEdge, s.uniqueness?.verdict, Number(s.uniqueness!.exponent.toFixed(6))]);
+
+  it("dy/dt = sqrt(y) gives the same domain-edge line on [0, 4], [0, 1.2], [-4, 0] and [-0.31, 1.2]", () => {
+    // With yMin = 0 the first sample is the edge itself and has no undefined neighbour inside the
+    // range; the probe one cell OUTSIDE the range (sqrt(-h) = NaN) supplies it. On [-4, 0] the only
+    // finite sample is y = 0 (it used to trip the "M ≡ 0" shortcut and report no constant solution
+    // with "the right-hand side depends on t"). Everywhere: y = 0, defined above, left (sqrt > 0
+    // moves up), uniqueness failing with α = 1/2.
+    for (const [min, max] of [[0, 4], [0, 1.2], [-4, 0], [-0.31, 1.2]] as const) {
+      const r = firstOrderEquilibria("sqrt(y)", { min, max }, { tRange });
+      expect(line(r), `[${min}, ${max}]`).toEqual([[0, "edge_leave", "above", "unbounded", 0.5]]);
+      expect(r.autonomous, `[${min}, ${max}]`).toBe(true);
+    }
+  });
+
+  it("edges at other positions and on the other side: sqrt(y - 1) on [1, 5], sqrt(1 - y) on [-3, 1], -sqrt(y) on [0, 4]", () => {
+    expect(line(firstOrderEquilibria("sqrt(y - 1)", { min: 1, max: 5 }, { tRange }))).toEqual([[1, "edge_leave", "above", "unbounded", 0.5]]);
+    expect(line(firstOrderEquilibria("sqrt(y - 1)", { min: 0, max: 5 }, { tRange }))).toEqual([[1, "edge_leave", "above", "unbounded", 0.5]]);
+    // sqrt(1 - y) > 0 below y = 1 moves up, toward the line: approached.
+    expect(line(firstOrderEquilibria("sqrt(1 - y)", { min: -3, max: 1 }, { tRange }))).toEqual([[1, "edge_approach", "below", "unbounded", 0.5]]);
+    expect(line(firstOrderEquilibria("sqrt(1 - y)", { min: -3, max: 1.2 }, { tRange }))).toEqual([[1, "edge_approach", "below", "unbounded", 0.5]]);
+    expect(line(firstOrderEquilibria("-sqrt(y)", { min: 0, max: 4 }, { tRange }))).toEqual([[0, "edge_approach", "above", "unbounded", 0.5]]);
+    // the scaled differential form on the box edge
+    expect(line(firstOrderEquilibria({ kind: "differential", M: "-1e6*sqrt(y)", N: "1e6" }, { min: 0, max: 4 }, { tRange }))).toEqual([[0, "edge_leave", "above", "unbounded", 0.5]]);
+  });
+
+  it("a range on which the equation is undefined everywhere: no constant solution, autonomy untestable", () => {
+    for (const g of ["sqrt(y)", "sqrt(-1 - y^2)", "log(y)"]) {
+      const r = firstOrderEquilibria(g, { min: -4, max: -0.001 }, { tRange });
+      expect(r, g).toEqual({ autonomous: "untestable", solutions: [] });
+    }
+    // t-dependence is still measured where it can be: t·sqrt(y) on y in [-4, 0] is not autonomous
+    // (the slope at y = 0 is 0 for every t, but the probes above the line differ) - here the line is
+    // the only defined sample, so the comparison at y = 0 is all there is: 0 = 0 at every t.
+    const r = firstOrderEquilibria("t*sqrt(y)", { min: -4, max: 0 }, { tRange: { min: 0.5, max: 3 } });
+    expect(r.autonomous).toBe(true);
+    expect(r.solutions.map((s) => [s.y, s.stability, s.domainEdge])).toEqual([[0, "edge_leave", "above"]]);
+  });
+
+  it("an isolated undefined point on the box edge is not a domain edge: y·log|y| on [-4, 0] has y = 0 stable", () => {
+    // 0·log 0 is NaN at the last sample, but the probe one cell above the range (0.01·log 0.01) is
+    // finite: the line is defined on both sides, stable (toward it from both), and the root is
+    // exactly 0, not the denormal next to it.
+    const r = firstOrderEquilibria("y*log(abs(y))", { min: -4, max: 0 }, { tRange });
+    expect(r.solutions.map((s) => [s.y, s.stability, s.domainEdge])).toEqual([[-1, "unstable", undefined], [0, "stable", undefined]]);
+    expect(Object.is(r.solutions[1].y, 0)).toBe(true);
+  });
+});
+
+describe("cusp roots are located on every box (review J: sqrt|y|, |y|^(1/3), 3|y|^(2/3))", () => {
+  const tRange = { min: -3, max: 3 };
+  // None of these ranges has 0 as a sample point: -0.31 + i·1.51/400 = 0 needs i = 82.12;
+  // -3.7 + i·6.6/400 = 0 needs i = 224.24; 0.05 - 0.36 is -0.31000000000000005, a different box at
+  // the last bit. |M| has a minimum at 0 without a sign change, and a Newton polish oscillates
+  // between ±y0 at a cusp (the mirror image is the Newton step of sqrt|y|); the golden-section
+  // minimizer converges instead, to within 2^-200 of a cell of 0, which the rounding floor of the
+  // coordinates snaps to exactly 0.
+  const ranges: [number, number][] = [[-0.31, 1.2], [-3.7, 2.9], [0.05 - 0.36, 1.2], [-1, 1], [-1.003, 1]];
+  const line = (r: ReturnType<typeof firstOrderEquilibria>) => r.solutions.map((s) => [s.y, s.stability, s.domainEdge, s.uniqueness?.verdict, Number(s.uniqueness!.exponent.toFixed(6))]);
+
+  it("sqrt|y|: y = 0 semi-stable (moving up on both sides), uniqueness failing with α = 1/2", () => {
+    for (const [min, max] of ranges) expect(line(firstOrderEquilibria("sqrt(abs(y))", { min, max }, { tRange })), `[${min}, ${max}]`).toEqual([[0, "semi_stable", undefined, "unbounded", 0.5]]);
+  });
+
+  it("|y|^(1/3): α = 2/3; 3|y|^(2/3): α = 1/3 (D = 3 δ^(2/3) / δ)", () => {
+    for (const [min, max] of ranges) {
+      expect(line(firstOrderEquilibria("abs(y)^(1/3)", { min, max }, { tRange })), `[${min}, ${max}]`).toEqual([[0, "semi_stable", undefined, "unbounded", Number((2 / 3).toFixed(6))]]);
+      expect(line(firstOrderEquilibria("3*abs(y)^(2/3)", { min, max }, { tRange })), `[${min}, ${max}]`).toEqual([[0, "semi_stable", undefined, "unbounded", Number((1 / 3).toFixed(6))]]);
+    }
+  });
+
+  it("a Lipschitz cusp, |y|, is found too, with bounded quotients (D = 1)", () => {
+    for (const [min, max] of ranges) expect(line(firstOrderEquilibria("abs(y)", { min, max }, { tRange })), `[${min}, ${max}]`).toEqual([[0, "semi_stable", undefined, "bounded_at_tested_scales", 0]]);
+  });
+
+  it("cusps away from 0 and with a sign change: sqrt|y - 1/2| at 1/2, sign(y - 3)|y - 3|^(1/3) at 3", () => {
+    // 1/2 and 3 are representable; the minimizer / bisection ends within a double of them, and the
+    // residual sqrt(ulp) is within what the δ^(1/2) law predicts at that tolerance.
+    const c = firstOrderEquilibria("sqrt(abs(y - 0.5))", { min: -1, max: 1 }, { tRange });
+    expect(c.solutions).toHaveLength(1);
+    expect(c.solutions[0].y).toBeCloseTo(0.5, 15);
+    expect(c.solutions[0].stability).toBe("semi_stable");
+    expect(c.solutions[0].uniqueness!.exponent).toBeCloseTo(0.5, 6);
+    // dy/dt = sign(y - 3)|y - 3|^(1/3) < 0 below 3 (down, away) and > 0 above (up, away): unstable.
+    const s = firstOrderEquilibria("sign(y - 3)*abs(y - 3)^(1/3)", { min: -2, max: 4 }, { tRange });
+    expect(s.solutions.map((x) => [x.y, x.stability, x.uniqueness?.verdict])).toEqual([[3, "unstable", "unbounded"]]);
+    expect(s.solutions[0].uniqueness!.exponent).toBeCloseTo(2 / 3, 6);
+  });
+
+  it("scale invariance: -1e6 sqrt|y| dt + 1e6 dy = 0 and the 1e-6 version give the same line", () => {
+    for (const k of ["1e6", "1e-6"]) {
+      const r = firstOrderEquilibria({ kind: "differential", M: `-${k}*sqrt(abs(y))`, N: k }, { min: -0.31, max: 1.2 }, { tRange });
+      expect(line(r), k).toEqual([[0, "semi_stable", undefined, "unbounded", 0.5]]);
+    }
   });
 });

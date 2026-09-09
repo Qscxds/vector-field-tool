@@ -23,13 +23,14 @@
  * - leveling off: |log(D_k / D_{k-2})| / log(δ_{k-2} / δ_k) < LEVEL_OFF_EXPONENT (0.05), i.e. the
  *   quotients moved by less than δ^±0.05 per level over the last two levels: the derivative is
  *   bounded at the scale where they leveled off, "bounded_at_tested_scales";
- * - the rounding floor: |h(δ_k)| < eps · max_j |h(δ_j)| / ROUNDING_GUARD (the quotient can no longer
- *   be resolved), an offset the point's own coordinate cannot carry (δ < POSITION_GUARD · eps ·
- *   |center|, where center + δ rounds), or LIPSCHITZ_MAX_LEVELS (60) levels: the growth persisted
- *   down to the floor, and α is fitted (least squares of log D against log δ) over the last
- *   TAIL_LEVELS (4) usable levels; "unbounded" when α >= UNBOUNDED_EXPONENT (0.25), "borderline"
- *   when α >= BORDERLINE_EXPONENT (0.1), else "bounded_at_tested_scales" (the quotients shrank or
- *   drifted only slowly).
+ * - the rounding floor: |h(δ_k)| < eps · max |h| over the last FLOOR_WINDOW (4) finite levels /
+ *   ROUNDING_GUARD (the quotient can no longer be resolved against the values at the neighbouring
+ *   scales; a value of exactly 0 always ends the descent), an offset the point's own coordinate
+ *   cannot carry (δ < POSITION_GUARD · eps · |center|, where center + δ rounds), or
+ *   LIPSCHITZ_MAX_LEVELS (60) levels: the growth persisted down to the floor, and α is fitted
+ *   (least squares of log D against log δ) over the last TAIL_LEVELS (4) usable levels;
+ *   "unbounded" when α >= UNBOUNDED_EXPONENT (0.25), "borderline" when α >= BORDERLINE_EXPONENT
+ *   (0.1), else "bounded_at_tested_scales" (the quotients shrank or drifted only slowly).
  * Levels where h is not finite are skipped and the descent continues (a side defined only close to
  * the point is tested there); "undefined" means h was finite at no level on that side, i.e. the
  * equation is not defined on that side (sqrt(y) below y = 0); "untestable" means fewer than
@@ -91,13 +92,15 @@ export const LEVEL_OFF_EXPONENT = 0.05;
 export const TAIL_LEVELS = 4;
 /** Usable levels needed for any verdict other than untestable. */
 export const MIN_LEVELS = 3;
-/** A level is skipped when the rounding floor of h exceeds this fraction of the quotient. */
+/** The descent ends when the rounding floor of h exceeds this fraction of the quotient. */
 export const ROUNDING_GUARD = 0.1;
+/** The rounding floor is estimated from |h| over this many neighbouring finite levels (the current one included). */
+export const FLOOR_WINDOW = 4;
 /**
- * Offsets below this many eps of |center| are not representable to 1e-7 (center + δ rounds) and end
- * the descent: an offset carried to 1e-7 keeps the exponent of a δ^-1/2 law good to about 3e-8.
+ * Offsets below this many eps of |center| are not representable to 1e-6 (center + δ rounds) and end
+ * the descent: an offset carried to 1e-6 keeps the exponent of a δ^-1/2 law good to about 1e-7.
  */
-export const POSITION_GUARD = 1e7;
+export const POSITION_GUARD = 1e6;
 
 const EPS = 2.220446049250313e-16;
 
@@ -137,6 +140,7 @@ function fittedExponent(levels: readonly { delta: number; D: number }[]): number
 function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center: number): SideResult {
   const usable: { delta: number; D: number }[] = [];
   const positionFloor = POSITION_GUARD * EPS * Math.abs(center);
+  const recent: number[] = [];
   let maxH = 0;
   let finiteLevels = 0;
   let lastFiniteDelta = NaN;
@@ -152,8 +156,12 @@ function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center
     if (a > maxH) maxH = a;
     // Nothing to resolve yet: h vanished at every finite level so far.
     if (maxH === 0) continue;
-    // Rounding floor: eps · maxH / δ > ROUNDING_GUARD · D, i.e. |h| is within 10 eps of the largest value seen.
-    if (a < (EPS * maxH) / ROUNDING_GUARD) break;
+    // Rounding floor, local in scale: |h| within 10 eps of the values at the neighbouring coarser
+    // levels (a value of exactly 0 always is). The largest value of the whole ladder would be the
+    // wrong yardstick: 1 - exp(-100 y) on a box of half-width 100 is e^200 at the first offset.
+    recent.push(a);
+    if (recent.length > FLOOR_WINDOW) recent.shift();
+    if (a < (EPS * Math.max(...recent)) / ROUNDING_GUARD) break;
     usable.push({ delta, D: a / delta });
     const n = usable.length;
     if (n >= MIN_LEVELS) {

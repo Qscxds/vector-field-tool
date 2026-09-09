@@ -39,17 +39,17 @@ describe("lipschitzOffsets", () => {
 });
 
 describe("lipschitzProbe: growth of the difference quotients at the finest scales", () => {
-  it("sqrt(y) at 0: unbounded above with α = 1/2 down to the rounding floor (49 levels), undefined below", () => {
+  it("sqrt(y) at 0: unbounded above with α = 1/2 through all 60 levels, undefined below", () => {
     // D_k = sqrt(δ_k) / δ_k = δ_k^-1/2 exactly (sqrt is correctly rounded): the quotients double at
-    // every level, so the descent never levels off and runs to the rounding floor. With
-    // maxH = sqrt(1e-2) = 0.1 the floor is |h| < eps · 0.1 / 0.1 = eps: 0.1 · 2^-k < 2.22e-16 first
-    // at k = 49 (0.1 · 2^-48 = 3.55e-16 is still above it), so levels 0..48 are usable: 49.
+    // every level, so the descent never levels off. The rounding floor compares |h| with the values
+    // at the 3 coarser levels (8 times larger at most), never reached by an exact power law, and
+    // 0 + δ never rounds, so the 60-level cap ends the descent.
     // sqrt of a negative offset is NaN at every level: the equation is not defined below y = 0.
     const r = lipschitzProbe(Math.sqrt, 1);
     expect(r.sides.above.verdict).toBe("unbounded");
     expect(r.sides.above.exponent).toBeCloseTo(0.5, 6);
-    expect(r.sides.above.levels).toBe(49);
-    expect(r.sides.above.finestOffset).toBeCloseTo(1e-2 * 4 ** -48, 40);
+    expect(r.sides.above.levels).toBe(LIPSCHITZ_MAX_LEVELS);
+    expect(r.sides.above.finestOffset).toBeCloseTo(1e-2 * 4 ** -59, 48);
     expect(r.sides.below.verdict).toBe("undefined");
     expect(r.sides.below.levels).toBe(0);
     expect(Number.isNaN(r.sides.below.exponent)).toBe(true);
@@ -60,9 +60,8 @@ describe("lipschitzProbe: growth of the difference quotients at the finest scale
   });
 
   it("y^(1/3) at 0: α = 2/3 above, all 60 levels used; below is undefined because a negative base with a fractional exponent is NaN here", () => {
-    // D = δ^(1/3) / δ = δ^-2/3. The floor |h| < eps · maxH / 0.1 with maxH = 0.01^(1/3) would need
-    // 4^(-k/3) < 2.22e-15, k > 73: the 60-level cap comes first. The kernel's pow is the JS **
-    // operator (parse.ts), and (-0.01) ** (1/3) is NaN, not the real cube root -0.215.
+    // D = δ^(1/3) / δ = δ^-2/3, an exact power law: the 60-level cap ends the descent. The kernel's
+    // pow is the JS ** operator (parse.ts), and (-0.01) ** (1/3) is NaN, not the real cube root -0.215.
     const r = lipschitzProbe((d) => d ** (1 / 3), 1);
     expect(r.sides.above.verdict).toBe("unbounded");
     expect(r.sides.above.exponent).toBeCloseTo(2 / 3, 6);
@@ -72,13 +71,12 @@ describe("lipschitzProbe: growth of the difference quotients at the finest scale
     expect(r.exponent).toBeCloseTo(2 / 3, 6);
   });
 
-  it("3 y^(2/3) at 0: α = 1/3, floor after 37 levels", () => {
-    // D = 3 δ^(2/3) / δ = 3 δ^-1/3: the constant factor shifts log D, not its slope. The floor is
-    // reached when 4^(-2k/3) < 2.22e-15, i.e. 2k/3 > 24.34, k = 37; levels 0..36 are usable.
+  it("3 y^(2/3) at 0: α = 1/3", () => {
+    // D = 3 δ^(2/3) / δ = 3 δ^-1/3: the constant factor shifts log D, not its slope.
     const r = lipschitzProbe((d) => 3 * d ** (2 / 3), 1);
     expect(r.verdict).toBe("unbounded");
     expect(r.exponent).toBeCloseTo(1 / 3, 6);
-    expect(r.sides.above.levels).toBe(37);
+    expect(r.sides.above.levels).toBe(LIPSCHITZ_MAX_LEVELS);
   });
 
   it("y at 0: bounded, α = 0 on both sides; the quotients level off at once (3 levels)", () => {
@@ -123,15 +121,15 @@ describe("lipschitzProbe: growth of the difference quotients at the finest scale
     expect(r.sides.below.verdict).toBe("bounded_at_tested_scales");
   });
 
-  it("y² at 0: bounded, α = -1 (D = δ shrinks to the floor after 13 levels)", () => {
-    // D = δ changes by a full factor 16 per two levels, so the descent never levels off; it ends at
-    // the floor h = δ² < eps · maxH / 0.1 = 2.22e-15 · 1e-4, i.e. 16^-k < 2.22e-15, k > 12.2:
-    // levels 0..12 are usable, and the tail fit of an exact power law gives -1.
+  it("y² at 0: bounded, α = -1 (D = δ shrinks through all 60 levels)", () => {
+    // D = δ changes by a full factor 16 per two levels, so the descent never levels off; δ² stays
+    // representable down to the cap (δ_59² = 5.6e-77), and the tail fit of an exact power law
+    // gives -1: bounded, since α is below 0.1.
     const r = lipschitzProbe((d) => d * d, 1);
     expect(r.verdict).toBe("bounded_at_tested_scales");
     expect(r.exponent).toBeCloseTo(-1, 6);
     expect(r.sides.below.exponent).toBeCloseTo(-1, 6);
-    expect(r.sides.above.levels).toBe(13);
+    expect(r.sides.above.levels).toBe(LIPSCHITZ_MAX_LEVELS);
   });
 
   it("y·log|y| at 0 (derivative log|y| + 1, unbounded but only logarithmically) levels off and reads as bounded with α ≈ 0.047", () => {
@@ -252,21 +250,40 @@ describe("the verdict does not depend on the box (review J: smooth right-hand si
     for (const scale of [1, 1e3]) expect(lipschitzProbe((d) => d / (1 + 1e6 * d * d), scale).verdict).toBe("bounded_at_tested_scales");
   });
 
-  it("sqrt(y) is unbounded with α = 1/2 and the same 49 levels at scales 1e-6, 1 and 1e6", () => {
-    // The floor rule compares |h(δ_k)| with the largest |h| seen, both of which scale together.
+  it("sqrt(y) is unbounded with α = 1/2 and the same 60 levels at scales 1e-6, 1 and 1e6", () => {
+    // The floor rule compares |h(δ_k)| with the values at the neighbouring levels, which scale together.
     for (const scale of [1e-6, 1, 1e6]) {
       const r = lipschitzProbe(Math.sqrt, scale);
       expect(r.verdict, `scale ${scale}`).toBe("unbounded");
       expect(r.exponent, `scale ${scale}`).toBeCloseTo(0.5, 6);
-      expect(r.sides.above.levels, `scale ${scale}`).toBe(49);
+      expect(r.sides.above.levels, `scale ${scale}`).toBe(LIPSCHITZ_MAX_LEVELS);
     }
+  });
+
+  it("a steep exponential, 1 - exp(-100 y) at 0: bounded at scales 2 and 20; at scale 200 the side below is untestable, never a false claim", () => {
+    // Above the line D = (1 - e^{-100 δ}) / δ levels off at 100 whatever the scale. Below it
+    // h = 1 - e^{100 δ}: with scale 20 the ladder starts at δ = 0.2 (e^20 = 4.8e8) and drops by
+    // less than 1e15 over any four levels, so the descent continues to where D levels off at 100.
+    // With scale 200 it starts at e^200 = 7e86 and the next level, e^50 = 5e21, is already
+    // below 10 eps of it: a black-box probe cannot tell such a value from rounding residue of the
+    // first, so that side stops with one usable level, "untestable": no claim, rather than the
+    // false "unbounded" of a fixed ladder. Bounded on the other side; the worse side decides.
+    for (const scale of [2, 20]) {
+      const r = lipschitzProbe((d) => 1 - Math.exp(-100 * d), scale);
+      expect(r.verdict, `scale ${scale}`).toBe("bounded_at_tested_scales");
+      expect(Math.abs(r.exponent), `scale ${scale}`).toBeLessThan(LEVEL_OFF_EXPONENT);
+    }
+    const wide = lipschitzProbe((d) => 1 - Math.exp(-100 * d), 200);
+    expect(wide.sides.above.verdict).toBe("bounded_at_tested_scales");
+    expect(wide.sides.below).toMatchObject({ verdict: "untestable", levels: 1 });
+    expect(wide.verdict).toBe("untestable");
   });
 
   it("a singular term under a dominant linear one is still caught when the quotients keep changing: y - 0.03 sqrt(y)", () => {
     // D_k = |1 - 0.03 δ_k^-1/2| = |1 - 0.3 · 2^k| above y = 0: 0.7, 0.4, 0.2, 1.4, 3.8, 8.6, ... The
     // quotients first shrink, cross zero between levels 1 and 2, then double at every level, so no
-    // pair of levels is within 5% of each other and the descent runs to the floor, where the tail
-    // is the pure δ^-1/2 law of the singular term (the -1 is a 1e-13 correction there): α = 1/2.
+    // pair of levels is within 5% of each other and the descent runs to the cap, where the tail
+    // is the pure δ^-1/2 law of the singular term (the -1 is a 1e-17 correction there): α = 1/2.
     const r = lipschitzProbe((d) => d - 0.03 * Math.sqrt(d), 1);
     expect(r.sides.above.verdict).toBe("unbounded");
     expect(r.sides.above.exponent).toBeCloseTo(0.5, 5);
@@ -313,17 +330,17 @@ describe("equilibriaUniqueness: axis-direction probes at the equilibria of a sys
   });
 
   it("the descent ends where the coordinate can no longer carry the offset: x' = sqrt|x - 1|, y' = -y at (1, 0)", () => {
-    // Offsets below 1e7 · eps · 1 = 2.2e-9 are not carried by x = 1 to 1e-7. From δ_0 = 4e-2 the
-    // first offset below that is 4e-2 · 4^-13 = 6.0e-10 (4e-2 · 4^-12 = 2.4e-9 is still above), so
-    // levels 0..12 are used and the finest offset is 2.4e-9. The tail is the δ^-1/2 law of sqrt,
-    // measured on fl(1 + δ) - 1 = δ (1 ± 1e-7): α = 0.5 to about 3e-8.
+    // Offsets below 1e6 · eps · 1 = 2.2e-10 are not carried by x = 1 to 1e-6. From δ_0 = 4e-2 the
+    // first offset below that is 4e-2 · 4^-14 = 1.5e-10 (4e-2 · 4^-13 = 6.0e-10 is still above), so
+    // levels 0..13 are used and the finest offset is 6.0e-10. The tail is the δ^-1/2 law of sqrt,
+    // measured on fl(1 + δ) - 1 = δ (1 ± 4e-7): α = 0.5 to about 1e-7.
     const sys = compileSystem({ f: "sqrt(abs(x - 1))", g: "-y" });
     const [r] = equilibriaUniqueness(sys, [{ x: 1, y: 0 }], box);
     expect(r.verdict).toBe("unbounded");
     expect(r.along).toBe("x");
     expect(r.exponent).toBeCloseTo(0.5, 6);
-    expect(r.sides.above.levels).toBe(13);
-    expect(r.sides.above.finestOffset).toBeCloseTo(4e-2 * 4 ** -12, 16);
+    expect(r.sides.above.levels).toBe(14);
+    expect(r.sides.above.finestOffset).toBeCloseTo(4e-2 * 4 ** -13, 17);
   });
 
   it("x' = tanh(x), y' = -y and x' = sin(x), y' = sin(y) at the origin are bounded on every box", () => {

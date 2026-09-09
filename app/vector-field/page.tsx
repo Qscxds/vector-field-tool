@@ -13,7 +13,7 @@ import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSyste
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
@@ -415,7 +415,7 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
       <div>
         <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.constantSolutionsHeading}</h2>
         {fo.solutions.length === 0 ? (
-          <p style={{ margin: 0 }}>{fo.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral}</p>
+          <p style={{ margin: 0 }}>{noConstantSentence(L, fo.autonomous)}</p>
         ) : (
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             {fo.solutions.map((s) => (

@@ -35,7 +35,7 @@ export type LabelTable = {
     | "systemHeader" | "singularSamples" | "singularPoint" | "equilibriumLine" | "eigenvaluesUnavailable" | "note"
     | "trajectoryHeader" | "forward" | "backward" | "trajectoryLine" | "sampleFieldLine" | "widgetDraws"
     | "firstOrderHeader" | "differentialUndirected" | "directionSingular" | "truncated" | "constantSolution"
-    | "noConstantAutonomous" | "noConstantGeneral" | "formsHeader" | "formLine" | "formBorderlineLine" | "formsCaveat"
+    | "noConstantAutonomous" | "noConstantGeneral" | "noConstantUntestable" | "formsHeader" | "formLine" | "formBorderlineLine" | "formsCaveat"
     | "formsInconsistentLine" | "formsUntestableLine" | "exactImplicit" | "exactPathCheckFailed" | "listSeparator"
     | "parenOpen" | "parenClose"
     | "nonUniqueTrajectory"
@@ -143,6 +143,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       constantSolution: "常数解 y = {y}：{stability}。",
       noConstantAutonomous: "方程是自治的，但在观察范围内没有常数解。",
       noConstantGeneral: "在观察范围内没有常数解（右端依赖 t；斜率场仍然有效）。",
+      noConstantUntestable: "在观察范围内没有常数解；方程是否自治无法检验（右端在这个范围的绝大部分上没有定义）。",
       formsHeader: "方程类型（数值探测，只表示「与该形式一致」，不是证明）：",
       formLine: "- 在数值上表现得像{form}。{evidence}",
       formBorderlineLine: "- 临界情况：与{form}的偏差落在阈值附近，可能只是舍入误差，也可能真的不是该形式。{evidence}",
@@ -309,6 +310,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       constantSolution: "Constant solution y = {y}: {stability}.",
       noConstantAutonomous: "The equation is autonomous but has no constant solution in the viewing range.",
       noConstantGeneral: "No constant solution in the viewing range (the right-hand side depends on t; the slope field is still valid).",
+      noConstantUntestable: "No constant solution in the viewing range; whether the equation is autonomous could not be tested (the right-hand side is undefined on most of the range).",
       formsHeader: "Equation type (numerical probes; 'consistent with', never a proof):",
       formLine: "- Numerically behaves like {form}. {evidence}",
       formBorderlineLine: "- Borderline: the deviation from {form} lies near the threshold; this may be rounding, or the equation may not be of this form. {evidence}",
@@ -423,6 +425,16 @@ export function uniquenessSentence(
   const alpha = formatNumber(u.exponent, 2);
   if ("y" in subject) return fill(u.verdict === "unbounded" ? L.uniqueness.unbounded : L.uniqueness.borderline, { y: formatNumber(subject.y, 6), alpha });
   return fill(u.verdict === "unbounded" ? L.uniqueness.unboundedPoint : L.uniqueness.borderlinePoint, { point: formatPoint(subject.point), alpha });
+}
+
+/**
+ * The sentence for a first-order scene without constant solutions. The autonomy verdict has three
+ * states (lib/core/slope-field.ts): measured autonomous, measured t-dependent, or untestable when
+ * the right-hand side is undefined on most of the range; the third must never be read as either of
+ * the first two. Shared by the tool summary and both shells.
+ */
+export function noConstantSentence(L: LabelTable, autonomous: boolean | "untestable"): string {
+  return autonomous === true ? L.tool.noConstantAutonomous : autonomous === false ? L.tool.noConstantGeneral : L.tool.noConstantUntestable;
 }
 
 /** Picks a locale from a BCP 47 tag (navigator.language): Chinese -> zh, everything else -> en. */

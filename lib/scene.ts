@@ -41,7 +41,8 @@ export type FirstOrderView = {
   expr: string;
   /** The equation itself, so a client can recompute locally (zoom, pan, hover). */
   spec?: FirstOrderSpec;
-  autonomous: boolean;
+  /** Whether the slope is independent of t; "untestable" when it is undefined on most of the range (neither may be claimed). */
+  autonomous: boolean | "untestable";
   solutions: EquilibriumSolution[];
   /** Points where M = N = 0: the direction is undefined there. */
   singularities?: Vec2[];

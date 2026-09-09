@@ -25,7 +25,7 @@ import {
 } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { EXACT_PATH_TOL, markNonUnique, withUniqueness } from "@/lib/interactive";
-import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, uniquenessSentence, type Locale } from "@/lib/labels";
+import { fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
@@ -696,7 +696,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             if (uniqueness) lines.push(uniqueness);
           }
         } else {
-          lines.push(eq.autonomous ? L.tool.noConstantAutonomous : L.tool.noConstantGeneral);
+          lines.push(noConstantSentence(L, eq.autonomous));
         }
         lines.push(...describeForms(forms, locale));
         if (implicit) {
