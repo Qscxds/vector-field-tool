@@ -90,6 +90,14 @@ describe("embed snippet", () => {
     expect(EMBED_HEIGHT_WITHOUT_CONTROLS).toBeLessThan(EMBED_HEIGHT_WITH_CONTROLS);
   });
 
+  it("the help text quotes the same heights as the snippets, in both languages", () => {
+    for (const loc of ["zh", "en"] as const) {
+      const h = siteText(loc).help.embed.heights;
+      expect(h, loc).toContain(String(EMBED_HEIGHT_WITH_CONTROLS));
+      expect(h, loc).toContain(String(EMBED_HEIGHT_WITHOUT_CONTROLS));
+    }
+  });
+
   it("the MCP endpoint is /mcp on the site origin", () => {
     expect(MCP_ENDPOINT).toBe(`${SITE_ORIGIN}/mcp`);
     expect(SITE_ORIGIN).toMatch(/^https:\/\/[^/]+$/);

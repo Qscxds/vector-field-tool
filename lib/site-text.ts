@@ -14,8 +14,14 @@ export const MCP_ENDPOINT = `${SITE_ORIGIN}/mcp`;
 export const GITHUB_URL = "https://github.com/Qscxds/vector-field-tool";
 /** The example every snippet embeds: the logistic equation, the first picture of the course. */
 export const EMBED_EXAMPLE_QUERY = "m=first&g=y*(1-y)&tmin=0&tmax=10&ymin=-0.5&ymax=1.5";
-export const EMBED_HEIGHT_WITH_CONTROLS = 640;
-export const EMBED_HEIGHT_WITHOUT_CONTROLS = 520;
+/**
+ * Measured on the real /embed page for the logistic example (document height, results included):
+ * with the form 1267 px at a 960 px wide frame (two columns; below 800 px the form stacks above the
+ * picture and the page needs about 1820 px), without the form 1243 px at 733 px and 1219 px at
+ * 960 px. Rounded up to 20 px. A shorter frame scrolls inside and hides the results.
+ */
+export const EMBED_HEIGHT_WITH_CONTROLS = 1280;
+export const EMBED_HEIGHT_WITHOUT_CONTROLS = 1260;
 
 /** The iframe snippet shown on the help page; `controls: false` is the read-only variant. */
 export function embedSnippet(locale: Locale, controls = true): string {
@@ -125,7 +131,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       open: "打开交互页面 →",
       examplesHeading: "例子",
       examples: {
-        logistic: { title: "Logistic 方程 dy/dt = y(1−y)", note: "两条常数解，一条稳定、一条不稳定；所有解都被 y = 1 吸引。" },
+        logistic: { title: "Logistic 方程 dy/dt = y(1−y)", note: "两条常数解，一条稳定、一条不稳定；y(0) > 0 的解都趋向 y = 1（从 0 以下出发的解向下发散）。" },
         damped: { title: "阻尼振子 x'' + 0.5x' + x = 0", note: "二阶方程化为系统后，原点是稳定螺旋点。" },
         exact: { title: "恰当方程 2ty dt + (t² + y²) dy = 0", note: "恰当性检验通过，解曲线是势函数的等值线。" },
         lotka: { title: "Lotka–Volterra 捕食者–猎物系统", note: "一个鞍点和一个线性化只能说「中心或弱螺旋」的平衡点。" },
@@ -172,7 +178,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "滚轮：以指针为中心缩放。",
           "拖动：平移视野。",
           "双击：复位到输入的范围。",
-          "悬停：预览通过该点的解曲线（蓝色向前，橙色向后）。",
+          "悬停：预览通过该点的解曲线（预览用一种青色画双向；固定后才分为蓝色向前、橙色向后）。",
           "单击：把这条解曲线固定下来。",
         ],
         touchHeading: "触屏",
@@ -188,13 +194,13 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         heading: "结果怎么读",
         markersLead: "图上的标记：",
         markers: [
-          "实心绿圆：稳定结点或稳定螺旋点（附近的解趋向它）。",
-          "空心红圆：不稳定结点或不稳定螺旋点（附近的解离开它）。",
+          "实心绿圆：稳定结点、稳定螺旋点或稳定的星形 / 退化（非正常）结点（附近的解趋向它）。",
+          "空心红圆：不稳定结点、不稳定螺旋点或不稳定的星形 / 退化（非正常）结点（附近的解离开它）。",
           "紫色叉：鞍点。",
           "灰色虚线圆加问号：线性化无法判定的平衡点（「中心或弱螺旋」或「非双曲」）。",
           "标记旁的「!」徽章：该点处唯一性可能失效。",
           "一阶方程的常数解画成横线：实线稳定，虚线不稳定，点线半稳定或随 t 变化；定义域边界上的常数解用点划线。",
-          "橙色空心圆：微分形式的方向场奇点（M = N = 0，此处方向无定义）。",
+          "橙色空心圆加中心小点：微分形式的方向场奇点（M = N = 0，此处方向无定义）。",
           "蓝色曲线向前（t 增大），橙色曲线向后；经过唯一性失效点的曲线画成虚线。恰当方程的紫色曲线是势函数的等值线。",
         ],
         centerNote: "为什么「中心或弱螺旋」从不写成「中心」：线性化只给出一对纯虚特征值，真正的中心和极缓慢的螺旋在线性化下无法区分，判定需要守恒量或更高阶的非线性分析，工具不替你猜。",
@@ -202,7 +208,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         forms: [
           "「在数值上表现得像……」：在采样点上的相对偏差低于阈值。",
           "「临界情况」：偏差落在阈值附近，可能只是舍入误差，也可能真的不是该形式。",
-          "「未通过检验」和「无法检验」：分别列出偏差最大的形式，以及采样点太少无法测试的形式。",
+          "「未通过检验」和「无法检验」：前者逐一列出每个未通过的形式及其各自的最大相对偏差（按定义排除的形式单独一行，附排除原因），后者列出采样点太少无法测试的形式。",
         ],
         notProof: "每一档都附上测得的偏差和阈值。数值证据不是证明：它只说明「在这些采样点上一致」。",
         uniqueness: "唯一性：在某个常数解或平衡点处，如果差商随着靠近而无界增长，工具会说 Lipschitz 条件失效、唯一性没有保证；「有界」的结果不会写成一句话，因为在测试尺度上有界并不能证明 Lipschitz 条件。",
@@ -234,7 +240,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "粘贴上面的代码，点「插入」。",
           "发布网站。",
         ],
-        heights: "高度：带表单约 640 像素，不带表单约 520 像素；宽度用 100%。",
+        heights: `高度：带表单约 ${EMBED_HEIGHT_WITH_CONTROLS} 像素（框宽不足 800 像素时表单会叠在图上方，约需 1820 像素），不带表单约 ${EMBED_HEIGHT_WITHOUT_CONTROLS} 像素；图下方的结果需要这个高度，框太矮时结果只能在框内滚动。宽度用 100%。`,
         publicNote: "被嵌入的页面必须是公开的（不需要登录才能看到），否则学生看不到。",
       },
       claude: {
@@ -283,7 +289,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       open: "Open the interactive page →",
       examplesHeading: "Examples",
       examples: {
-        logistic: { title: "Logistic equation dy/dt = y(1−y)", note: "Two constant solutions, one stable and one unstable; every solution is attracted to y = 1." },
+        logistic: { title: "Logistic equation dy/dt = y(1−y)", note: "Two constant solutions, one stable and one unstable; solutions with y(0) > 0 approach y = 1 (solutions starting below 0 diverge downward)." },
         damped: { title: "Damped oscillator x'' + 0.5x' + x = 0", note: "Reduced to a system, the origin is a stable spiral point." },
         exact: { title: "Exact equation 2ty dt + (t² + y²) dy = 0", note: "The exactness test passes and the solution curves are level curves of a potential." },
         lotka: { title: "Lotka–Volterra predator–prey system", note: "A saddle and an equilibrium the linearization can only call a center or a weak spiral." },
@@ -330,7 +336,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "Wheel: zoom around the pointer.",
           "Drag: pan the view.",
           "Double-click: reset to the entered range.",
-          "Hover: preview the solution curve through that point (blue forward, orange backward).",
+          "Hover: preview the solution curve through that point (the preview is drawn in one teal color both ways; only a kept curve splits into blue forward, orange backward).",
           "Click: keep that solution curve.",
         ],
         touchHeading: "Touch",
@@ -346,13 +352,13 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         heading: "How to read the results",
         markersLead: "Markers on the picture:",
         markers: [
-          "Filled green disc: a stable node or stable spiral (nearby solutions approach it).",
-          "Hollow red circle: an unstable node or unstable spiral (nearby solutions leave it).",
+          "Filled green disc: a stable node, stable spiral or stable star / degenerate (improper) node (nearby solutions approach it).",
+          "Hollow red circle: an unstable node, unstable spiral or unstable star / degenerate (improper) node (nearby solutions leave it).",
           "Violet cross: a saddle.",
           "Gray dashed circle with a question mark: an equilibrium the linearization cannot decide (\"center or weak spiral\" or \"non-hyperbolic\").",
           "A \"!\" badge beside a marker: uniqueness may fail at that point.",
           "Constant solutions of a first-order equation are horizontal lines: solid stable, dashed unstable, dotted semi-stable or varying with t; a constant solution on the domain edge uses a dash-dot pattern.",
-          "Hollow orange circle: a singular point of the direction field in differential form (M = N = 0, direction undefined there).",
+          "Hollow orange circle with a center dot: a singular point of the direction field in differential form (M = N = 0, direction undefined there).",
           "Blue curves run forward (t increasing), orange curves backward; a curve through a point where uniqueness fails is dashed. The violet curves of an exact equation are level curves of the potential.",
         ],
         centerNote: "Why \"center or weak spiral\" never says \"center\": the linearization only gives a purely imaginary pair of eigenvalues, and a true center cannot be told from an extremely slow spiral by linearization; deciding needs a conserved quantity or a higher-order nonlinear analysis, and the tool does not guess for you.",
@@ -360,7 +366,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         forms: [
           "\"Numerically behaves like ...\": the relative deviation at the sampled points is below the threshold.",
           "\"Borderline\": the deviation lies near the threshold; this may be rounding, or the equation may not be of this form.",
-          "\"Failed the test\" and \"could not be tested\": the forms with the largest deviation, and the forms with too few usable sample points.",
+          "\"Failed the test\" and \"could not be tested\": the first lists every form that failed, each with its own largest relative deviation (a form ruled out by definition gets its own line with the rule instead), the second the forms with too few usable sample points.",
         ],
         notProof: "Every tier carries the measured deviation and the threshold. Numerical evidence is not a proof: it only says that the equation is consistent at those sample points.",
         uniqueness: "Uniqueness: at a constant solution or an equilibrium where the difference quotients grow without bound as the point is approached, the tool says that the Lipschitz condition fails and uniqueness is not guaranteed; a \"bounded\" result is never turned into a sentence, because bounded at the tested scales does not prove the Lipschitz condition.",
@@ -392,7 +398,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "Paste the code above and click Insert.",
           "Publish the site.",
         ],
-        heights: "Height: about 640 px with the form, about 520 px without; use 100% for the width.",
+        heights: `Height: about ${EMBED_HEIGHT_WITH_CONTROLS} px with the form (below an 800 px frame width the form stacks above the picture and needs about 1820 px), about ${EMBED_HEIGHT_WITHOUT_CONTROLS} px without; the results below the picture need that height, and a shorter frame only scrolls inside. Use 100% for the width.`,
         publicNote: "The embedding page must be public (visible without signing in), or students will not see it.",
       },
       claude: {
