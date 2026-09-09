@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>mock sandbox proxy</title>
+    <style>
+      html, body { margin: 0; padding: 0; background: #fff; }
+      iframe { border: 0; width: 100%; display: block; }
+    </style>
+  </head>
+  <body>
+    <script>
+      /*
+       * Sandbox proxy (see serve.mjs). Origin: this page's own, different from the host's and from
+       * the widget's assets, like a host's dedicated sandbox domain. The widget HTML is POSTed to
+       * this origin's server and loaded by URL in the nested iframe below (a srcdoc document has
+       * location about:srcdoc, against which Next's runtime cannot resolve its chunks, so it never
+       * hydrates), with a CSP response header built from the resource's _meta.ui.csp exactly as an
+       * MCP Apps host would: no eval, scripts / styles / images only from resourceDomains,
+       * connections only to connectDomains, <base> only to baseUriDomains. Every JSON-RPC message
+       * is relayed unchanged between the widget and the host.
+       *
+       * mock/read-text and mock/canvas are debugging aids answered for the host (the nested iframe
+       * is same-origin with this page); a real host has nothing like them.
+       */
+      const inspect = new URLSearchParams(location.search).get("inspect") === "1";
+      const host = window.parent;
+      let app = null;
+
+      function cspFrom(csp) {
+        const list = (a) => (Array.isArray(a) ? a.join(" ") : "");
+        const resources = list(csp && csp.resourceDomains);
+        const connects = list(csp && csp.connectDomains);
+        const bases = list(csp && csp.baseUriDomains);
+        return [
+          "default-src 'none'",
+          `script-src 'self' 'unsafe-inline' ${resources}`.trim(),
+          `style-src 'self' 'unsafe-inline' ${resources}`.trim(),
+          `img-src 'self' data: blob: ${resources}`.trim(),
+          `font-src 'self' ${resources}`.trim(),
+          `media-src 'self' ${resources}`.trim(),
+          `connect-src 'self' ${connects}`.trim(),
+          "frame-src 'none'",
+          "form-action 'none'",
+          bases ? `base-uri ${bases}` : "base-uri 'self'",
+        ].join("; ");
+      }
+
+      // Diagnostic probe injected right after the CSP <meta> (so it runs under the same policy as
+      // the widget's own inline scripts): reports CSP violations, uncaught errors and a snapshot
+      // after 3 s to the host as mock/probe notifications. A real host injects nothing.
+      const PROBE =
+        "<script>(function(){var p=function(k,d){try{window.parent.postMessage({jsonrpc:\"2.0\",method:\"mock/probe\",params:{kind:k,detail:d}},\"*\")}catch(e){}};" +
+        "document.addEventListener(\"securitypolicyviolation\",function(e){p(\"csp\",{directive:e.violatedDirective,blocked:e.blockedURI,sample:(e.sample||\"\").slice(0,80)})});" +
+        "window.addEventListener(\"error\",function(e){p(\"error\",{message:e.message,source:e.filename,line:e.lineno})});" +
+        "window.addEventListener(\"unhandledrejection\",function(e){p(\"rejection\",String(e.reason))});" +
+        "setTimeout(function(){var c=document.querySelector(\"canvas\");p(\"after-3s\",{scripts:document.scripts.length,resources:performance.getEntriesByType(\"resource\").length,canvas:!!c,canvasSize:c?[c.width,c.height]:null,text:document.body?document.body.innerText.slice(0,400):null})},3000);" +
+        "})()</scr" + "ipt>";
+
+      async function mount(html, csp) {
+        if (app) app.remove();
+        const policy = cspFrom(csp);
+        // The probe goes first in <head> (before the host's <base href>); the policy itself is a
+        // response header of the document served by serve.mjs on this origin.
+        const withProbe = /<head[^>]*>/i.test(html) ? html.replace(/<head([^>]*)>/i, `<head$1>${PROBE}`) : `${PROBE}${html}`;
+        const res = await fetch("/app", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ html: withProbe, csp: policy }) });
+        const { url } = await res.json();
+        app = document.createElement("iframe");
+        app.id = "app";
+        // A real origin (this one), different from the host's and from the widget's assets, like a
+        // host's dedicated sandbox domain; allow-same-origin is what makes it that origin.
+        app.setAttribute("sandbox", "allow-scripts allow-same-origin");
+        app.style.height = "600px";
+        app.src = url;
+        document.body.appendChild(app);
+        host.postMessage({ jsonrpc: "2.0", method: "mock/mounted", params: { csp: policy, url, inspect } }, "*");
+      }
+
+      window.addEventListener("message", (event) => {
+        const data = event.data;
+        if (!data || data.jsonrpc !== "2.0") return;
+        if (event.source === host) {
+          if (data.method === "ui/notifications/sandbox-resource-ready") {
+            mount(data.params.html, data.params.csp);
+            return;
+          }
+          if (data.method === "mock/read-text") {
+            let text = null;
+            try {
+              text = app && app.contentDocument ? app.contentDocument.body.innerText : null;
+            } catch (error) {
+              text = `unreadable: ${error && error.message}`;
+            }
+            host.postMessage({ jsonrpc: "2.0", id: data.id, result: { text } }, "*");
+            return;
+          }
+          if (data.method === "mock/canvas") {
+            // Per canvas: size and how many pixels are painted (alpha > 0). The overlay canvas is
+            // empty until a hover preview or a kept curve is drawn, so its count says "preview shown".
+            let canvases = null;
+            try {
+              canvases = [...app.contentDocument.querySelectorAll("canvas")].map((c) => {
+                const ctx = c.getContext("2d");
+                const px = ctx.getImageData(0, 0, c.width, c.height).data;
+                let painted = 0;
+                for (let i = 3; i < px.length; i += 4) if (px[i] > 0) painted++;
+                return { width: c.width, height: c.height, painted };
+              });
+            } catch (error) {
+              canvases = `unreadable: ${error && error.message}`;
+            }
+            host.postMessage({ jsonrpc: "2.0", id: data.id, result: { canvases } }, "*");
+            return;
+          }
+          if (data.method === "mock/set-height") {
+            if (app) app.style.height = `${data.params.height}px`;
+            return;
+          }
+          if (app && app.contentWindow) app.contentWindow.postMessage(data, "*");
+          return;
+        }
+        if (app && event.source === app.contentWindow) {
+          host.postMessage(data, "*");
+        }
+      });
+
+      host.postMessage({ jsonrpc: "2.0", method: "ui/notifications/sandbox-proxy-ready", params: {} }, "*");
+    </script>
+  </body>
+</html>

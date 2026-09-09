@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>mock MCP Apps host</title>
+    <style>
+      body { margin: 0; font: 13px/1.4 system-ui, sans-serif; color: #1f2933; background: #f5f7fa; }
+      header { display: flex; gap: 8px; align-items: center; padding: 8px 12px; background: #fff; border-bottom: 1px solid #e4e7eb; flex-wrap: wrap; }
+      main { display: grid; grid-template-columns: 720px 1fr; gap: 12px; padding: 12px; align-items: start; }
+      #sandbox { width: 720px; height: 600px; border: 1px solid #c9ced6; background: #fff; display: block; }
+      pre { margin: 0; padding: 8px; background: #fff; border: 1px solid #e4e7eb; max-height: 80vh; overflow: auto; font-size: 11px; white-space: pre-wrap; }
+      button, select { font: inherit; padding: 4px 8px; }
+      .ok { color: #22a06b; } .err { color: #b42318; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <strong>mock MCP Apps host</strong>
+      <span id="status">connecting to __MCP_URL__ …</span>
+      <select id="scenario"></select>
+      <button id="run">Run scenario</button>
+      <button id="readText" title="needs ?inspect=1">Read widget text</button>
+    </header>
+    <main>
+      <iframe id="sandbox" sandbox="allow-scripts allow-same-origin"></iframe>
+      <pre id="log"></pre>
+    </main>
+    <script>
+      /*
+       * The host side of the MCP Apps protocol (see serve.mjs):
+       *  - JSON-RPC to the MCP server through POST /mcp on this origin (forwarded by serve.mjs):
+       *    initialize, resources/list, resources/read (widget HTML + _meta.ui.csp), tools/call.
+       *  - JSON-RPC over postMessage with the sandbox proxy, which relays to the widget:
+       *    answers the widget's ui/initialize request, receives ui/notifications/initialized and
+       *    ui/notifications/size-changed (and sizes the iframe from it), pushes
+       *    ui/notifications/tool-input then ui/notifications/tool-result per tool call.
+       * Everything observed is appended to window.__mock.log (and the <pre>) for scripted checks.
+       */
+      const SANDBOX_ORIGIN = "__SANDBOX_ORIGIN__";
+      const inspect = new URLSearchParams(location.search).get("inspect") === "1";
+      const sandbox = document.getElementById("sandbox");
+      const logEl = document.getElementById("log");
+      const statusEl = document.getElementById("status");
+      const mock = (window.__mock = {
+        log: [],
+        sizeEvents: [],
+        probes: [],
+        appInfo: null,
+        initialized: false,
+        widgetUri: null,
+        csp: null,
+        lastResult: null,
+        lastText: null,
+        pendingReads: new Map(),
+      });
+      let rpcId = 0;
+      const pendingResponses = new Map();
+
+      function log(kind, detail) {
+        const entry = { t: Date.now(), kind, detail };
+        mock.log.push(entry);
+        const line = `${kind} ${typeof detail === "string" ? detail : JSON.stringify(detail)}`;
+        logEl.textContent += (logEl.textContent ? "\n" : "") + line.slice(0, 600);
+        logEl.scrollTop = logEl.scrollHeight;
+      }
+
+      async function rpc(method, params = {}) {
+        const res = await fetch("/mcp", {
+          method: "POST",
+          headers: { "content-type": "application/json", accept: "application/json, text/event-stream" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: ++rpcId, method, params }),
+        });
+        const ctype = res.headers.get("content-type") || "";
+        const text = await res.text();
+        let msg = null;
+        if (ctype.includes("text/event-stream")) {
+          const datas = text.split("\n").filter((l) => l.startsWith("data:")).map((l) => l.slice(5).trim());
+          msg = datas.length ? JSON.parse(datas[datas.length - 1]) : null;
+        } else if (text.trim()) {
+          msg = JSON.parse(text);
+        }
+        if (!res.ok || !msg || msg.error) throw new Error(`${method}: HTTP ${res.status} ${JSON.stringify(msg && msg.error)}`);
+        return msg.result;
+      }
+
+      const post = (message) => sandbox.contentWindow.postMessage(message, "*");
+
+      // ---- scenarios (the three Phase L checks plus the classics) ----
+      const scenarios = {
+        first_order_sqrt: ["analyze_first_order", { expr: "sqrt(y)", xMin: -3, xMax: 3, yMin: -0.3, yMax: 1.5, locale: "zh" }],
+        first_order_sqrt_en: ["analyze_first_order", { expr: "sqrt(y)", xMin: -3, xMax: 3, yMin: -0.3, yMax: 1.5, locale: "en" }],
+        system_non_autonomous: ["analyze_system", { f: "y", g: "-x + sin(t)", t: 1.5, locale: "zh" }],
+        second_order_damped: ["analyze_second_order", { equation: "x'' + 0.5*x' + x = 0", locale: "en" }],
+        exact_form: ["analyze_first_order", { M: "2*t*y", N: "t^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" }],
+        lotka_volterra: ["analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "en" }],
+        trajectory: ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 6.283185307179586, locale: "en" }],
+        ping: ["ping", { message: "hello widget" }],
+      };
+      const select = document.getElementById("scenario");
+      for (const key of Object.keys(scenarios)) {
+        const o = document.createElement("option");
+        o.value = key;
+        o.textContent = key;
+        select.appendChild(o);
+      }
+
+      /** Calls a tool on the server and pushes input + result to the widget. Resolves with the result. */
+      async function run(name, args) {
+        if (!mock.initialized) throw new Error("widget not initialized yet");
+        log("-> tool-input", { name, args });
+        post({ jsonrpc: "2.0", method: "ui/notifications/tool-input", params: { arguments: args } });
+        const result = await rpc("tools/call", { name, arguments: args });
+        mock.lastResult = result;
+        const text = (result.content || []).filter((c) => c.type === "text").map((c) => c.text).join("\n");
+        mock.lastText = text;
+        log("<- tools/call", { name, isError: result.isError === true, kind: result.structuredContent && result.structuredContent.kind, text: text.slice(0, 400) });
+        post({ jsonrpc: "2.0", method: "ui/notifications/tool-result", params: result });
+        log("-> tool-result", { name });
+        return result;
+      }
+      mock.run = run;
+      mock.runScenario = (key) => run(scenarios[key][0], scenarios[key][1]);
+      mock.scenarios = scenarios;
+
+      /** Debugging aids answered by the proxy (a real host has none): the widget's visible text, its canvases. */
+      const ask = (method) =>
+        new Promise((resolve) => {
+          const id = `${method}-${++rpcId}`;
+          mock.pendingReads.set(id, resolve);
+          post({ jsonrpc: "2.0", id, method });
+          setTimeout(() => {
+            if (mock.pendingReads.delete(id)) resolve(null);
+          }, 2000);
+        });
+      mock.readText = () => ask("mock/read-text").then((r) => (r ? r.text : null));
+      mock.readCanvas = () => ask("mock/canvas").then((r) => (r ? r.canvases : null));
+
+      document.getElementById("run").onclick = () => mock.runScenario(select.value).catch((e) => log("error", String(e)));
+      document.getElementById("readText").onclick = () => mock.readText().then((t) => log("widget text", t));
+
+      // ---- MCP Apps messages from the sandbox (relayed from the widget) ----
+      window.addEventListener("message", (event) => {
+        if (event.source !== sandbox.contentWindow) return;
+        const data = event.data;
+        if (!data || data.jsonrpc !== "2.0") return;
+        if (data.id !== undefined && data.method === undefined) {
+          // a response to something we asked (mock/read-text)
+          const resolve = mock.pendingReads.get(data.id);
+          if (resolve) {
+            mock.pendingReads.delete(data.id);
+            resolve(data.result ?? null);
+          }
+          return;
+        }
+        switch (data.method) {
+          case "ui/notifications/sandbox-proxy-ready":
+            log("<- sandbox-proxy-ready", {});
+            post({ jsonrpc: "2.0", method: "ui/notifications/sandbox-resource-ready", params: { html: mock.widgetHtml, csp: mock.csp } });
+            break;
+          case "mock/mounted":
+            log("<- mounted (proxy)", data.params);
+            break;
+          case "mock/probe":
+            mock.probes.push(data.params);
+            log("probe", data.params);
+            break;
+          case "ui/initialize":
+            mock.appInfo = data.params.appInfo;
+            log("<- ui/initialize", data.params);
+            post({
+              jsonrpc: "2.0",
+              id: data.id,
+              result: {
+                protocolVersion: data.params.protocolVersion,
+                hostInfo: { name: "mock-host", version: "0" },
+                hostCapabilities: {},
+                hostContext: { theme: "light", displayMode: "inline", locale: "zh-CN", platform: "web", containerDimensions: { width: 720 } },
+              },
+            });
+            break;
+          case "ui/notifications/initialized":
+            mock.initialized = true;
+            statusEl.textContent = "widget initialized";
+            statusEl.className = "ok";
+            log("<- initialized", {});
+            break;
+          case "ui/notifications/size-changed": {
+            mock.sizeEvents.push(data.params);
+            log("<- size-changed", data.params);
+            const h = data.params && data.params.height;
+            if (typeof h === "number" && h > 0) {
+              sandbox.style.height = `${Math.min(2000, Math.max(120, h))}px`;
+              post({ jsonrpc: "2.0", method: "mock/set-height", params: { height: h } });
+            }
+            break;
+          }
+          default:
+            if (data.id !== undefined) {
+              // a request we do not implement (open-link, message, display-mode, ...)
+              log("<- request (unsupported)", data.method);
+              post({ jsonrpc: "2.0", id: data.id, error: { code: -32601, message: `mock host: ${data.method} not supported` } });
+            } else {
+              log("<- notification", { method: data.method, params: data.params });
+            }
+        }
+      });
+
+      // ---- boot: MCP handshake, then read the widget resource, then load the sandbox ----
+      (async () => {
+        try {
+          const init = await rpc("initialize", {
+            protocolVersion: "2025-06-18",
+            capabilities: { extensions: { "io.modelcontextprotocol/ui": { mimeTypes: ["text/html;profile=mcp-app"] } } },
+            clientInfo: { name: "mock-host", version: "0" },
+          });
+          log("<- initialize", init.serverInfo);
+          const { resources } = await rpc("resources/list");
+          const widget = resources.find((r) => r.uri.startsWith("ui://vector-field-tool/"));
+          if (!widget) throw new Error("no widget resource");
+          mock.widgetUri = widget.uri;
+          const read = await rpc("resources/read", { uri: widget.uri });
+          const c = read.contents[0];
+          mock.widgetHtml = c.text;
+          mock.csp = (c._meta && c._meta.ui && c._meta.ui.csp) || null;
+          log("<- resources/read", { uri: widget.uri, bytes: c.text.length, csp: mock.csp, baseHref: (/<base href="([^"]*)"/.exec(c.text) || [])[1] });
+          statusEl.textContent = `widget resource ${widget.uri} loaded; waiting for the sandbox …`;
+          sandbox.src = `${SANDBOX_ORIGIN}/sandbox.html${inspect ? "?inspect=1" : ""}`;
+        } catch (error) {
+          statusEl.textContent = String(error);
+          statusEl.className = "err";
+          log("error", String(error));
+        }
+      })();
+    </script>
+  </body>
+</html>
