@@ -81,7 +81,8 @@ export type LabelTable = {
     | "urlReasonNotInteger" | "urlReasonOutOfRange" | "urlReasonInvertedRange" | "urlReasonTooNarrow"
     | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
-    | "presetCustom",
+    | "presetCustom"
+    | "secondOrderImplicitProduct",
     string
   >;
 };
@@ -310,6 +311,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       equationDifferential: "({M}) dt + ({N}) dy = 0",
       equationSecond: "{equation}",
       presetCustom: "自定义",
+      secondOrderImplicitProduct: "「{name}」缺少乘号；乘号要写出来，例如 x*x'' 或 t*x''。",
     },
   },
   en: {
@@ -535,6 +537,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       equationDifferential: "({M}) dt + ({N}) dy = 0",
       equationSecond: "{equation}",
       presetCustom: "Custom",
+      secondOrderImplicitProduct: "“{name}” is missing a multiplication sign; write the multiplication explicitly, e.g. x*x'' or t*x''.",
     },
   },
 };

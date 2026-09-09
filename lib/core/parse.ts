@@ -151,7 +151,8 @@ export type ParseErrorCode =
   | "second_order_higher_derivative"
   | "second_order_placeholder_typed"
   | "second_order_undefined_at_samples"
-  | "second_order_unknown_symbol";
+  | "second_order_unknown_symbol"
+  | "second_order_implicit_product";
 
 export class ParseError extends Error {
   readonly expr: string;

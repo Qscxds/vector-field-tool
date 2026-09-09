@@ -35,7 +35,7 @@
  * away from every sample point (a piecewise x''^2 branch outside the box) cannot be detected.
  */
 import type { MathNode } from "mathjs";
-import { compileNode, compileScalar, mathjs, ParseError, type ParseErrorCode, parseValidated } from "./parse";
+import { compileNode, compileScalar, mathjs, normalizeOperators, ParseError, type ParseErrorCode, parseValidated } from "./parse";
 import { boxSamplePoints, PROBE_TIMES } from "./time-dependence";
 import type { Box, SystemSpec, Vec2 } from "./types";
 
@@ -60,6 +60,26 @@ export const PLACEHOLDER_TYPED_MESSAGE =
 export const UNDEFINED_AT_SAMPLES_MESSAGE =
   "The equation is undefined (not a finite number) at most of the sample points used to check it, so it cannot be reduced safely.";
 
+/**
+ * A name in which a placeholder is glued to other letters (xx'', tx'', x''x, kx'): the student left
+ * the multiplication sign out. `name` and the hint are in the student's notation.
+ */
+export function implicitProductMessage(name: string): string {
+  return `"${name}" is missing a multiplication sign; write the multiplication explicitly, e.g. ${implicitProductHint(name)}.`;
+}
+
+/** "xxdd" -> "x*x''", "txdd" -> "t*x''", "xddx" -> "x''*x", "kxd" -> "k*x'": the factors joined by *. */
+export function implicitProductHint(name: string): string {
+  const shown = studentNotation(name);
+  const parts = shown.match(/x''|x'|[^x']+|x/g) ?? [shown];
+  return parts.join("*");
+}
+
+/** The placeholders mapped back to the student's notation (xdd -> x'', xd -> x'), in any text. */
+export function studentNotation(text: string): string {
+  return text.replace(/xdd/g, "x''").replace(/xd/g, "x'");
+}
+
 export function unknownSymbolInSecondOrder(name: string): string {
   return (
     `Unknown symbol "${name}". The unknown function is x, its derivative is x' (dx/dt) and its second derivative is x''; ` +
@@ -83,6 +103,12 @@ export type ReduceOptions = {
 
 /** Relative tolerance of the affinity check, against the largest |E| measured at the sample. */
 export const AFFINITY_REL_TOL = 1e-9;
+/**
+ * Values substituted for x'' at every sample point: both signs, non-integers and a large one, so
+ * a function of x'' that is affine on one side only (abs, max, sign, round, a branch condition)
+ * is caught. E must be affine across ALL of them: E(v) = E(0) + (E(1) - E(0)) v.
+ */
+export const XDD_PROBES: readonly number[] = [-3.7, -1, 0, 0.5, 1, 2, 3.7, 10];
 /** Relative tolerance for "a is the same constant at every sample" (numerical fallback only). */
 export const CONSTANT_REL_TOL = 1e-12;
 /** Relative tolerance of the cross-check F == -E0/a. */
@@ -115,16 +141,27 @@ export function straightenPrimes(input: string): string {
   return input.replace(DOUBLE_PRIME_LIKE, "''").replace(SINGLE_PRIME_LIKE, "'");
 }
 
+/**
+ * The function-of-t notation x(t), x'(t), x''(t) (straightened primes): the argument list is
+ * dropped, since the unknown is always a function of t. The lookbehind keeps max(t) and exp(t).
+ */
+const FUNCTION_OF_T = /(?<![A-Za-z0-9_])(x\s*(?:'\s*'|"|')?)\s*\(\s*t\s*\)/g;
+
+/** Primes straightened, operator look-alikes (−, ×, ·, ÷) normalized, (t) arguments dropped. */
+function preprocess(input: string): string {
+  return normalizeOperators(straightenPrimes(input.trim())).replace(FUNCTION_OF_T, "$1");
+}
+
 /** Normalizes the prime notation: x'' / x″ / x’’ / x ' ' / x" -> xdd, then x' / x′ / x’ -> xd. Trims whitespace. */
 export function normalizePrimes(input: string): string {
-  return straightenPrimes(input.trim())
+  return preprocess(input)
     .replace(/x\s*(?:'\s*'|")/g, XDD)
     .replace(/x\s*'/g, XD);
 }
 
 /** The student's text with every prime notation turned into straight, unspaced apostrophes, for display. */
 function displayForm(input: string): string {
-  return straightenPrimes(input.trim())
+  return preprocess(input)
     .replace(/x\s*"/g, "x''")
     .replace(/x\s*'\s*'/g, "x''")
     .replace(/x\s*'(?!')/g, "x'");
@@ -316,16 +353,20 @@ export function reduceSecondOrder(input: string, params?: Record<string, number>
       unknownSymbolCode: "second_order_unknown_symbol",
     });
   } catch (error) {
-    if (error instanceof ParseError) throw new ParseError(raw, error.message, error.code, { symbol: error.symbol });
-    throw error;
+    if (!(error instanceof ParseError)) throw error;
+    // A placeholder glued to other letters (xxdd, txdd, xddx) is a product missing its * sign.
+    if (error.symbol !== undefined && /xd/.test(error.symbol)) {
+      const shown = studentNotation(error.symbol);
+      throw new ParseError(raw, implicitProductMessage(shown), "second_order_implicit_product", { symbol: shown });
+    }
+    throw new ParseError(raw, studentNotation(error.message), error.code, error.symbol === undefined ? undefined : { symbol: studentNotation(error.symbol) });
   }
 
   const node0 = substitute(node, 0);
   const node1 = substitute(node, 1);
-  const node2 = substitute(node, 2);
-  const e0 = compileNode(E, node0, params);
-  const e1 = compileNode(E, node1, params);
-  const e2 = compileNode(E, node2, params);
+  const probes = XDD_PROBES.map((v) => compileNode(E, substitute(node, v), params));
+  const at0 = XDD_PROBES.indexOf(0);
+  const at1 = XDD_PROBES.indexOf(1);
 
   // The sample set: generic points and the box's points, each at every probe time.
   const points = opts.box ? [...SAMPLE_POINTS, ...boxSamplePoints(opts.box)] : [...SAMPLE_POINTS];
@@ -336,14 +377,20 @@ export function reduceSecondOrder(input: string, params?: Record<string, number>
   const reference: (number | null)[] = [];
   const coefficients: number[] = [];
   for (const { p, t } of samples) {
-    const v0 = e0(p, t), v1 = e1(p, t), v2 = e2(p, t);
-    if (!Number.isFinite(v0) || !Number.isFinite(v1) || !Number.isFinite(v2)) {
+    const values = probes.map((f) => f(p, t));
+    const finite = values.filter((v) => Number.isFinite(v)).length;
+    if (finite === 0) {
       reference.push(null);
       continue;
     }
-    const scale = Math.max(Math.abs(v0), Math.abs(v1), Math.abs(v2));
-    if (Math.abs(v2 - v1 - (v1 - v0)) > AFFINITY_REL_TOL * scale) refuse(NOT_LINEAR_IN_XDD_MESSAGE, "second_order_not_affine");
-    const a = v1 - v0;
+    // An affine function that is finite at one value of x'' is finite at every value.
+    if (finite < values.length) refuse(NOT_LINEAR_IN_XDD_MESSAGE, "second_order_not_affine");
+    const v0 = values[at0];
+    const a = values[at1] - v0;
+    const scale = values.reduce((m, v) => Math.max(m, Math.abs(v)), 0);
+    for (let k = 0; k < values.length; k++) {
+      if (Math.abs(values[k] - (v0 + a * XDD_PROBES[k])) > AFFINITY_REL_TOL * scale) refuse(NOT_LINEAR_IN_XDD_MESSAGE, "second_order_not_affine");
+    }
     if (a === 0) refuse(XDD_COEFFICIENT_VANISHES_MESSAGE, "second_order_zero_coefficient");
     coefficients.push(a);
     reference.push(-v0 / a);
@@ -359,7 +406,8 @@ export function reduceSecondOrder(input: string, params?: Record<string, number>
   } else {
     const E0 = simplifyConservative(node0);
     const coefficient = coefficientOf(node);
-    const coefficientNode = coefficient ? mathjs.simplifyCore(coefficient) : null;
+    // The coefficient may contain x' (the placeholder xd): substitute maps it to y (no xdd is left in it).
+    const coefficientNode = coefficient ? mathjs.simplifyCore(substitute(coefficient, 0)) : null;
     const literal = coefficientNode ? constantValue(coefficientNode) : undefined;
     if (literal !== undefined) {
       plain = quotientByConstant(E0, literal);
@@ -385,8 +433,16 @@ export function reduceSecondOrder(input: string, params?: Record<string, number>
   } catch {
     // keep the un-simplified string
   }
-  // The string a client recompiles must pass too.
-  if (!matchesReference(compileScalar(g, params), samples, reference)) {
+  // The string a client recompiles must pass too. A failure here is internal: it carries the
+  // student's own text, never the reduced string or a placeholder.
+  let recompiled: (p: Vec2, t?: number) => number;
+  try {
+    recompiled = compileScalar(g, params);
+  } catch (error) {
+    const reason = error instanceof Error ? studentNotation(error.message) : String(error);
+    throw new ParseError(raw, `Internal check failed: the reduced right-hand side could not be compiled (${reason}).`);
+  }
+  if (!matchesReference(recompiled, samples, reference)) {
     throw new ParseError(raw, "Internal check failed: the reduced right-hand side does not reproduce -E0/a at the sample points.");
   }
 

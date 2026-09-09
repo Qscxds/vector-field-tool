@@ -224,6 +224,7 @@ const SECOND_ORDER_SENTENCES: Partial<Record<NonNullable<ParseError["code"]>, ke
   second_order_placeholder_typed: "secondOrderPlaceholderTyped",
   second_order_undefined_at_samples: "secondOrderUndefinedAtSamples",
   second_order_unknown_symbol: "secondOrderUnknownSymbol",
+  second_order_implicit_product: "secondOrderImplicitProduct",
 };
 
 function compile(form: Form, L: LabelTable): Compiled {

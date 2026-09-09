@@ -13,9 +13,11 @@ import {
   UNDEFINED_AT_SAMPLES_MESSAGE,
   XDD_COEFFICIENT_VANISHES_MESSAGE,
   XDD_WITHOUT_EQUALS_MESSAGE,
+  XDD_PROBES,
+  implicitProductHint,
 } from "./second-order";
 import { PROBE_TIMES } from "./time-dependence";
-import type { Box } from "./types";
+import type { Box, Vec2 } from "./types";
 
 const P = { x: 1.3, y: 0.7 };
 /** |a - b| relative to the larger magnitude (never to an absolute 1). */
@@ -217,9 +219,9 @@ describe("reduceSecondOrder", () => {
     const codes: ParseErrorCode[] = [
       "second_order_not_affine", "second_order_zero_coefficient", "second_order_no_equation", "second_order_double_equals",
       "second_order_too_many_equals", "second_order_other_prime", "second_order_higher_derivative", "second_order_placeholder_typed",
-      "second_order_undefined_at_samples", "second_order_unknown_symbol",
+      "second_order_undefined_at_samples", "second_order_unknown_symbol", "second_order_implicit_product",
     ];
-    for (const input of ["x''^2 = x", "x' + x = 0", "x'' + x", "x'' == -x", "x'' = -x = 0", "y'' + y = 0", "x''' = 0", "xdd + x = 0", "x'' = sqrt(x - 100)", "x'' + y = 0"]) {
+    for (const input of ["x''^2 = x", "x' + x = 0", "x'' + x", "x'' == -x", "x'' = -x = 0", "y'' + y = 0", "x''' = 0", "xdd + x = 0", "x'' = sqrt(x - 100)", "x'' + y = 0", "xx'' = 1"]) {
       expect(codes, input).toContain(failure(input).code);
     }
   });
@@ -365,5 +367,148 @@ describe("reduceSecondOrder: conservative simplification (review J-C.4)", () => 
 
   it("x'' = -x + 0*x' drops the zero term (0 * y -> 0, -x + 0 -> -x)", () => {
     expect(F("x'' = -x + 0*x'").r.reduced.g.replace(/\s/g, "")).toBe("-x");
+  });
+});
+
+describe("[J-fix2] affinity is checked at both signs of x'' (XDD_PROBES)", () => {
+  const boxes: Box[] = [
+    { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } },
+    { x: { min: -1e-3, max: 1e-3 }, y: { min: -1e-3, max: 1e-3 } },
+    { x: { min: 50, max: 250 }, y: { min: -7, max: 3 } },
+  ];
+  const oneSided = ["abs(x'') = x", "sqrt(x''^2) = x", "x''*sign(x'') = x", "round(x'') = x", "(x'' > 0 ? x'' : 0) = x", "max(x'', -1) = x", "x'' = -x + (x'' > -1 ? 0 : 1)"];
+  /** The whole equation multiplied by a scale on both sides. */
+  const scaledBy = (input: string, scale: string) => {
+    const [lhs, rhs] = input.split("=");
+    return `${scale}*(${lhs.trim()}) = ${scale}*(${rhs.trim()})`;
+  };
+
+  it("the probe values cover both signs, non-integers and a large value, and include 0 and 1", () => {
+    expect(XDD_PROBES.some((v) => v < 0)).toBe(true);
+    expect(XDD_PROBES.some((v) => v > 5)).toBe(true);
+    expect(XDD_PROBES.some((v) => !Number.isInteger(v))).toBe(true);
+    expect(XDD_PROBES).toContain(0);
+    expect(XDD_PROBES).toContain(1);
+  });
+
+  it("abs, sqrt(.^2), sign, round, max and a condition on x'' are refused as not affine, on every box and at two scalings", () => {
+    for (const input of oneSided) {
+      for (const scaled of [input, scaledBy(input, "1e6"), scaledBy(input, "1e-6")]) {
+        expect(failure(scaled).code, scaled).toBe("second_order_not_affine");
+        for (const box of boxes) expect(failure(scaled, box).code, `${scaled} on box`).toBe("second_order_not_affine");
+      }
+    }
+  });
+
+  it("a bare conditional on x'' without = is refused as no equation; 1/x'' = x (finite at some x'' only) is not affine", () => {
+    expect(failure("x'' > 0 ? x'' : 0").code).toBe("second_order_no_equation");
+    expect(failure("1/x'' = x").code).toBe("second_order_not_affine");
+  });
+
+  it("the standard equations still reduce with the same values on three boxes (derived: -2, -sin 1, 1, -1/2)", () => {
+    const cases: [string, Vec2, number, number][] = [
+      ["x'' + 0.5*x' + x = 0", { x: 1, y: 2 }, 0, -2],
+      ["x'' = -sin(x)", { x: 1, y: 2 }, 0, -Math.sin(1)],
+      ["2*x'' = x'' + x", { x: 1, y: 2 }, 0, 1],
+      ["(1 + t^2)*x'' = -x", { x: 1, y: 2 }, 1, -0.5],
+    ];
+    for (const [input, p, t, expected] of cases) {
+      const g = F(input).r.reduced.g;
+      for (const box of [undefined, ...boxes]) {
+        const { r, F: f } = F(input, undefined, box);
+        expect(relClose(f(p, t), expected), `${input} on ${JSON.stringify(box)}`).toBe(true);
+        expect(r.reduced.g).toBe(g);
+      }
+    }
+  });
+});
+
+describe("[J-fix2] a coefficient of x'' that contains x'", () => {
+  const boxes: Box[] = [
+    { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } },
+    { x: { min: -1e-3, max: 1e-3 }, y: { min: -1e-3, max: 1e-3 } },
+    { x: { min: 50, max: 250 }, y: { min: -7, max: 3 } },
+  ];
+
+  it("(1 + x'^2)*x'' = -x reduces to g = -x/(1 + y^2): g(1, 2) = -1/5", () => {
+    const { r, F: f } = F("(1 + x'^2)*x'' = -x");
+    expect(relClose(f({ x: 1, y: 2 }), -0.2)).toBe(true);
+    expect(r.reduced.g.replace(/\s/g, "")).toBe("-x/(1+y^2)");
+    expect(r.reduced.g).not.toMatch(/xd/);
+  });
+
+  it("x''/(1 + x'^2)^(3/2) = 1 reduces to g = (1 + y^2)^(3/2): g(1, 2) = 5^1.5", () => {
+    const { r, F: f } = F("x''/(1 + x'^2)^(3/2) = 1");
+    expect(relClose(f({ x: 1, y: 2 }), Math.pow(5, 1.5))).toBe(true);
+    expect(r.reduced.g).not.toMatch(/xd/);
+  });
+
+  it("x'*x'' = -x reduces to g = -x/y (undefined on y = 0, kept so); (x' > 0 ? 1 : 2)*x'' = -x gives -1 and -1/2", () => {
+    const { r, F: f } = F("x'*x'' = -x");
+    expect(relClose(f({ x: 1, y: 2 }), -0.5)).toBe(true);
+    expect(Number.isFinite(f({ x: 1, y: 0 }))).toBe(false);
+    expect(r.reduced.g.replace(/\s/g, "")).toBe("-x/y");
+    const { F: h } = F("(x' > 0 ? 1 : 2)*x'' = -x");
+    expect(relClose(h({ x: 1, y: 1 }), -1)).toBe(true);
+    expect(relClose(h({ x: 1, y: -1 }), -0.5)).toBe(true);
+  });
+
+  it("box invariance and scale invariance: the same string and values on three boxes, and the equation times 1e6 / 1e-6 gives the same values", () => {
+    const p = { x: 1, y: 2 };
+    for (const [input, expected] of [["(1 + x'^2)*x'' = -x", -0.2], ["x''/(1 + x'^2)^(3/2) = 1", Math.pow(5, 1.5)]] as const) {
+      const g = F(input).r.reduced.g;
+      for (const box of boxes) {
+        const { r, F: f } = F(input, undefined, box);
+        expect(r.reduced.g).toBe(g);
+        expect(relClose(f(p), expected)).toBe(true);
+      }
+      const [lhs, rhs] = input.split("=");
+      for (const scale of ["1e6", "1e-6"]) {
+        const { F: f } = F(`${scale}*(${lhs}) = ${scale}*(${rhs})`);
+        expect(relClose(f(p), expected), `${scale} x ${input}`).toBe(true);
+      }
+    }
+  });
+});
+
+describe("[J-fix2] notation: x(t), implicit products, unicode operators, no placeholder in any message", () => {
+  it("x''(t) + x(t) = 0, x''(t) = -x(t) and x''(t) + x'(t) + x(t) = 0 reduce (g = -x, -x, and -3 at (1, 2)); exp(t) is untouched", () => {
+    for (const input of ["x''(t) + x(t) = 0", "x''(t) = -x(t)", "x″(t) = −x(t)"]) {
+      const { r, F: f } = F(input);
+      expect(r.reduced.g.replace(/\s/g, ""), input).toBe("-x");
+      expect(f({ x: 1, y: 2 })).toBe(-1);
+    }
+    expect(F("x''(t) + x(t) = 0").r.equation).toBe("x'' + x = 0");
+    expect(F("x''(t) + x'(t) + x(t) = 0").F({ x: 1, y: 2 })).toBe(-3);
+    expect(relClose(F("x'' = exp(t)").F({ x: 1, y: 2 }, 1), Math.E)).toBe(true);
+  });
+
+  it("xx'', tx'', x''x and x'x'' carry second_order_implicit_product with the student's name and an explicit-product hint", () => {
+    const cases: [string, string, string][] = [["xx'' = 1", "xx''", "x*x''"], ["tx'' = -x", "tx''", "t*x''"], ["x''x = 1", "x''x", "x''*x"], ["x'x'' = 1", "x'x''", "x'*x''"]];
+    for (const [input, name, hint] of cases) {
+      const e = failure(input);
+      expect(e.code, input).toBe("second_order_implicit_product");
+      expect(e.symbol, input).toBe(name);
+      expect(e.message, input).toContain(hint);
+      expect(e.expr, input).toBe(input);
+    }
+    expect(implicitProductHint("kxd")).toBe("k*x'");
+  });
+
+  it("unicode minus, ×, · and ÷ are normalized: g = -x, 2 (2×x at x = 1), 2 (x·x' at (1, 2)), 0.5 (x÷2)", () => {
+    expect(F("x'' = −x").r.reduced.g.replace(/\s/g, "")).toBe("-x");
+    expect(F("x'' = −x").r.equation).toBe("x'' = -x");
+    expect(F("x'' = 2×x").F({ x: 1, y: 2 })).toBe(2);
+    expect(F("x'' = x·x'").F({ x: 1, y: 2 })).toBe(2);
+    expect(F("x'' = x÷2").F({ x: 1, y: 2 })).toBe(0.5);
+  });
+
+  it("no refusal message, expr or symbol ever contains the placeholders xd / xdd", () => {
+    for (const input of ["xx'' = 1", "x''(t + 1) = 0", "(1 + x'^2)*x'' = -x = 0", "x'' + y = 0", "x''^2 = x", "x'' = sqrt(x - 100)", "x'(x) = 1", "x'' = x'(t+1)"]) {
+      const e = failure(input);
+      expect(e.message, input).not.toMatch(/xd/);
+      expect(e.expr, input).toBe(input);
+      if (e.symbol !== undefined) expect(e.symbol, input).not.toMatch(/xd/);
+    }
   });
 });
