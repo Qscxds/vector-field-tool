@@ -102,40 +102,98 @@ export type JacobianWithError = {
    * derivative does, and no classification follows from it.
    */
   domainEdge: boolean;
+  /** The finite-difference step J was taken with (after the truncation/rounding balance below). */
+  h: number;
 };
+
+/** jacobianWithError shrinks its step until the truncation estimate is below this fraction of the largest entry (or rounding forbids). */
+export const JACOBIAN_TRUNCATION_TARGET = 1e-7;
+/** Most quarterings of the step in jacobianWithError. */
+export const JACOBIAN_STEP_HALVINGS = 20;
+/** Safety factor on the expression's rounding bound in the rounding term of the Jacobian's error. */
+export const ROUNDING_SAFETY = 4;
 
 /**
  * Jacobian with an error estimate: central differences at h and 2h (truncation ≈ |J_h - J_2h| / 3,
  * the leading h² term) plus the rounding floor eps * |f| / h. Callers use the error as the level
  * below which an entry is zero for this problem (review C4): a finite-difference Jacobian of
  * ~1e-12 at a double root is zero, an O(1) Jacobian in a field whose box-wide median is 1e9 is not.
+ *
+ * The step starts at 1e-6 × max(`scale`, |p|), where `scale` is the caller's unit of length (the
+ * box size in findEquilibria) with NO absolute floor (J-fix2 item 4): a fixed 1e-6 spans 2.5
+ * boxes in units where the box is 4e-7 wide (J00 = 3 read as 103 for x' = 1e14 x³ - 1e-7).
+ * Without `scale` the unit is 1 (a bare call that knows no box). It is then adapted to the
+ * FUNCTION: while the truncation estimate exceeds JACOBIAN_TRUNCATION_TARGET times the largest
+ * entry and a quartering of the step would still leave the rounding floor (4x, from the
+ * expression's own terms when the system carries a rounding bound) below the new truncation
+ * (1/16), the step is quartered, at most JACOBIAN_STEP_HALVINGS times and never below the
+ * coordinates' own resolution 4 eps |p|. So the saddle (1, 0) of x' = y, y' = -x - y + x⁷ has
+ * det = -6 to 1e-6 on [-1e4, 1e4]² (the box rule alone gives h = 0.02 and det = -6.014), and
+ * sin at |p| = 3e4 keeps its ±1 entries. The step used is returned as `h`.
  */
-export function jacobianWithError(sys: CompiledSystem, p: Vec2, t = 0): JacobianWithError {
-  const h = 1e-6 * Math.max(1, Math.hypot(p.x, p.y));
-  const J = jacobianAt(sys, p, h, t);
+export function jacobianWithError(sys: CompiledSystem, p: Vec2, t = 0, opts: { scale?: number } = {}): JacobianWithError {
+  let h = 1e-6 * Math.max(opts.scale ?? 1, Math.hypot(p.x, p.y));
+  const hMin = 4 * EPS * Math.max(Math.abs(p.x), Math.abs(p.y));
   const infinite: Matrix2 = [[Infinity, Infinity], [Infinity, Infinity]];
+  // Rounding floor of column j, per component i, over 2h: ROUNDING_SAFETY times the larger of the
+  // expression's own rounding bounds at the two stencil points when the system carries them (the
+  // bound is a first-order model with one eps per operation; the factor keeps the estimate at the
+  // level of the older 4 eps |F_i|, which it equals for x³), else 4 eps × the largest |F_i| on the
+  // stencil.
+  const roundingAt = (step: number): Matrix2 => {
+    const pts = [
+      [{ x: p.x + step, y: p.y }, { x: p.x - step, y: p.y }],
+      [{ x: p.x, y: p.y + step }, { x: p.x, y: p.y - step }],
+    ];
+    const out: Matrix2 = [[0, 0], [0, 0]];
+    for (let j = 0; j < 2; j++) {
+      if (sys.roundingBound) {
+        const bounds = pts[j].map((q) => sys.roundingBound!(q, t));
+        for (let i = 0; i < 2; i++) out[i][j] = (ROUNDING_SAFETY * Math.max(...bounds.map((b) => (Number.isFinite(b[i].error) ? b[i].error : 0)))) / (2 * step);
+      } else {
+        const vals = pts[j].map((q) => sys.eval(q, t));
+        for (let i = 0; i < 2; i++) {
+          const mags = vals.map((v) => Math.abs(i === 0 ? v.x : v.y)).filter(Number.isFinite);
+          out[i][j] = (4 * EPS * (mags.length ? Math.max(...mags) : 0)) / (2 * step);
+        }
+      }
+    }
+    return out;
+  };
+  let J = jacobianAt(sys, p, h, t);
   if (!allFinite(J)) {
     const domainEdge = finiteVec(sys.eval(p, t)) && allFinite(jacobianAt(sys, p, h, t, { oneSided: true }));
-    return { J, error: Infinity, errors: infinite, domainEdge };
+    return { J, error: Infinity, errors: infinite, domainEdge, h };
   }
-  const J2 = jacobianAt(sys, p, 2 * h, t);
-  // Rounding floor of column j: the largest |F_i| on that column's stencil p ± h e_j, per component i.
-  const stencil = [
-    [sys.eval({ x: p.x + h, y: p.y }, t), sys.eval({ x: p.x - h, y: p.y }, t)],
-    [sys.eval({ x: p.x, y: p.y + h }, t), sys.eval({ x: p.x, y: p.y - h }, t)],
-  ];
+  let J2 = jacobianAt(sys, p, 2 * h, t);
+  let rounding = roundingAt(h);
+  const largest = (M: Matrix2) => Math.max(Math.abs(M[0][0]), Math.abs(M[0][1]), Math.abs(M[1][0]), Math.abs(M[1][1]));
+  const truncationOf = (A: Matrix2, B: Matrix2): Matrix2 => A.map((row, i) => row.map((v, j) => Math.abs(v - B[i][j]) / 3)) as Matrix2;
+  let truncation = truncationOf(J, J2);
+  for (let k = 0; k < JACOBIAN_STEP_HALVINGS; k++) {
+    const tr = largest(truncation);
+    if (!(tr > JACOBIAN_TRUNCATION_TARGET * largest(J)) || !(largest(rounding) * 4 < tr / 16) || h / 4 < hMin) break;
+    const hNext = h / 4;
+    const JNext = jacobianAt(sys, p, hNext, t);
+    if (!allFinite(JNext)) break;
+    // J at 2 hNext is the previous J at h / 2... not computed; take it at the same cost as before.
+    const J2Next = jacobianAt(sys, p, 2 * hNext, t);
+    if (!allFinite(J2Next)) break;
+    h = hNext;
+    J = JNext;
+    J2 = J2Next;
+    rounding = roundingAt(h);
+    truncation = truncationOf(J, J2);
+  }
   const errors: Matrix2 = [[0, 0], [0, 0]];
   let error = 0;
   for (let i = 0; i < 2; i++) {
     for (let j = 0; j < 2; j++) {
-      const truncation = Math.abs(J[i][j] - J2[i][j]) / 3;
-      const mags = stencil[j].map((v) => Math.abs(i === 0 ? v.x : v.y)).filter(Number.isFinite);
-      const rounding = (4 * EPS * (mags.length ? Math.max(...mags) : 0)) / (2 * h);
-      errors[i][j] = Number.isFinite(truncation) ? truncation + rounding : Infinity;
+      errors[i][j] = Number.isFinite(truncation[i][j]) ? truncation[i][j] + rounding[i][j] : Infinity;
       error = Math.max(error, errors[i][j]);
     }
   }
-  return { J, error, errors, domainEdge: false };
+  return { J, error, errors, domainEdge: false, h };
 }
 
 /**
@@ -162,7 +220,8 @@ export function jacobianSensitivityEntries(sys: CompiledSystem, p: Vec2, J: Matr
   const worst: Matrix2 = [[0, 0], [0, 0]];
   for (const dir of [{ x: 1, y: 0 }, { x: 0, y: 1 }]) {
     for (const sign of [1, -1]) {
-      const K = jacobianAt(sys, { x: p.x + sign * step * dir.x, y: p.y + sign * step * dir.y }, undefined, t);
+      // The displaced Jacobian uses the same step (the default would reintroduce the absolute floor of 1e-6).
+      const K = jacobianAt(sys, { x: p.x + sign * step * dir.x, y: p.y + sign * step * dir.y }, step, t);
       if (!allFinite(K)) continue;
       for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) worst[i][j] = Math.max(worst[i][j], Math.abs(K[i][j] - J[i][j]) / step);
       break;

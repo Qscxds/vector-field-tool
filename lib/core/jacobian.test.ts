@@ -189,3 +189,29 @@ describe("jacobianSensitivity", () => {
     expect(jacobianSensitivity(lin, { x: 0.3, y: 0.1 }, [[2, 1], [1, -1]])).toBeLessThan(1e-3);
   });
 });
+
+describe("jacobianWithError: the step follows the box and the function, never an absolute 1e-6 (J-fix2 item 4)", () => {
+  it("x' = 1e14 x³ - 1e-7, y' = 3y at (1e-7, 0) with scale 4e-7: J00 = 3 to 1e-6 and a step below the box", () => {
+    // J00 = 3 × 1e14 × (1e-7)² = 3; the fixed step 1e-6 (2.5 boxes) read 3 + 1e14 h² = 103.
+    const { J, h, errors } = jacobianWithError(compileSystem({ f: "1e14*x^3 - 1e-7", g: "3*y" }), { x: 1e-7, y: 0 }, 0, { scale: 4e-7 });
+    expect(J[0][0]).toBeCloseTo(3, 6);
+    expect(J[1][1]).toBeCloseTo(3, 6);
+    expect(h).toBeLessThanOrEqual(1e-6 * 4e-7);
+    expect(errors[0][0]).toBeLessThan(1e-3);
+  });
+
+  it("the saddle (1, 0) of x' = y, y' = -x - y + x⁷ keeps det = -6 to 1e-6 with the scale of a 2e4 box (adaptive step)", () => {
+    // J = [[0, 1], [7x⁶ - 1, -1]] at x = 1: det = -6. The box step 1e-6 × 2e4 = 0.02 has a
+    // truncation h² (x⁷)''' / 6 = 0.02² × 210 / 6 = 0.014; quartering until the truncation
+    // estimate is below JACOBIAN_TRUNCATION_TARGET × |J| brings it to ~2e-7 at h ~ 8e-5.
+    const { J, h } = jacobianWithError(compileSystem({ f: "y", g: "-x - y + x^7" }), { x: 1, y: 0 }, 0, { scale: 2e4 });
+    expect(determinant(J)).toBeCloseTo(-6, 6);
+    expect(h).toBeLessThan(0.02);
+  });
+
+  it("without a scale the unit is 1, as before (x³ at x = 1: J00 = 3, h = 1e-6)", () => {
+    const { J, h } = jacobianWithError(compileSystem({ f: "x^3", g: "y" }), { x: 1, y: 0 });
+    expect(J[0][0]).toBeCloseTo(3, 9);
+    expect(h).toBe(1e-6);
+  });
+});
