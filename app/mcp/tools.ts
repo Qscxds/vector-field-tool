@@ -32,12 +32,31 @@ import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
 
 // ---------- prompt fragments shared by every description ----------
 
+/**
+ * The call-first rule (Phase L). Observed: asked to analyze 2xy dx + (x² + y²) dy = 0, the model
+ * listed the tools and then answered by symbolic derivation without calling any; the derivation
+ * was right, but it skipped the numerical check that is the whole reason the tools exist, and
+ * standard textbook cases are exactly the ones the model feels confident enough to skip. So every
+ * analysis tool's description STARTS with this rule, tailored to the tool, and the shared tail
+ * below says the derivation is to be checked against the tool, never used instead of it.
+ */
+const CALL_FIRST_PREFIX = "CALL THIS TOOL FIRST";
+const CALL_FIRST_TAIL =
+  "call the tool, check your derivation against its numerical results, and show the student the picture. " +
+  "Never answer from symbolic derivation alone.";
+
+/** Fractional powers of a negative base are NaN in this kernel; said once in every expression rule. */
+const FRACTIONAL_POWER_NOTE =
+  'A fractional power of a negative base (x^(2/3) at x < 0) is undefined in this tool and counts as a singular ' +
+  'sample; for the real branch write abs(x)^(2/3) or sign(x)*abs(x)^p.';
+
 const EXPRESSION_RULES =
   'Expression syntax: the state variables are x and y (t is the time, rarely needed). ' +
   'Write multiplication explicitly: x*y, not xy (2*x and 2x are both fine). Powers use ^, e.g. x^2. ' +
   'Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; ' +
   'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
-  'A piecewise right-hand side may use comparisons and a conditional, e.g. "x > 0 ? 1 : -1".';
+  'A piecewise right-hand side may use comparisons and a conditional, e.g. "x > 0 ? 1 : -1". ' +
+  FRACTIONAL_POWER_NOTE;
 
 /** analyze_first_order only: the student's independent variable is t, and there is no separate time. */
 const FIRST_ORDER_EXPRESSION_RULES =
@@ -354,7 +373,11 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     {
       title: "Analyze a planar system",
       description:
-        "Finds all equilibrium points of the planar system x' = f(x, y), y' = g(x, y) inside a viewing box and " +
+        `${CALL_FIRST_PREFIX} for any question that involves a concrete planar system x' = f(x, y), y' = g(x, y) ` +
+        "(two first-order equations with actual right-hand sides), before saying anything about its equilibria, " +
+        "their type or stability, or its phase portrait. Even when you can find and classify the equilibria in " +
+        "closed form (a linear system, a textbook predator-prey model), " + CALL_FIRST_TAIL + " " +
+        "WHAT IT COMPUTES: finds all equilibrium points of the planar system x' = f(x, y), y' = g(x, y) inside a viewing box and " +
         "classifies each one from its Jacobian (eigenvalues, trace, determinant): stable/unstable node, saddle, " +
         "stable/unstable spiral, star or degenerate node, center-or-weak-spiral, non-hyperbolic. Also returns a " +
         "sampled vector field for drawing the phase portrait. " +
@@ -390,7 +413,11 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     {
       title: "Analyze a second-order equation x'' = F(x, x')",
       description:
-        "Reduces a single second-order equation in x(t) to the planar system x' = y, y' = F(x, y) (y = x' is the " +
+        `${CALL_FIRST_PREFIX} for any question that involves a concrete second-order equation in x(t), given as ` +
+        "x'' = F(x, x') or as a full equation such as x'' + a*x' + b*x = 0, before saying anything about its " +
+        "equilibria, stability or phase plane. Even when you can solve the equation in closed form (a linear " +
+        "oscillator with a characteristic equation is exactly the case you are tempted to skip), " + CALL_FIRST_TAIL + " " +
+        "WHAT IT COMPUTES: reduces a single second-order equation in x(t) to the planar system x' = y, y' = F(x, y) (y = x' is the " +
         "velocity), then does exactly what analyze_system does for that system: all equilibrium points inside the " +
         "viewing box (the x axis is position, the y axis is velocity), each classified from its Jacobian " +
         "(eigenvalues, trace, determinant), plus a sampled vector field for the phase portrait. The text summary " +
@@ -405,13 +432,16 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "apostrophes, t is the time (a t in the equation makes the reduced system non-autonomous, also when it " +
         "multiplies x''). Either a full " +
         "equation with exactly one = (x'' + 0.5*x' + x = 0, (1 + x^2)*x'' = -x) or just the right-hand side F " +
-        "of x'' = F (-sin(x) - 0.2*x'). x'' must appear linearly (x''^2 or sin(x'') cannot be reduced). " +
+        "of x'' = F (-sin(x) - 0.2*x'). The equation must be affine in x'': the coefficient of x'' may depend on x, x' " +
+        "and t, as in (1 + x^2)*x'' = -x or t*x'' + x' = 0, but forms that are not affine in x'' (x''^2, sin(x''), " +
+        "x''*x'') are rejected. " +
         "The reduction is checked numerically at sample points spread over the viewing box and a generic square, at " +
         "several times t; a term that is only active away from every sample point (a piecewise x''^2 branch outside " +
         "the box) cannot be detected, so choose the box the student cares about. " +
         "Write multiplication explicitly: x*x', 2*x, not xx' (2x is accepted). Powers use ^, e.g. x^3. " +
         "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; " +
         'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
+        FRACTIONAL_POWER_NOTE + " " +
         BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         equation: z
@@ -447,7 +477,11 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     {
       title: "Trace a trajectory",
       description:
-        "Numerically integrates the planar system x' = f(x, y), y' = g(x, y) from an initial point (x0, y0), " +
+        `${CALL_FIRST_PREFIX} whenever a question involves a concrete planar system x' = f(x, y), y' = g(x, y) AND a ` +
+        "specific starting point or solution curve (where does the solution through (x0, y0) go, does it reach an " +
+        "equilibrium or a cycle, draw the solution), before describing that solution. Even when the solution is " +
+        "known in closed form (a linear system, a circle, an exponential), " + CALL_FIRST_TAIL + " " +
+        "WHAT IT COMPUTES: numerically integrates the planar system x' = f(x, y), y' = g(x, y) from an initial point (x0, y0), " +
         "forward and/or backward in time, and returns the trajectory points plus why the integration stopped " +
         "(completed, left the viewing box, reached an equilibrium, blew up in finite time, hit the step limit). " +
         "USE THIS whenever a student asks what happens to a solution starting at a given point, where a trajectory " +
@@ -539,7 +573,10 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     {
       title: "Sample the vector field",
       description:
-        "Samples the vector field (f, g) of the planar system x' = f(x, y), y' = g(x, y) on a regular grid inside " +
+        `${CALL_FIRST_PREFIX} whenever a question involves the direction field, vector field or phase-plane arrows ` +
+        "of a concrete planar system x' = f(x, y), y' = g(x, y) and no equilibrium analysis is wanted. Even when the " +
+        "field is simple enough to sketch by hand, " + CALL_FIRST_TAIL + " " +
+        "WHAT IT COMPUTES: samples the vector field (f, g) of the planar system x' = f(x, y), y' = g(x, y) on a regular grid inside " +
         "the viewing box and returns the arrows (position, vector, magnitude) for drawing, plus the maximum " +
         "magnitude and how many grid points are singular. " +
         "USE THIS when a student just wants to see the direction field / vector field / phase plane arrows of a " +
@@ -588,7 +625,12 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     {
       title: "Analyze a first-order equation (dy/dt = g(t, y), or M dt + N dy = 0)",
       description:
-        "For a single first-order ODE, given either explicitly as dy/dt = g(t, y) (parameter `expr`) or in " +
+        `${CALL_FIRST_PREFIX} for any question that involves a concrete first-order equation, given as dy/dt = g(t, y) ` +
+        "or as M(t, y) dt + N(t, y) dy = 0 (exact, separable, linear, Bernoulli, logistic: any equation with actual " +
+        "right-hand sides), before saying what method solves it or what its solutions do. Even when you can solve the " +
+        "equation in closed form (a standard exact or separable equation is exactly the case you are tempted to skip), " +
+        CALL_FIRST_TAIL + " " +
+        "WHAT IT COMPUTES: for a single first-order ODE, given either explicitly as dy/dt = g(t, y) (parameter `expr`) or in " +
         "differential form M(t, y) dt + N(t, y) dy = 0 (parameters `M` and `N`, the natural form of exact " +
         "equations). Returns: the slope/direction field inside the viewing box (undirected segments for the " +
         "differential form, which has no natural direction); constant solutions y = c with their stability " +

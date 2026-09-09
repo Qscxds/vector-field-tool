@@ -68,6 +68,38 @@ describe("tools/list", () => {
     }
   });
 
+  it("every analysis tool's description STARTS with the call-first rule and keeps the what / use-this / syntax text (Phase L.1)", async () => {
+    // Observed: asked about 2xy dx + (x² + y²) dy = 0 the model listed the tools and answered by
+    // symbolic derivation without calling any. The rule is the first thing the model reads.
+    const { tools } = await client.listTools();
+    const analysis = tools.filter((t) => t.name !== "ping");
+    expect(analysis).toHaveLength(5);
+    for (const t of analysis) {
+      expect(t.description, t.name).toMatch(/^CALL THIS TOOL FIRST /);
+      expect(t.description, t.name).toMatch(/Even when /);
+      expect(t.description, t.name).toMatch(/check your derivation against its numerical results/);
+      expect(t.description, t.name).toMatch(/Never answer from symbolic derivation alone\./);
+      // the rule is stated once, ahead of everything else
+      expect(t.description!.indexOf("Never answer from symbolic derivation alone."), t.name).toBeLessThan(t.description!.indexOf("WHAT IT COMPUTES"));
+      expect(t.description!.indexOf("WHAT IT COMPUTES"), t.name).toBeLessThan(t.description!.indexOf("USE THIS"));
+      // fractional powers of a negative base are said once in every syntax rule
+      expect(t.description, t.name).toMatch(/fractional power of a negative base/);
+    }
+    // tailored per tool: each names the kind of equation it is for
+    const by = Object.fromEntries(analysis.map((t) => [t.name, t.description!]));
+    expect(by.analyze_first_order).toMatch(/^CALL THIS TOOL FIRST for any question that involves a concrete first-order equation/);
+    expect(by.analyze_system).toMatch(/^CALL THIS TOOL FIRST for any question that involves a concrete planar system/);
+    expect(by.analyze_second_order).toMatch(/^CALL THIS TOOL FIRST for any question that involves a concrete second-order equation/);
+    expect(by.trace_trajectory).toMatch(/^CALL THIS TOOL FIRST whenever a question involves a concrete planar system .* AND a specific starting point/);
+    expect(by.sample_field).toMatch(/^CALL THIS TOOL FIRST whenever a question involves the direction field/);
+    // the second-order rule spells out what is accepted: affine in x'', coefficient may depend on x, x', t
+    expect(by.analyze_second_order).toMatch(/affine in x''/);
+    expect(by.analyze_second_order).toMatch(/coefficient of x'' may depend on x, x' and t/);
+    expect(by.analyze_second_order).toMatch(/x''\^2, sin\(x''\)/);
+    // ping keeps its own text
+    expect(tools.find((t) => t.name === "ping")!.description).not.toMatch(/CALL THIS TOOL FIRST/);
+  });
+
   it("analyze_first_order speaks the student's notation dy/dt = g(t, y) and never dy/dx", async () => {
     const { tools } = await client.listTools();
     const t = tools.find((t) => t.name === "analyze_first_order")!;
