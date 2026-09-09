@@ -5,7 +5,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildShareUrl, decodeState, DEFAULT_STATE, encodeState, MAX_QUERY_LENGTH, MAX_TRAJECTORY_STARTS, MAX_URL_EXPRESSION_LENGTH,
-  queryFromSearchParams, type AppState, type UrlProblem,
+  MODE_DEFAULT_EXPRESSIONS, queryFromSearchParams, type AppState, type UrlProblem,
 } from "./url-state";
 
 const D = DEFAULT_STATE;
@@ -119,7 +119,8 @@ describe("decodeState validation (a public link is an attack surface)", () => {
     for (const g of bad) {
       const { state, problems } = decodeState(new URLSearchParams({ m: "first", g }), D);
       expect(reasons(problems), g).toEqual(["g:invalidExpression"]);
-      expect(state.g, g).toBe(D.g);
+      // The fallback is the first-order default, not the planar D.g = -x (x is not a first-order symbol).
+      expect(state.g, g).toBe(MODE_DEFAULT_EXPRESSIONS.first.g);
     }
   });
 
@@ -138,7 +139,7 @@ describe("decodeState validation (a public link is an attack surface)", () => {
     expect(long.length).toBeGreaterThan(MAX_URL_EXPRESSION_LENGTH);
     const a = decodeState(new URLSearchParams({ m: "first", g: long }), D);
     expect(reasons(a.problems)).toEqual(["g:tooLong"]);
-    expect(a.state.g).toBe(D.g);
+    expect(a.state.g).toBe(MODE_DEFAULT_EXPRESSIONS.first.g);
     const huge = "m=first&g=" + "y".repeat(5000);
     expect(huge.length).toBeGreaterThan(MAX_QUERY_LENGTH);
     const b = decodeState(huge, D);
@@ -209,5 +210,29 @@ describe("decodeState validation (a public link is an attack surface)", () => {
     for (const q of ["%", "%E0%A4%A", "m=&g=&tmin=&traj=;;;", "=&&&", "a".repeat(4096)]) {
       expect(() => decodeState(q, D)).not.toThrow();
     }
+  });
+});
+
+describe("mode-specific fallback expressions", () => {
+  // DEFAULT_STATE is a planar system (g = -x); a first-order link must not fall back to it, because
+  // x is not a first-order symbol and the page would show a notice plus a parse error and no picture.
+  it("a first-order link with a broken g falls back to the first-order default, not to -x", () => {
+    const { state, problems } = decodeState("m=first&g=x*y", D);
+    expect(problems).toEqual([{ param: "g", reason: "invalidExpression" }]);
+    expect(state.mode).toBe("first");
+    expect(state.g).toBe("y*(1 - y)");
+  });
+
+  it("a link that only switches the mode gets that mode's expressions", () => {
+    expect(decodeState("m=first", D).state.g).toBe("y*(1 - y)");
+    const diff = decodeState("m=diff", D).state;
+    expect([diff.M, diff.N]).toEqual(["t", "y"]);
+    expect(decodeState("m=second", D).state.eq).toBe("x'' + 0.5*x' + x = 0");
+    const sys = decodeState("", D).state;
+    expect([sys.f, sys.g]).toEqual(["y", "-x"]);
+  });
+
+  it("a valid expression in the link still wins over the mode default", () => {
+    expect(decodeState("m=first&g=sqrt(y)", D).state.g).toBe("sqrt(y)");
   });
 });

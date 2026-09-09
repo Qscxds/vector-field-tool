@@ -102,6 +102,18 @@ export const DEFAULT_STATE: AppState = {
   trajectoryStarts: [],
 };
 
+/**
+ * Expressions a mode falls back to when a link omits or breaks them. DEFAULT_STATE is a planar
+ * system whose g = -x is rejected in first-order mode (x is not a first-order symbol), so a link
+ * such as ?m=first&g=<invalid> would otherwise show a notice AND a parse error and no picture.
+ */
+export const MODE_DEFAULT_EXPRESSIONS: Record<AppMode, Partial<Pick<AppState, "g" | "f" | "M" | "N" | "eq">>> = {
+  system: { f: "y", g: "-x" },
+  first: { g: "y*(1 - y)" },
+  diff: { M: "t", N: "y" },
+  second: { eq: "x'' + 0.5*x' + x = 0" },
+};
+
 /** Whether the horizontal coordinate is the student's t (first-order pictures) or x. */
 export function horizontalIsT(mode: AppMode): boolean {
   return mode === "first" || mode === "diff";
@@ -245,6 +257,10 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
     else problem("m", "badChoice");
   }
   const mode = state.mode;
+  // A link that switches the mode but omits or breaks its expressions must still draw something:
+  // the planar fallback (g = -x) is not a first-order expression (x is rejected there), so each
+  // mode falls back to an expression of its own.
+  if (mode !== fallback.mode) Object.assign(state, MODE_DEFAULT_EXPRESSIONS[mode]);
 
   const used = expressionKeysOf(mode);
   for (const key of ["g", "f", "M", "N", "eq"] as const) {
