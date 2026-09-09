@@ -211,6 +211,41 @@ describe("lipschitzProbe: growth of the difference quotients at the finest scale
     lipschitzProbe((d) => d, 1, { checkpoint: () => n++ });
     expect(n).toBe(2);
   });
+
+  it("minOffset (the resolution to which the point is known) ends the descent: sqrt|d| keeps α = 1/2 over the levels above it", () => {
+    // δ_k = scale · 1e-2 · 4^-k. A floor strictly between δ_5 and δ_4 (1.5 δ_5) leaves levels
+    // 0..4: five usable levels, the finest δ_4, and the tail fit of an exact δ^-1/2 law is 1/2.
+    // The same at every scale: the floor is a length local to the point, scaled with the offsets.
+    for (const scale of [1e-6, 1, 3.7e3, 1e6]) {
+      const d4 = scale * 1e-2 * 4 ** -4, d5 = scale * 1e-2 * 4 ** -5;
+      const r = lipschitzProbe((d) => Math.sqrt(Math.abs(d)), scale, { minOffset: 1.5 * d5 });
+      for (const side of [r.sides.above, r.sides.below]) {
+        expect(side.verdict, `${scale}`).toBe("unbounded");
+        expect(side.levels).toBe(5);
+        expect(side.finestOffset).toBe(d4);
+        expect(side.exponent).toBeCloseTo(0.5, 10);
+      }
+      expect(r.verdict).toBe("unbounded");
+    }
+    // Three levels (floor between δ_3 and δ_2) are the fewest that give a verdict; two are untestable.
+    const three = lipschitzProbe((d) => Math.sqrt(Math.abs(d)), 1, { minOffset: 1.5 * 1e-2 * 4 ** -3 });
+    expect(three.sides.above).toMatchObject({ verdict: "unbounded", levels: 3, finestOffset: 1e-2 * 4 ** -2 });
+    expect(three.sides.above.exponent).toBeCloseTo(0.5, 10);
+    const two = lipschitzProbe((d) => Math.sqrt(Math.abs(d)), 1, { minOffset: 1.5 * 1e-2 * 4 ** -2 });
+    expect(two.sides.above).toEqual({ verdict: "untestable", exponent: NaN, levels: 2, finestOffset: 1e-2 * 4 ** -1 });
+    expect(two.verdict).toBe("untestable");
+    // A floor above the first offset: nothing is tried, and that is untestable, not "undefined"
+    // (which would say the equation is not defined on that side).
+    const none = lipschitzProbe((d) => Math.sqrt(Math.abs(d)), 1, { minOffset: 2e-2 });
+    expect(none.sides.above).toEqual({ verdict: "untestable", exponent: NaN, levels: 0, finestOffset: NaN });
+    expect(none.sides.below.verdict).toBe("untestable");
+    expect(none.verdict).toBe("untestable");
+    // The floor is the larger of minOffset and the coordinate's own guard (1e6 · eps · |center|).
+    const guard = lipschitzProbe((d) => Math.sqrt(Math.abs(d)), 1, { center: 1, minOffset: 1.5 * 1e-2 * 4 ** -5 });
+    expect(guard.sides.above.levels).toBe(5);
+    expect(() => lipschitzProbe((d) => d, 1, { minOffset: -1 })).toThrow(RangeError);
+    expect(() => lipschitzProbe((d) => d, 1, { minOffset: NaN })).toThrow(RangeError);
+  });
 });
 
 describe("the verdict does not depend on the box (review J: smooth right-hand sides on large boxes)", () => {

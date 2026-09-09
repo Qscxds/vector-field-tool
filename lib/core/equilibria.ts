@@ -65,7 +65,7 @@ import { assertBox } from "./field";
 import { jacobianAt, jacobianSensitivityEntries, jacobianWithError } from "./jacobian";
 import type { CompiledSystem } from "./parse";
 import type { Box, Matrix2, Vec2 } from "./types";
-import { LIPSCHITZ_FIRST_FRACTION, MIN_LEVELS_FOR_GROWTH, lipschitzProbe, type UniquenessResult } from "./uniqueness";
+import { LIPSCHITZ_FIRST_FRACTION, MIN_LEVELS, lipschitzProbe, type UniquenessResult } from "./uniqueness";
 
 /** `uniqueness` is attached by the callers that ask for it (equilibriaUniqueness in uniqueness.ts); findEquilibria leaves it unset. */
 export type Equilibrium = { at: Vec2; jacobian: Matrix2; uniqueness?: UniquenessResult } & ClassifyResult;
@@ -165,7 +165,8 @@ export const ABORT_RADIUS = 1e-6;
 export const LOCATION_RELATIVE_TOL = 1e-9;
 /**
  * Vanishing test (review J item 8): |F(p + δ e) - F(p)| ~ δ^β is fitted along 8 directions with
- * δ from VANISHING_DELTA_FACTOR × stepTol downward (lipschitzProbe's levels); β <= this in some
+ * δ from VANISHING_DELTA_FACTOR × stepTol downward (lipschitzProbe's descent, quartering δ until
+ * the quotients level off or reach the rounding floor); β <= this in some
  * defined direction means F does not tend to F(p) there: the field is discontinuous at p and p
  * is a singular point, not an equilibrium (x' = xy / (x² + y²): F is 0.5 along every diagonal at
  * every distance). A Hölder root (sqrt(x): β = 1/2) still vanishes and stays an equilibrium.
@@ -814,8 +815,18 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   // Vanishing test (review J item 8): a converged point is an equilibrium only if the field
   // tends to its value there from every direction in which it is defined. Along 8 directions
   // (both sides of the two axes and of the two diagonals) lipschitzProbe fits
-  // |F(p + δ e) - F(p)| / δ ~ δ^-α over δ = VANISHING_DELTA_FACTOR × stepTol × 4^-k, k = 0..7,
-  // i.e. |F(p + δ e) - F(p)| ~ δ^β with β = 1 - α. A defined direction with enough levels and
+  // |F(p + δ e) - F(p)| / δ ~ δ^-α over δ = VANISHING_DELTA_FACTOR × stepTol × 4^-k, k = 0, 1, ...,
+  // descending until the quotients level off, reach the rounding floor, or go below the
+  // resolution to which p is known (the probe's `minOffset`: the radius locTol the run claimed
+  // for a located root, stepTol, the search's location precision, for a stall): an offset below
+  // that resolution steps around a point that may not be the one in question, and what it sees
+  // there is no evidence about p. The stall of a run that crawled toward the origin of
+  // x' = xy / (x² + y²) lies a few 1e-15 up the y-axis; between stepTol and 1e3 stepTol the
+  // field differs from F(p) by the same 6e-7 at every offset along y (β = 0), while below 1e-15
+  // the offsets step around the stall point itself, where the field is smooth. So the fit reads
+  // |F(p + δ e) - F(p)| ~ δ^β with β = 1 - α over the offsets between the resolution and
+  // VANISHING_DELTA_FACTOR × stepTol. A defined direction with enough usable levels (the
+  // probe's MIN_LEVELS) and
   // β <= VANISHING_MIN_EXPONENT (α >= 1 - it) shows a field that does not vanish toward p: p is a
   // singular point of the field, not an equilibrium. A direction on which the field is undefined
   // arbitrarily close to p (domain edge) says nothing and is skipped, as is one with too few
@@ -826,7 +837,7 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   // continuous, never "unbounded" from rounding noise.
   const probeScale = (VANISHING_DELTA_FACTOR * stepTol) / LIPSCHITZ_FIRST_FRACTION;
   const singularPoints: Vec2[] = [];
-  const vanishes = (p: Vec2): boolean => {
+  const vanishes = (p: Vec2, resolution: number): boolean => {
     const F0 = sys.eval(p);
     const base = isFiniteVec(F0) ? F0 : { x: 0, y: 0 };
     const baseMag = Math.max(Math.abs(base.x), Math.abs(base.y));
@@ -839,26 +850,33 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
     const s = Math.SQRT1_2;
     for (const e of [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: s, y: s }, { x: s, y: -s }]) {
       opts.checkpoint?.();
-      const r = lipschitzProbe((d) => h({ x: p.x + d * e.x, y: p.y + d * e.y }), probeScale);
+      const r = lipschitzProbe((d) => h({ x: p.x + d * e.x, y: p.y + d * e.y }), probeScale, { minOffset: resolution });
       for (const side of [r.sides.above, r.sides.below]) {
-        if (side.verdict === "undefined" || side.levels < MIN_LEVELS_FOR_GROWTH || !Number.isFinite(side.exponent)) continue;
+        if (side.verdict === "undefined" || side.levels < MIN_LEVELS || !Number.isFinite(side.exponent)) continue;
         if (1 - side.exponent <= VANISHING_MIN_EXPONENT) return false;
       }
     }
     return true;
   };
   for (let i = located.length - 1; i >= 0; i--) {
-    if (vanishes(located[i].at)) continue;
+    if (vanishes(located[i].at, located[i].locTol)) continue;
     singularPoints.push(located[i].at);
     located.splice(i, 1);
   }
   // A run that stalled without a consistent residual ended at a singular point when the field is
   // discontinuous there (Newton crawls toward it along the directions where |F| tends to 0); a
   // stall elsewhere (a local minimum of |F| that is not a root) is dropped as before.
+  // A singular point is located to the window the vanishing test looked at: the field was seen
+  // not to tend to F(p) at offsets up to VANISHING_DELTA_FACTOR × stepTol, so the discontinuity
+  // lies within that radius of p, and every run that crawled toward the same singularity stalls
+  // somewhere inside it (the origin of x' = xy / (x² + y²) collects stalls at 2e-15 up the
+  // y-axis and at 8e-12 on the anti-diagonal). Two singular points within that radius of each
+  // other are one; the first one flagged is kept.
   const stepOnly = (p: Vec2): NewtonResult => ({ at: p, locTol: stepTol, root: false });
+  const singularAt = (p: Vec2): NewtonResult => ({ at: p, locTol: VANISHING_DELTA_FACTOR * stepTol, root: false });
   for (const p of stalls) {
-    if (singularPoints.some((q) => sameRoot(stepOnly(q), stepOnly(p))) || located.some((q) => sameRoot(q, stepOnly(p)))) continue;
-    if (!vanishes(p)) singularPoints.push(p);
+    if (singularPoints.some((q) => sameRoot(singularAt(q), singularAt(p))) || located.some((q) => sameRoot(q, stepOnly(p)))) continue;
+    if (!vanishes(p, stepTol)) singularPoints.push(p);
   }
   singularPoints.sort((u, v) => u.x - v.x || u.y - v.y);
   located.sort((u, v) => u.at.x - v.at.x || u.at.y - v.at.y);

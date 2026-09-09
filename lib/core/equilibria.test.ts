@@ -549,9 +549,12 @@ describe("local acceptance, ill-scaled solve, resolution dedupe, vanishing test 
     // F has no zero (f = 0 needs an axis, g = 0 needs y = x) and is undefined at the origin, where
     // its limit depends on the direction: 0 along the axes, f = 1/2 along the diagonals. Newton
     // crawls to the origin along the x-axis (|F| -> 0 there) and used to report it as an
-    // equilibrium. The vanishing test finds |F(p + δe) - F(p)| ~ δ⁰ along the diagonals.
+    // equilibrium. The vanishing test finds |F(p + δe) - F(p)| ~ δ⁰ along the diagonals, over
+    // the offsets between the search's location resolution (stepTol) and 1e3 stepTol: the runs
+    // that crawled toward the origin stall at various distances from it (2e-15 up the y-axis,
+    // 8e-12 on the anti-diagonal on [-2, 2]²), all inside that window, and are reported once.
     for (const s of ["1", "1e-6", "1e6"]) {
-      for (const b of [box(-2, 2), box(-1, 1)]) {
+      for (const b of [box(-10, 10), box(-2, 2), box(-1, 1)]) {
         const r = findEquilibria(compileSystem({ f: `${s}*x*y/(x^2 + y^2)`, g: `${s}*(y - x)` }), b);
         expect(r.points, `${s} ${JSON.stringify(b)}`).toEqual([]);
         expect(r.warning).toBe("none_found");
@@ -570,11 +573,24 @@ describe("local acceptance, ill-scaled solve, resolution dedupe, vanishing test 
     expect(big.warning).toBe("none_found");
   });
 
-  it.fails("J.8: the singular point is also reported on a big box (needs the sign-change seeding of review J item 4)", () => {
-    // On [-1000, 1000]² no seed crawls to the origin: every run stalls on the diagonal y = x, where
-    // |F| = 1/2 is a local minimum, so there is nothing to submit to the vanishing test.
+  it("J.8: the singular point is also reported on [-1000, 1000]²", () => {
+    // A run stalls on the anti-diagonal 6.6e-10 from the origin (3.3 stepTol, stepTol = 2e-10):
+    // the vanishing test's window [stepTol, 1e3 stepTol] straddles the origin along that line.
     const big = findEquilibria(compileSystem({ f: "x*y/(x^2 + y^2)", g: "y - x" }), box(-1000, 1000));
+    expect(big.points).toEqual([]);
     expect(big.singularPoints).toHaveLength(1);
+    expect(Math.hypot(big.singularPoints![0].x, big.singularPoints![0].y)).toBeLessThan(1e-9);
+  });
+
+  it.fails("J.8: the singular point is also reported on [-100, 100]² (open: no run stalls within the vanishing window of the origin there)", () => {
+    // On [-100, 100]² every run that heads for the origin stalls on the diagonal y = x, where
+    // |F| = 1/2 is a local minimum, or too far from the origin for the window
+    // [stepTol, 1e3 stepTol] = [2e-11, 2e-8] to straddle it, so there is nothing to submit to
+    // the vanishing test: whether the singular point is listed still depends on where the seeds
+    // stall (review J item 4's seeding does not reach it). Recorded, not hidden.
+    const b = findEquilibria(compileSystem({ f: "x*y/(x^2 + y^2)", g: "y - x" }), box(-100, 100));
+    expect(b.points).toEqual([]);
+    expect(b.singularPoints).toHaveLength(1);
   });
 
   it("J.8: a genuine root next to a pole stays an equilibrium: x' = x(x - 1)/(x - 0.01), y' = y", () => {

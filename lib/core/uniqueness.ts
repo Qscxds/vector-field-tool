@@ -33,7 +33,10 @@
  *   (there the e^200 start is untestable, never a false claim). A value of exactly 0 always ends
  *   the descent. So does an offset the point's own coordinate cannot carry
  *   (δ < POSITION_GUARD · eps · |center|, where center + δ rounds), or
- *   LIPSCHITZ_MAX_LEVELS (60) levels: the growth persisted down to the floor, and α is fitted
+ *   LIPSCHITZ_MAX_LEVELS (60) levels, or an offset below the resolution to which the probed
+ *   point is known (`minOffset`, the location radius a root search claimed: below it the offsets
+ *   step around a point that may not be the one in question, and what they see is no evidence
+ *   about it): the growth persisted down to the floor, and α is fitted
  *   (least squares of log D against log δ) over the last TAIL_LEVELS (4) usable levels;
  *   "unbounded" when α >= UNBOUNDED_EXPONENT (0.25), "borderline" when α >= BORDERLINE_EXPONENT
  *   (0.1), else "bounded_at_tested_scales" (the quotients shrank or drifted only slowly).
@@ -126,6 +129,12 @@ export type LipschitzProbeOptions = {
    * coarser levels (FLOOR_WINDOW), which mistakes a steep exponential's drop for rounding.
    */
   magnitude?: (d: number) => number;
+  /**
+   * The resolution to which the probed point is known (the location radius a root search
+   * claimed for it): offsets below it are not evidence about the point and end the descent.
+   * Default 0 (no such floor).
+   */
+  minOffset?: number;
 };
 
 /** Offsets δ_k = scale · 1e-2 · 4^-k, k = 0..levels - 1, largest first. */
@@ -150,17 +159,19 @@ function fittedExponent(levels: readonly { delta: number; D: number }[]): number
   return -(sxy / sxx);
 }
 
-function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center: number, magnitude?: (d: number) => number): SideResult {
+function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center: number, minOffset: number, magnitude?: (d: number) => number): SideResult {
   const usable: { delta: number; D: number }[] = [];
-  const positionFloor = POSITION_GUARD * EPS * Math.abs(center);
+  const positionFloor = Math.max(POSITION_GUARD * EPS * Math.abs(center), minOffset);
   const recent: number[] = [];
   let maxH = 0;
   let finiteLevels = 0;
+  let evaluated = 0;
   let lastFiniteDelta = NaN;
   let leveledOff = false;
   for (let k = 0; k < LIPSCHITZ_MAX_LEVELS; k++) {
     const delta = scale * LIPSCHITZ_FIRST_FRACTION * LIPSCHITZ_SHRINK ** -k;
     if (delta < positionFloor) break;
+    evaluated++;
     const v = h(sign * delta);
     if (!Number.isFinite(v)) continue;
     finiteLevels++;
@@ -189,6 +200,9 @@ function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center
       }
     }
   }
+  // No offset at all could be tried (the first one is already below the resolution of the point
+  // or of its coordinate): nothing was tested, which is not a statement about the domain.
+  if (evaluated === 0) return { verdict: "untestable", exponent: NaN, levels: 0, finestOffset: NaN };
   // Not defined at any offset on this side: the equation lives on the other side.
   if (finiteLevels === 0) return { verdict: "undefined", exponent: NaN, levels: 0, finestOffset: NaN };
   if (maxH === 0) {
@@ -228,10 +242,12 @@ function combine(above: SideResult, below: SideResult, scale: number): Uniquenes
 export function lipschitzProbe(h: (d: number) => number, scale: number, opts: LipschitzProbeOptions = {}): UniquenessResult {
   if (!(scale > 0) || !Number.isFinite(scale)) throw new RangeError("scale must be a positive finite number.");
   const center = opts.center ?? 0;
+  const minOffset = opts.minOffset ?? 0;
+  if (!(minOffset >= 0)) throw new RangeError("minOffset must be a non-negative number.");
   opts.checkpoint?.();
-  const above = probeSide(h, scale, 1, center, opts.magnitude);
+  const above = probeSide(h, scale, 1, center, minOffset, opts.magnitude);
   opts.checkpoint?.();
-  const below = probeSide(h, scale, -1, center, opts.magnitude);
+  const below = probeSide(h, scale, -1, center, minOffset, opts.magnitude);
   return combine(above, below, scale);
 }
 
