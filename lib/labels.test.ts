@@ -112,8 +112,10 @@ describe("label tables", () => {
       const L = labels(locale);
       for (const key of ["edge_approach", "edge_leave", "edge_varies"] as const) {
         expect(L.stability[key], `${locale}.${key}`).toContain("{side}");
-        // the hint about fractional powers of a negative base (review J: 3*y^(2/3) reads as one-sided here)
-        if (key !== "edge_varies") expect(L.stability[key], `${locale}.${key}`).toMatch(/abs\(y\)\^\(2\/3\)/);
+        // the hint about fractional powers of a negative base (review J: 3*y^(2/3) reads as one-sided
+        // here) has its own key since J-fix2 and is appended only when the expression has one
+        expect(L.stability[key], `${locale}.${key}`).not.toMatch(/abs\(y\)\^\(2\/3\)/);
+        expect(L.tool.fractionalPowerHint, locale).toMatch(/abs\(y\)\^\(2\/3\)/);
       }
       for (const key of ["stable", "unstable", "semi_stable", "varies"] as const) expect(L.stability[key], `${locale}.${key}`).not.toContain("{side}");
       // filled sentences: the side word appears, no placeholder is left
@@ -296,6 +298,61 @@ describe("J-fix2 notices: the underflow plateau and a region of equilibria, in b
       expect(L.tool.underflowPlateau.length).toBeGreaterThan(20);
       expect(L.warning.region_of_equilibria).not.toBe(L.warning.possible_continuum);
       expect(L.warning.region_of_equilibria).not.toBe(L.warning.multiple_non_hyperbolic);
+    }
+  });
+});
+
+describe("constant-solution lines and notices (J-fix2)", () => {
+  it("formatShort keeps 2 significant digits: 0.0063, 1300, 1.6e-12, 0.15", async () => {
+    const { formatShort } = await import("./labels");
+    expect(formatShort(0.00625)).toBe("0.0063");
+    expect(formatShort(1250)).toBe("1300");
+    expect(formatShort(1.5717e-12)).toBe("1.6e-12");
+    expect(formatShort(0.15)).toBe("0.15");
+    expect(formatShort(NaN)).toBe("NaN");
+  });
+
+  it("constantSolutionLines: the sentence first, then the plateau note, the probe count below 3, then the uniqueness sentence; both languages, no placeholder left", async () => {
+    const { constantSolutionLines, stabilitySentence } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      const plain = constantSolutionLines(L, { y: 1, stability: "stable", probes: { usable: 7, total: 7 } });
+      expect(plain).toEqual([fill(L.tool.constantSolution, { y: "1", stability: L.stability.stable })]);
+      const noted = constantSolutionLines(L, {
+        y: 0,
+        stability: "semi_stable",
+        plateauHalfWidth: 0.036633,
+        probes: { usable: 2, total: 7 },
+        uniqueness: { verdict: "unbounded", exponent: 0.5, probesFailing: 2, probesTotal: 2, side: "above" },
+      });
+      expect(noted).toHaveLength(4);
+      expect(noted[1]).toBe(fill(L.tool.constantSolutionPlateau, { y: "0", w: "0.037" }));
+      expect(noted[2]).toBe(fill(L.tool.constantSolutionProbes, { n: 2, total: 7 }));
+      expect(noted[3]).toBe(fill(L.uniqueness.unbounded, { y: "0", alpha: "0.5" }));
+      for (const line of noted) expect(line, `${locale}`).not.toMatch(/\{\w+\}/);
+      // the hint is appended to a domain-edge sentence only for an expression with a fractional power
+      const edge = { stability: "edge_leave" as const, domainEdge: "above" as const };
+      expect(stabilitySentence(L, edge, { kind: "explicit", g: "y*log(y)" })).toBe(stabilitySentence(L, edge));
+      expect(stabilitySentence(L, edge, { kind: "explicit", g: "3*y^(2/3)" })).toBe(`${stabilitySentence(L, edge)}${L.tool.parenOpen}${L.tool.fractionalPowerHint}${L.tool.parenClose}`);
+      expect(stabilitySentence(L, { stability: "stable" }, { kind: "explicit", g: "y^(2/3)" })).toBe(L.stability.stable);
+      expect(L.tool.fractionalPowerHint).toMatch(/[。.]$/);
+      expect(L.tool.zeroPlateau).toMatch(/[。.]$/);
+      expect(L.tool.scanResolution).toContain("{dy}");
+    }
+  });
+
+  it("constantSolutionNotices and noConstantSentence: the plateau notice only with plateaus, the resolution always; the all-zero reason has its own sentence", async () => {
+    const { constantSolutionNotices, noConstantSentence } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      expect(constantSolutionNotices(L, { resolution: 0.005, zeroPlateaus: [] })).toEqual([fill(L.tool.scanResolution, { dy: "0.005" })]);
+      expect(constantSolutionNotices(L, { resolution: 0.15, zeroPlateaus: [{ min: 27.3, max: 30 }] })).toEqual([L.tool.zeroPlateau, fill(L.tool.scanResolution, { dy: "0.15" })]);
+      expect(constantSolutionNotices(L, {})).toEqual([]);
+      expect(noConstantSentence(L, "untestable", "all_zero")).toBe(L.tool.noConstantAllZero);
+      expect(noConstantSentence(L, "untestable", "undefined")).toBe(L.tool.noConstantUntestable);
+      expect(noConstantSentence(L, "untestable")).toBe(L.tool.noConstantUntestable);
+      expect(noConstantSentence(L, true)).toBe(L.tool.noConstantAutonomous);
+      expect(noConstantSentence(L, false)).toBe(L.tool.noConstantGeneral);
     }
   });
 });

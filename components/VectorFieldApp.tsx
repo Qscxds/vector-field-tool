@@ -13,7 +13,7 @@ import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSyste
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
-import { equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
+import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
@@ -705,17 +705,24 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
       <div>
         <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.constantSolutionsHeading}</h2>
         {fo.solutions.length === 0 ? (
-          <p style={{ margin: 0 }}>{noConstantSentence(L, fo.autonomous)}</p>
+          <p style={{ margin: 0 }}>{noConstantSentence(L, fo.autonomous, fo.untestableReason)}</p>
         ) : (
           <ul style={{ margin: 0, paddingLeft: 20 }}>
-            {fo.solutions.map((s) => (
-              <li key={s.y} data-domain-edge={s.domainEdge} data-uniqueness={s.uniqueness?.verdict}>
-                {fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: stabilitySentence(L, s) })}
-                <UniquenessNote text={uniquenessSentence(L, s.uniqueness, { y: s.y })} />
-              </li>
-            ))}
+            {fo.solutions.map((s) => {
+              // The sentence, then the plateau / probe-count notes and the uniqueness sentence when they apply.
+              const [sentence, ...notes] = constantSolutionLines(L, s, fo.spec);
+              return (
+                <li key={s.y} data-domain-edge={s.domainEdge} data-uniqueness={s.uniqueness?.verdict}>
+                  {sentence}
+                  {notes.map((note) => <UniquenessNote key={note} text={note} />)}
+                </li>
+              );
+            })}
           </ul>
         )}
+        {constantSolutionNotices(L, fo).map((note) => (
+          <p key={note} style={{ margin: "6px 0 0", fontSize: 13, color: "#555" }} data-constant-notice>{note}</p>
+        ))}
       </div>
       {fo.singularities?.length ? (
         <div>

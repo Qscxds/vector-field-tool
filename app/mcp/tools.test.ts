@@ -7,7 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { NO_FORM_NOTE } from "@/lib/core/detect-form";
-import { fill, labels, stabilitySentence } from "@/lib/labels";
+import { constantSolutionNotices, fill, labels, stabilitySentence } from "@/lib/labels";
 import type { Scene } from "@/lib/scene";
 import { SlidingWindowLimiter } from "./rate-limit";
 import { createMcpServer } from "./server";
@@ -986,7 +986,9 @@ describe("uniqueness failure and domain-edge constant solutions (J.2)", () => {
     // on y in [-4, 0] the line y = 0 is the only defined sample and it is reported, as a domain edge
     const edge = await call("analyze_first_order", { expr: "sqrt(y)", yMin: -4, yMax: 0, locale: "en" });
     expect(edge.scene.firstOrder!.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave" });
-    expect(edge.scene.firstOrder!.autonomous).toBe(true);
+    // J-fix2: the line is the only finite sample and M = 0 on it, so autonomy is untestable (all_zero)
+    expect(edge.scene.firstOrder!.autonomous).toBe("untestable");
+    expect(edge.scene.firstOrder!.untestableReason).toBe("all_zero");
   });
 
   it("says nothing about uniqueness for the logistic equation (bounded is not a proof, so it is not claimed)", async () => {
@@ -1028,5 +1030,98 @@ describe("uniqueness failure and domain-edge constant solutions (J.2)", () => {
     const osc = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1, locale: "en" });
     expect(osc.scene.trajectories!.every((t) => t.nonUnique === undefined)).toBe(true);
     expect(osc.text).not.toContain(L.tool.nonUniqueTrajectory);
+  });
+});
+
+describe("constant-solution notes in the first-order summary (J-fix2)", () => {
+  it("a line defined on part of the t range is listed with its probe count: sqrt(t)·y on t in [-3, 1]", async () => {
+    const r = await call("analyze_first_order", { expr: "sqrt(t)*y", xMin: -3, xMax: 1, yMin: -1, yMax: 1, locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.firstOrder!.solutions.map((s) => [s.y, s.stability, s.probes])).toEqual([[0, "unstable", { usable: 2, total: 7 }]]);
+    const L = labels("en");
+    expect(r.text).toContain(fill(L.tool.constantSolution, { y: "0", stability: L.stability.unstable }));
+    expect(r.text).toContain(fill(L.tool.constantSolutionProbes, { n: 2, total: 7 }));
+    expect(r.text).not.toContain(L.tool.noConstantGeneral);
+    const zh = await call("analyze_first_order", { expr: "sqrt(t)*y", xMin: -3, xMax: 1, yMin: -1, yMax: 1, locale: "zh" });
+    expect(zh.text).toContain(fill(labels("zh").tool.constantSolutionProbes, { n: 2, total: 7 }));
+    // with all 7 probes usable the note is absent
+    const full = await call("analyze_first_order", { expr: "sqrt(t)*y", xMin: 0, xMax: 3, yMin: -1, yMax: 1, locale: "en" });
+    expect(full.text).not.toContain("t values tried");
+  });
+
+  it("every first-order summary states the scan resolution, formatted to 2 significant digits", async () => {
+    const r = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2, locale: "en" });
+    const L = labels("en");
+    expect(r.scene.firstOrder!.resolution).toBe(3 / 400);
+    expect(r.text).toContain(fill(L.tool.scanResolution, { dy: "0.0075" }));
+    expect(constantSolutionNotices(L, r.scene.firstOrder!)).toEqual([fill(L.tool.scanResolution, { dy: "0.0075" })]);
+    const zh = await call("analyze_first_order", { expr: "y*(1-y)", yMin: -1, yMax: 2, locale: "zh" });
+    expect(zh.text).toContain("Δy = 0.0075");
+  });
+
+  it("an underflow plateau is announced once and never listed as a constant solution: exp(-y²) on [-30, 30]", async () => {
+    const r = await call("analyze_first_order", { expr: "exp(-y^2)", yMin: -30, yMax: 30, locale: "en" });
+    const L = labels("en");
+    expect(r.scene.firstOrder!.solutions).toEqual([]);
+    expect(r.scene.firstOrder!.zeroPlateaus).toHaveLength(2);
+    expect(r.text).not.toContain("Constant solution");
+    expect(r.text).toContain(L.tool.noConstantAutonomous);
+    expect(r.text.split(L.tool.zeroPlateau)).toHaveLength(2);
+    expect(r.text).toContain(fill(L.tool.scanResolution, { dy: "0.15" }));
+    const zh = await call("analyze_first_order", { expr: "exp(-y^2)", yMin: -30, yMax: 30, locale: "zh" });
+    expect(zh.text).toContain(labels("zh").tool.zeroPlateau);
+    expect(zh.text).not.toContain("常数解 y");
+  });
+
+  it("an all-zero scan says so instead of 'autonomous but no constant solution', and still finds y = 0 of y·exp(-100 y²) on [-1000, 1000]", async () => {
+    const r = await call("analyze_first_order", { expr: "y*exp(-100*y^2)", yMin: -1000, yMax: 1000, locale: "en" });
+    const L = labels("en");
+    expect(r.scene.firstOrder!.autonomous).toBe("untestable");
+    expect(r.scene.firstOrder!.untestableReason).toBe("all_zero");
+    expect(r.text).toContain(fill(L.tool.constantSolution, { y: "0", stability: L.stability.unstable }));
+    expect(r.text).not.toContain(L.tool.noConstantAutonomous);
+    expect(r.text).toContain(L.tool.zeroPlateau);
+    // dy/dt = 0: nothing is found and the all-zero sentence is used, in both languages
+    const zero = await call("analyze_first_order", { expr: "0", yMin: -1, yMax: 1, locale: "en" });
+    expect(zero.text).toContain(L.tool.noConstantAllZero);
+    expect(zero.text).not.toContain(L.tool.noConstantAutonomous);
+    const zh = await call("analyze_first_order", { expr: "0", yMin: -1, yMax: 1, locale: "zh" });
+    expect(zh.text).toContain(labels("zh").tool.noConstantAllZero);
+  });
+
+  it("exp(-1/y²): y = 0 is listed with the plateau note (half-width 0.037) right after its line, on [-3, 3] and [-1e5, 1e5]", async () => {
+    for (const [yMin, yMax] of [[-3, 3], [-1e5, 1e5]]) {
+      const r = await call("analyze_first_order", { expr: "exp(-1/y^2)", yMin, yMax, locale: "en" });
+      const L = labels("en");
+      const [s] = r.scene.firstOrder!.solutions;
+      expect(s).toMatchObject({ y: 0, stability: "semi_stable" });
+      expect(s.plateauHalfWidth).toBeCloseTo(0.03663, 4);
+      const line = fill(L.tool.constantSolution, { y: "0", stability: L.stability.semi_stable });
+      const note = fill(L.tool.constantSolutionPlateau, { y: "0", w: "0.037" });
+      expect(r.text).toContain(line);
+      expect(r.text.indexOf(note)).toBe(r.text.indexOf(line) + line.length + 1);
+    }
+    const zh = await call("analyze_first_order", { expr: "exp(-1/y^2)", yMin: -3, yMax: 3, locale: "zh" });
+    expect(zh.text).toContain(fill(labels("zh").tool.constantSolutionPlateau, { y: "0", w: "0.037" }));
+  });
+
+  it("the fractional-power hint appears only when the expression has a fractional power: y·log(y) and sqrt(1 - y²) get none, 3*y^(2/3) does", async () => {
+    const log = await call("analyze_first_order", { expr: "y*log(y)", yMin: -1, yMax: 1, locale: "en" });
+    expect(Object.is(log.scene.firstOrder!.solutions[0].y, 0)).toBe(true);
+    expect(log.scene.firstOrder!.solutions[0]).toMatchObject({ domainEdge: "above", stability: "edge_approach" });
+    expect(log.text).toContain("defined only above this line");
+    expect(log.text).not.toContain("abs(y)^(2/3)");
+    const circle = await call("analyze_first_order", { expr: "sqrt(1 - y^2)", yMin: -2, yMax: 2, locale: "zh" });
+    expect(circle.scene.firstOrder!.solutions.map((s) => [s.y, s.domainEdge])).toEqual([[-1, "above"], [1, "below"]]);
+    expect(circle.text).not.toContain("abs(y)^(2/3)");
+    const frac = await call("analyze_first_order", { expr: "3*y^(2/3)", yMin: -2, yMax: 2, locale: "en" });
+    expect(frac.text).toContain(labels("en").tool.fractionalPowerHint);
+  });
+
+  it("the stability sign is read next to the root: (y - 1)(y - 1 - 1e-5) on [-100, 100] prints y = 1 stable and y = 1.00001 unstable", async () => {
+    const r = await call("analyze_first_order", { expr: "(y - 1)*(y - 1 - 1e-5)", yMin: -100, yMax: 100, locale: "en" });
+    expect(r.text).toContain("Constant solution y = 1: stable");
+    expect(r.text).toContain("Constant solution y = 1.00001: unstable");
+    expect(r.text).not.toContain("semi-stable");
   });
 });

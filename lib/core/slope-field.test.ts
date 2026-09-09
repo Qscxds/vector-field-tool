@@ -8,8 +8,11 @@ import {
   firstOrderEquilibria,
   firstOrderSingularities,
   firstOrderToSystem,
+  hasFractionalPower,
+  PROBES_NOTED,
   toDifferential,
   toSystem,
+  type FirstOrderEquilibria,
   type FirstOrderSpec,
 } from "./slope-field";
 
@@ -307,6 +310,7 @@ describe("firstOrderEquilibria", () => {
     // neither "autonomous" nor "depends on t" may be claimed (review J: the old answer was false).
     const r = firstOrderEquilibria("sqrt(-1 - y^2)", { min: -1, max: 1 });
     expect(r.autonomous).toBe("untestable");
+    expect(r.untestableReason).toBe("undefined");
     expect(r.solutions).toEqual([]);
   });
 
@@ -636,15 +640,25 @@ describe("constant solutions are accepted by a local criterion, never by a box-w
     ]);
   });
 
-  it("a root within the rounding floor of the scanned coordinates is reported as exactly 0", () => {
+  it.fails("a root within the rounding floor of the scanned coordinates is reported as exactly 0 (J-fix2: the ladder now resolves 1e-20 and refuses the snap; see the next test)", () => {
     // y - 1e-20 on [-1, 1]: the bracket around the sign change shrinks to 2^-200 of a cell and
     // ends at 1e-20, which is below eps · 1 = 2.2e-16, the floor of the coordinates of this scan:
-    // the root is reported as 0. The residual there, 1e-20, is within |M_y| · 1e-20 (the snap
-    // distance counts as location tolerance). sqrt(y - 1e-20) is NOT snapped: 0 is undefined for
-    // it, so the point stays where the edge bisection put it.
+    // the root was reported as 0 while the ladder's finest level (cell · 4^-15 = 4.6e-12) could
+    // not see that M(0) = 1e-20 is a nonzero limit. The adaptive ladder descends to 1e-38 at
+    // c = 0, sees the values level off at 1e-20 (β = 0: not vanishing) and keeps the root where
+    // the bisection put it; the old expectation is kept here as a record, not loosened.
     const r = firstOrderEquilibria("y - 1e-20", { min: -1, max: 1 }, { tRange });
     expect(r.solutions.map((s) => s.y)).toEqual([0]);
-    expect(Object.is(r.solutions[0].y, -0)).toBe(false);
+  });
+
+  it("a root the ladder can resolve below the coordinate floor stays where it is: y - 1e-20 gives 1e-20; sqrt(y - 1e-20) is not snapped either", () => {
+    // M(0) = 1e-20 ≠ 0 and |M(±δ)| levels off at 1e-20 for δ < 1e-20 (β = 0), so 0 is refused and
+    // the bisection's end, 1e-20 to the last bit, is the root: the true constant solution.
+    const r = firstOrderEquilibria("y - 1e-20", { min: -1, max: 1 }, { tRange });
+    expect(r.solutions).toHaveLength(1);
+    expect(r.solutions[0].y).toBeCloseTo(1e-20, 35);
+    expect(r.solutions[0].stability).toBe("unstable");
+    // sqrt(y - 1e-20): 0 is undefined for it, so the point stays where the edge bisection put it.
     const edge = firstOrderEquilibria("sqrt(y - 1e-20)", { min: -1, max: 1 }, { tRange });
     expect(edge.solutions).toHaveLength(1);
     expect(edge.solutions[0].y).toBeCloseTo(1e-20, 35);
@@ -652,7 +666,12 @@ describe("constant solutions are accepted by a local criterion, never by a box-w
   });
 
   it("dy/dt = 0 (M ≡ 0) and dy/dt = sign(y) list nothing; sin(y) on [-10, 10] lists its 7 roots at kπ to the last bit", () => {
-    expect(firstOrderEquilibria("0", { min: -1, max: 1 }, { tRange })).toEqual({ autonomous: true, solutions: [] });
+    // Every sample is exactly 0: M ≡ 0 and a Gaussian factor underflowing at every sample look the
+    // same to the scan, so neither autonomy nor constant solutions are claimed (J-fix2: untestable,
+    // reason all_zero, the whole range a zero plateau; formerly 'autonomous, no solution').
+    const zero = firstOrderEquilibria("0", { min: -1, max: 1 }, { tRange });
+    expect(zero).toMatchObject({ autonomous: "untestable", untestableReason: "all_zero", solutions: [], zeroPlateaus: [{ min: -1, max: 1 }] });
+    expect(zero.resolution).toBe(2 / 400);
     // sign(y) is 0 at y = 0 but does not vanish continuously (|M| = 1 on both sides): not a root.
     expect(firstOrderEquilibria("sign(y)", { min: -1, max: 1 }, { tRange }).solutions).toEqual([]);
     const r = firstOrderEquilibria("sin(y)", { min: -10, max: 10 }, { tRange });
@@ -675,7 +694,9 @@ describe("domain edges on the box edge, and an untestable autonomy (review J)", 
     for (const [min, max] of [[0, 4], [0, 1.2], [-4, 0], [-0.31, 1.2]] as const) {
       const r = firstOrderEquilibria("sqrt(y)", { min, max }, { tRange });
       expect(line(r), `[${min}, ${max}]`).toEqual([[0, "edge_leave", "above", "unbounded", 0.5]]);
-      expect(r.autonomous, `[${min}, ${max}]`).toBe(true);
+      // On [-4, 0] the line is the only finite sample and M = 0 there: every finite sample exactly
+      // 0 is untestable autonomy (J-fix2), not 'autonomous'; elsewhere it is measured.
+      expect(r.autonomous, `[${min}, ${max}]`).toBe(max === 0 ? "untestable" : true);
     }
   });
 
@@ -693,13 +714,16 @@ describe("domain edges on the box edge, and an untestable autonomy (review J)", 
   it("a range on which the equation is undefined everywhere: no constant solution, autonomy untestable", () => {
     for (const g of ["sqrt(y)", "sqrt(-1 - y^2)", "log(y)"]) {
       const r = firstOrderEquilibria(g, { min: -4, max: -0.001 }, { tRange });
-      expect(r, g).toEqual({ autonomous: "untestable", solutions: [] });
+      expect(r, g).toEqual({ autonomous: "untestable", untestableReason: "undefined", solutions: [], resolution: 3.999 / 400, zeroPlateaus: [] });
     }
     // t-dependence is still measured where it can be: t·sqrt(y) on y in [-4, 0] is not autonomous
     // (the slope at y = 0 is 0 for every t, but the probes above the line differ) - here the line is
     // the only defined sample, so the comparison at y = 0 is all there is: 0 = 0 at every t.
     const r = firstOrderEquilibria("t*sqrt(y)", { min: -4, max: 0 }, { tRange: { min: 0.5, max: 3 } });
-    expect(r.autonomous).toBe(true);
+    // J-fix2: with the line the only finite sample and M = 0 on it, every finite sample is 0 and
+    // autonomy is untestable (reason all_zero); the line itself is still found and one-sided.
+    expect(r.autonomous).toBe("untestable");
+    expect(r.untestableReason).toBe("all_zero");
     expect(r.solutions.map((s) => [s.y, s.stability, s.domainEdge])).toEqual([[0, "edge_leave", "above"]]);
   });
 
@@ -758,5 +782,166 @@ describe("cusp roots are located on every box (review J: sqrt|y|, |y|^(1/3), 3|y
       const r = firstOrderEquilibria({ kind: "differential", M: `-${k}*sqrt(abs(y))`, N: k }, { min: -0.31, max: 1.2 }, { tRange });
       expect(line(r), k).toEqual([[0, "semi_stable", undefined, "unbounded", 0.5]]);
     }
+  });
+});
+
+describe("constant solutions: the J-fix2 round (partial t ranges, root spacing, adaptive ladder, plateaus, deflation)", () => {
+  const tRange = { min: -3, max: 3 };
+  const brief = (r: FirstOrderEquilibria) => r.solutions.map((s) => [s.y, s.stability, s.domainEdge]);
+  /** The same equation as the differential form -k g dt + k dy = 0 (k = 1e6, 1e-6): scaling changes nothing. */
+  const scaled = (g: string, k: string): FirstOrderSpec => ({ kind: "differential", M: `-${k}*(${g})`, N: k });
+
+  it("a constant solution defined on part of the t range is kept: sqrt(t)·y has y = 0 on t in [-3, 3], [-3, 1] and [0, 3], and says how many probes tested it", () => {
+    // sqrt(t) y > 0 above the line and < 0 below it for every t > 0: solutions move away, unstable.
+    // Probes at t_min + f (t_max - t_min), f in PROBE_FRACTIONS: 3 of the 7 fall in t > 0 on
+    // [-3, 3] (t = 0 gives M ≡ 0, no evidence), 2 on [-3, 1], all 7 on [0, 3].
+    const expected: [number, number, number][] = [[-3, 3, 3], [-3, 1, 2], [0, 3, 7]];
+    for (const [min, max, usable] of expected) {
+      const r = firstOrderEquilibria("sqrt(t)*y", { min: -1, max: 1 }, { tRange: { min, max } });
+      expect(brief(r), `t in [${min}, ${max}]`).toEqual([[0, "unstable", undefined]]);
+      expect(r.solutions[0].probes, `t in [${min}, ${max}]`).toEqual({ usable, total: 7 });
+      // y(y - 1): the line y = 0 is approached from both sides (y(y - 1) < 0 just above, > 0 just below), y = 1 left.
+      const two = firstOrderEquilibria("sqrt(t)*y*(y-1)", { min: -1, max: 2 }, { tRange: { min, max } });
+      expect(brief(two), `t in [${min}, ${max}]`).toEqual([[0, "stable", undefined], [1, "unstable", undefined]]);
+    }
+    expect(PROBES_NOTED).toBe(3);
+  });
+
+  it("the stability sign is read inside the root's own neighbourhood: (y - 1)(y - 1 - 1e-5) has y = 1 stable and y = 1 + 1e-5 unstable on [-100, 100], [0.9, 1.1] and [-1e4, 1e4]", () => {
+    // Just below 1 both factors are negative: g > 0, solutions rise toward 1; between the roots the
+    // first factor is positive and the second negative: g < 0, they fall toward 1. Stable. Above
+    // 1 + 1e-5 both are positive: g > 0, away from it; between them g < 0, away: unstable.
+    for (const [min, max] of [[-100, 100], [0.9, 1.1], [-1e4, 1e4]]) {
+      for (const spec of [{ kind: "explicit", g: "(y - 1)*(y - 1 - 1e-5)" } as FirstOrderSpec, scaled("(y - 1)*(y - 1 - 1e-5)", "1e6"), scaled("(y - 1)*(y - 1 - 1e-5)", "1e-6")]) {
+        const r = firstOrderEquilibria(spec, { min, max }, { tRange });
+        expect(r.solutions.map((s) => s.stability), `[${min}, ${max}] ${JSON.stringify(spec)}`).toEqual(["stable", "unstable"]);
+        expect(r.solutions[0].y).toBeCloseTo(1, 14);
+        expect(r.solutions[1].y).toBeCloseTo(1 + 1e-5, 14);
+      }
+    }
+    // y(y - 2e-5): g < 0 just above 0 and > 0 just below: 0 stable; 2e-5 unstable (g' = 2e-5 > 0).
+    const r = firstOrderEquilibria("y*(y - 2e-5)", { min: -10.001, max: 10 }, { tRange });
+    expect(r.solutions.map((s) => s.stability)).toEqual(["stable", "unstable"]);
+    expect(r.solutions[1].y).toBeCloseTo(2e-5, 18);
+  });
+
+  it("the ladder descends to the position floor, not a fixed count of levels: tanh(1e6 y) has y = 0 on [-3, 3], [-2e5, 2e5] and [-2.5e5, 2.5e5]; tanh(1e8 y) - 0.5 on [-3, 3] and [-3000, 3000]", () => {
+    for (const [min, max] of [[-3, 3], [-2e5, 2e5], [-2.5e5, 2.5e5]]) {
+      for (const spec of [{ kind: "explicit", g: "tanh(1e6*y)" } as FirstOrderSpec, scaled("tanh(1e6*y)", "1e6"), scaled("tanh(1e6*y)", "1e-6")]) {
+        expect(brief(firstOrderEquilibria(spec, { min, max }, { tRange })), `[${min}, ${max}]`).toEqual([[0, "unstable", undefined]]);
+      }
+    }
+    // atanh(1/2) = ln 3 / 2: the root is ln(3) / 2e8, g' = 1e8 (1 - 1/4) > 0: unstable.
+    for (const [min, max] of [[-3, 3], [-3000, 3000]]) {
+      const r = firstOrderEquilibria("tanh(1e8*y) - 0.5", { min, max }, { tRange });
+      expect(r.solutions.map((s) => s.stability), `[${min}, ${max}]`).toEqual(["unstable"]);
+      expect(r.solutions[0].y).toBeCloseTo(Math.log(3) / 2e8, 22);
+    }
+    // Unchanged controls: a positive minimum and a jump are not roots on any box.
+    expect(firstOrderEquilibria("y^8 + 1", { min: -100, max: 100 }, { tRange }).solutions).toEqual([]);
+    expect(firstOrderEquilibria("sign(y)", { min: -1, max: 1 }, { tRange }).solutions).toEqual([]);
+  });
+
+  it("an underflow plateau is reported, never mistaken for a constant solution: exp(-y²) on [-30, 30], [-28, 28] and [-100, 100]", () => {
+    // exp(-y²) never vanishes; it underflows to exactly 0 for y² > 745.13, |y| > 27.297.
+    for (const [min, max] of [[-30, 30], [-28, 28], [-100, 100]]) {
+      for (const spec of [{ kind: "explicit", g: "exp(-y^2)" } as FirstOrderSpec, scaled("exp(-y^2)", "1e6"), scaled("exp(-y^2)", "1e-6")]) {
+        const r = firstOrderEquilibria(spec, { min, max }, { tRange });
+        expect(r.solutions, `[${min}, ${max}] ${JSON.stringify(spec)}`).toEqual([]);
+        expect(r.zeroPlateaus.length, `[${min}, ${max}]`).toBe(2);
+        expect(r.zeroPlateaus[1].min, `[${min}, ${max}]`).toBeGreaterThan(27);
+        expect(r.zeroPlateaus[1].max).toBe(max);
+      }
+    }
+    expect(firstOrderEquilibria("exp(-100*y^2)", { min: -3, max: 3 }, { tRange }).solutions).toEqual([]);
+  });
+
+  it("a root is not lost to the plateau shortcut: y·exp(-100 y²) has y = 0 (unstable, g' = 1) on [-3, 3], [-100, 100], [-1000, 1000] and [-1e4, 1e4]; an all-zero scan makes autonomy untestable", () => {
+    for (const [min, max] of [[-3, 3], [-100, 100], [-1000, 1000], [-1e4, 1e4]]) {
+      for (const spec of [{ kind: "explicit", g: "y*exp(-100*y^2)" } as FirstOrderSpec, scaled("y*exp(-100*y^2)", "1e6"), scaled("y*exp(-100*y^2)", "1e-6")]) {
+        const r = firstOrderEquilibria(spec, { min, max }, { tRange });
+        expect(brief(r), `[${min}, ${max}] ${JSON.stringify(spec)}`).toEqual([[0, "unstable", undefined]]);
+        expect(r.zeroPlateaus.length, `[${min}, ${max}]`).toBeGreaterThan(0);
+        expect(r.resolution).toBe((max - min) / 400);
+      }
+    }
+    // With a cell of 5 every sample (0 included: 0 · 1 = 0) is exactly 0: the scan cannot tell
+    // M ≡ 0 from an underflowing factor, so autonomy is untestable with the reason recorded.
+    const big = firstOrderEquilibria("y*exp(-100*y^2)", { min: -1000, max: 1000 }, { tRange });
+    expect(big.autonomous).toBe("untestable");
+    expect(big.untestableReason).toBe("all_zero");
+    expect(big.zeroPlateaus).toEqual([{ min: -1000, max: 1000 }]);
+    expect(brief(firstOrderEquilibria("y*exp(-y^2)", { min: -6000, max: 6000 }, { tRange }))).toEqual([[0, "unstable", undefined]]);
+  });
+
+  it("a removable point on a domain edge is exactly 0: y·log(y) on [-1, 1], [0, 1] and [-2, 3]", () => {
+    // y log y < 0 on (0, 1): solutions above the line fall toward it (edge_approach). 0 · log 0 is
+    // NaN, but M vanishes on the defined side (δ log δ → 0, β ≈ 1): a removable point on the edge.
+    for (const [min, max] of [[-1, 1], [0, 1], [-2, 3]]) {
+      for (const spec of [{ kind: "explicit", g: "y*log(y)" } as FirstOrderSpec, scaled("y*log(y)", "1e6"), scaled("y*log(y)", "1e-6")]) {
+        const r = firstOrderEquilibria(spec, { min, max }, { tRange });
+        expect(brief(r)[0], `[${min}, ${max}] ${JSON.stringify(spec)}`).toEqual([0, "edge_approach", "above"]);
+        expect(Object.is(r.solutions[0].y, 0), `[${min}, ${max}]`).toBe(true);
+      }
+    }
+    // -y log y: left instead; y log|y| (defined on both sides) keeps its interior answer.
+    expect(brief(firstOrderEquilibria("-y*log(y)", { min: -1, max: 1 }, { tRange }))[0]).toEqual([0, "edge_leave", "above"]);
+    expect(brief(firstOrderEquilibria("y*log(abs(y))", { min: -1, max: 1 }, { tRange }))).toEqual([[-1, "unstable", undefined], [0, "stable", undefined], [1, "unstable", undefined]]);
+  });
+
+  it("two roots in one scan cell are both found by deflation, and the scan resolution is reported: (y - 1)(y - 1.01) on [-100, 100] and [0, 2]; sin(100 y) on [-1, 1]", () => {
+    // g' = (1 - 1.01) < 0 at 1: stable; g' = 0.01 > 0 at 1.01: unstable.
+    for (const [min, max] of [[-100, 100], [0, 2]]) {
+      const r = firstOrderEquilibria("(y-1)*(y-1.01)", { min, max }, { tRange });
+      expect(r.solutions.map((s) => s.stability), `[${min}, ${max}]`).toEqual(["stable", "unstable"]);
+      expect(r.solutions[0].y).toBeCloseTo(1, 14);
+      expect(r.solutions[1].y).toBeCloseTo(1.01, 14);
+      expect(r.resolution).toBe((max - min) / 400);
+    }
+    // Roots kπ/100 with |k| <= 31 (31π/100 = 0.974 < 1 < 32π/100): 63 of them, to the last bit.
+    const r = firstOrderEquilibria("sin(100*y)", { min: -1, max: 1 }, { tRange });
+    expect(r.solutions.map((s) => s.y)).toEqual(Array.from({ length: 63 }, (_, i) => expect.closeTo(((i - 31) * Math.PI) / 100, 14)));
+    expect(r.resolution).toBe(0.005);
+  });
+
+  it("hasFractionalPower reads the expression text: y^(2/3), 3*y^(2/3), y^0.5 and y^-1.5 have one; y^2, y*log(y), sqrt(1 - y^2) and exp(-1/y^2) do not", () => {
+    for (const g of ["y^(2/3)", "3*y^(2/3)", "y^0.5", "y^-1.5", "y ^ ( 1 / 3 )"]) expect(hasFractionalPower({ kind: "explicit", g }), g).toBe(true);
+    for (const g of ["y^2", "y*log(y)", "sqrt(1 - y^2)", "exp(-1/y^2)", "y^10"]) expect(hasFractionalPower({ kind: "explicit", g }), g).toBe(false);
+    expect(hasFractionalPower({ kind: "differential", M: "y", N: "y^(1/2)" })).toBe(true);
+    expect(hasFractionalPower({ kind: "differential", M: "y", N: "1" })).toBe(false);
+  });
+
+  it("sin(1/y): y = 0, where the right-hand side is undefined, is never a constant solution, and every listed root is a 1/(kπ), on [-3, 3], [-0.5, 2] and [-1e5, 1e5]", () => {
+    // The roots 1/(kπ) accumulate at 0 and the scan lists the subset it resolves (documented, not
+    // fixed here); what must hold on every box is that 0 itself is never claimed.
+    for (const [min, max] of [[-3, 3], [-0.5, 2], [-1e5, 1e5]]) {
+      const r = firstOrderEquilibria("sin(1/y)", { min, max }, { tRange });
+      for (const s of r.solutions) {
+        expect(s.y, `[${min}, ${max}]`).not.toBe(0);
+        const k = Math.round(1 / (s.y * Math.PI));
+        expect(s.y, `[${min}, ${max}]`).toBeCloseTo(1 / (k * Math.PI), 14);
+      }
+    }
+  });
+
+  it("exp(-1/y²): y = 0 is the one constant solution on [-3, 3], [-0.5, 2] and [-1e5, 1e5], reported at the center of its underflow interval with the half-width", () => {
+    // exp(x) underflows to exactly 0 for x < -745.13: the right-hand side is 0 for 1/y² > 745.13,
+    // |y| < 0.03663, and positive on both sides of that interval (semi-stable: solutions rise
+    // through the line). The 1e-6 version underflows a little earlier (|y| < 0.0370).
+    for (const [min, max] of [[-3, 3], [-0.5, 2], [-1e5, 1e5]]) {
+      for (const spec of [{ kind: "explicit", g: "exp(-1/y^2)" } as FirstOrderSpec, scaled("exp(-1/y^2)", "1e6"), scaled("exp(-1/y^2)", "1e-6")]) {
+        const r = firstOrderEquilibria(spec, { min, max }, { tRange });
+        expect(brief(r), `[${min}, ${max}] ${JSON.stringify(spec)}`).toEqual([[0, "semi_stable", undefined]]);
+        expect(r.solutions[0].plateauHalfWidth, `[${min}, ${max}]`).toBeGreaterThan(0.0366);
+        expect(r.solutions[0].plateauHalfWidth, `[${min}, ${max}]`).toBeLessThan(0.0371);
+        expect(r.zeroPlateaus).toEqual([]);
+      }
+    }
+  });
+
+  it("a genuinely flat region keeps its edges and notes its inside: max(0, |y| - 1) on [-3, 3] has y = ±1 and the plateau [-1, 1]", () => {
+    const r = firstOrderEquilibria("max(0, abs(y) - 1)", { min: -3, max: 3 }, { tRange });
+    expect(r.solutions.map((s) => s.y)).toEqual([-1, 1]);
+    expect(r.zeroPlateaus).toEqual([{ min: -1, max: 1 }]);
   });
 });

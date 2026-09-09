@@ -25,7 +25,7 @@ import {
 } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { EXACT_PATH_TOL, markNonUnique, withUniqueness } from "@/lib/interactive";
-import { equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, stabilitySentence, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
@@ -673,7 +673,10 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             expr: equationText,
             spec,
             autonomous: eq.autonomous,
+            untestableReason: eq.untestableReason,
             solutions: eq.solutions,
+            resolution: eq.resolution,
+            zeroPlateaus: eq.zeroPlateaus,
             singularities: singular.points,
             singularitiesTruncated: singular.truncated,
             singularitiesWarning: singular.warning,
@@ -699,15 +702,14 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           if (singular.truncated) lines.push(fill(L.ui.singularitiesTruncated, { max: singular.points.length }));
         }
         if (eq.solutions.length) {
-          for (const s of eq.solutions) {
-            lines.push(fill(L.tool.constantSolution, { y: fmt(s.y, 6), stability: stabilitySentence(L, s) }));
-            // The uniqueness sentence follows its line; nothing is printed for a bounded result.
-            const uniqueness = uniquenessSentence(L, s.uniqueness, { y: s.y });
-            if (uniqueness) lines.push(uniqueness);
-          }
+          // Per line: the sentence, then the plateau / probe-count notes and the uniqueness sentence
+          // when they apply (nothing is printed for a bounded uniqueness result).
+          for (const s of eq.solutions) lines.push(...constantSolutionLines(L, s, spec));
         } else {
-          lines.push(noConstantSentence(L, eq.autonomous));
+          lines.push(noConstantSentence(L, eq.autonomous, eq.untestableReason));
         }
+        // The zero-plateau notice when it applies, and the scan resolution (always: a fact, not a warning).
+        lines.push(...constantSolutionNotices(L, eq));
         lines.push(...describeForms(forms, locale));
         if (implicit) {
           lines.push(fill(L.tool.exactImplicit, { levels: implicit.levels.length, deviation: implicit.pathDeviation.toExponential(1) }));

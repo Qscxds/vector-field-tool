@@ -12,6 +12,7 @@ import type { OdeForm } from "./core/detect-form";
 import type { IntegrationStatus } from "./core/integrate";
 import type { EquilibriumSolution } from "./core/slope-field";
 import type { Complex, Locale } from "./core/types";
+import { hasFractionalPower, PROBES_NOTED, type FirstOrderSpec } from "./core/slope-field";
 import type { UniquenessVerdict } from "./core/uniqueness";
 
 export type { Locale };
@@ -50,7 +51,8 @@ export type LabelTable = {
     | "nonUniqueTrajectory"
     | "timeDependent" | "timeDependentTrajectory" | "secondOrderReduced"
     | "timeDependenceMeasured" | "timeDependenceNoChange" | "timeDependenceDomainMoves" | "timeDependenceUntested"
-    | "underflowPlateau",
+    | "underflowPlateau"
+    | "constantSolutionProbes" | "constantSolutionPlateau" | "zeroPlateau" | "scanResolution" | "fractionalPowerHint" | "noConstantAllZero",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -102,8 +104,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable: "不稳定（两侧的解都离开它）",
       semi_stable: "半稳定（一侧趋向、一侧离开）",
       varies: "稳定性随 t 变化（在观察范围内两侧解的走向不一致）",
-      edge_approach: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解趋向它（提示：这里负数的分数次幂没有定义，例如 y^(2/3) 在 y < 0 时；要取实数分支，请写 abs(y)^(2/3) 或 sign(y)*abs(y)^p）",
-      edge_leave: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解离开它（提示：这里负数的分数次幂没有定义，例如 y^(2/3) 在 y < 0 时；要取实数分支，请写 abs(y)^(2/3) 或 sign(y)*abs(y)^p）",
+      edge_approach: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解趋向它",
+      edge_leave: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解离开它",
       edge_varies: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解是趋向还是离开它随 t 变化（在观察范围内两种情况都出现）",
     },
     stabilityShort: {
@@ -199,6 +201,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependenceDomainMoves: "向量场在部分采样时刻有定义、在其他时刻无定义：它的定义域随 t 变化。",
       timeDependenceUntested: "向量场在所有采样时刻都无法计算，因此无法测量它随 t 的变化幅度。",
       underflowPlateau: "注意：在观察范围的一部分区域里，方程右端的值小于计算机能表示的最小数，计算结果恰好为 0；这些点并不是平衡点，因此没有列出。",
+      constantSolutionProbes: "这条线只在 {n} 个 t 值上得到检验（共尝试 {total} 个）：方程只在这些 t 处有定义。",
+      constantSolutionPlateau: "在 |y − {y}| < {w} 上，右端低于最小可表示的数、计算结果恰为 0；这个常数解取该区间的中心，右端从两侧连续地趋于它。",
+      zeroPlateau: "在这个范围的一部分上，右端的计算结果恰为 0（那里它恒为 0，或低于最小可表示的数）；那里不声称任何常数解。",
+      scanResolution: "扫描分辨率为 Δy = {dy}；间距小于它的常数解可能被合并或漏掉。",
+      fractionalPowerHint: "提示：这里负数的分数次幂没有定义，例如 y^(2/3) 在 y < 0 时；要取实数分支，请写 abs(y)^(2/3) 或 sign(y)*abs(y)^p。",
+      noConstantAllZero: "在观察范围内没有找到常数解：右端在每个采样点的计算结果都恰为 0（那里它恒为 0，或低于最小可表示的数）或无定义，因此常数解和方程是否自治都无法检验。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -321,8 +329,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable: "unstable (solutions leave it on both sides)",
       semi_stable: "semi-stable (approached on one side, left on the other)",
       varies: "stability varies with t (the sign pattern differs across the viewing range)",
-      edge_approach: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side approach it (hint: a fractional power of a negative number is undefined here, e.g. y^(2/3) for y < 0; write abs(y)^(2/3) or sign(y)*abs(y)^p for the real branch)",
-      edge_leave: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side leave it (hint: a fractional power of a negative number is undefined here, e.g. y^(2/3) for y < 0; write abs(y)^(2/3) or sign(y)*abs(y)^p for the real branch)",
+      edge_approach: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side approach it",
+      edge_leave: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side leave it",
       edge_varies: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and whether the solutions on that side approach or leave it changes with t (both happen across the viewing range)",
     },
     stabilityShort: {
@@ -418,6 +426,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependenceDomainMoves: "The field is defined at some of the sampled times and undefined at others: its domain moves with t.",
       timeDependenceUntested: "The field could not be evaluated at any of the sampled times, so how much it changes with t could not be measured.",
       underflowPlateau: "Note: in part of this viewing box the right-hand side is below the smallest number the computer can represent and evaluates to exactly 0; those points are not equilibria and are not listed.",
+      constantSolutionProbes: "This line could be checked at only {n} of the {total} t values tried: the equation is defined at those t only.",
+      constantSolutionPlateau: "For |y − {y}| < {w} the right-hand side is below the smallest representable number and evaluates to exactly 0; this constant solution is reported at the center of that interval, which the right-hand side approaches continuously from both sides.",
+      zeroPlateau: "On part of this range the right-hand side evaluates to exactly 0 (it is identically 0 there, or below the smallest representable number); no constant solution is claimed there.",
+      scanResolution: "The scan resolution was Δy = {dy}; constant solutions closer together than that may have been merged or missed.",
+      fractionalPowerHint: "Hint: a fractional power of a negative number is undefined here, e.g. y^(2/3) for y < 0; write abs(y)^(2/3) or sign(y)*abs(y)^p for the real branch.",
+      noConstantAllZero: "No constant solution was found in the viewing range: at every sample the right-hand side evaluates to exactly 0 (it is identically 0 there, or below the smallest representable number) or is undefined, so neither constant solutions nor autonomy could be tested.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -555,22 +569,61 @@ export function uniquenessSentence(
 /**
  * The stability sentence of a constant solution: a domain-edge line names the side where the
  * equation is defined, and one whose sign pattern changes with t gets `edge_varies` (the plain
- * `varies` sentence speaks of both sides, which a one-sided line does not have). Shared by the
- * tool summary and both shells.
+ * `varies` sentence speaks of both sides, which a one-sided line does not have). With the
+ * equation given, a domain-edge sentence carries the fractional-power hint only when the
+ * expression text has a fractional power (y^(2/3), y^0.5): a logarithm or sqrt(1 - y²) ends the
+ * domain for another reason and gets no hint. Shared by the tool summary and both shells.
  */
-export function stabilitySentence(L: LabelTable, s: Pick<EquilibriumSolution, "stability" | "domainEdge">): string {
+export function stabilitySentence(L: LabelTable, s: Pick<EquilibriumSolution, "stability" | "domainEdge">, spec?: FirstOrderSpec): string {
   const key = s.domainEdge && s.stability === "varies" ? "edge_varies" : s.stability;
-  return fill(L.stability[key], { side: s.domainEdge ? L.side[s.domainEdge] : "" });
+  const sentence = fill(L.stability[key], { side: s.domainEdge ? L.side[s.domainEdge] : "" });
+  return s.domainEdge && spec && hasFractionalPower(spec) ? `${sentence}${L.tool.parenOpen}${L.tool.fractionalPowerHint}${L.tool.parenClose}` : sentence;
+}
+
+/** A number to 2 significant digits, for a resolution or a half-width (0.0063, 1300, 1.6e-12). */
+export function formatShort(v: number): string {
+  return Number.isFinite(v) ? String(Number(v.toPrecision(2))) : String(v);
+}
+
+/**
+ * The lines of one constant solution, in order: the sentence itself; the plateau note when the
+ * right-hand side underflows on an interval around the line; the probe count when the line could
+ * be checked at fewer than PROBES_NOTED of the t values tried (it is defined on part of the t
+ * range); the uniqueness sentence when it speaks. Shared by the tool summary and both shells.
+ */
+export function constantSolutionLines(L: LabelTable, s: EquilibriumSolution, spec?: FirstOrderSpec): string[] {
+  const lines = [fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: stabilitySentence(L, s, spec) })];
+  if (s.plateauHalfWidth !== undefined) lines.push(fill(L.tool.constantSolutionPlateau, { y: formatNumber(s.y, 6), w: formatShort(s.plateauHalfWidth) }));
+  if (s.probes && s.probes.usable < PROBES_NOTED) lines.push(fill(L.tool.constantSolutionProbes, { n: s.probes.usable, total: s.probes.total }));
+  const uniqueness = uniquenessSentence(L, s.uniqueness, { y: s.y });
+  if (uniqueness) lines.push(uniqueness);
+  return lines;
+}
+
+/**
+ * The lines that follow the constant-solution list: the plateau notice when the right-hand side
+ * evaluates to exactly 0 on part of the range with no solution claimed there, and the scan
+ * resolution (always: a fact about the scan, not a warning). Shared by the tool summary and both
+ * shells.
+ */
+export function constantSolutionNotices(L: LabelTable, fo: { zeroPlateaus?: readonly unknown[]; resolution?: number }): string[] {
+  const lines: string[] = [];
+  if (fo.zeroPlateaus?.length) lines.push(L.tool.zeroPlateau);
+  if (fo.resolution !== undefined) lines.push(fill(L.tool.scanResolution, { dy: formatShort(fo.resolution) }));
+  return lines;
 }
 
 /**
  * The sentence for a first-order scene without constant solutions. The autonomy verdict has three
  * states (lib/core/slope-field.ts): measured autonomous, measured t-dependent, or untestable when
- * the right-hand side is undefined on most of the range; the third must never be read as either of
- * the first two. Shared by the tool summary and both shells.
+ * the right-hand side is undefined on most of the range or exactly 0 at every sample (`reason`);
+ * the third must never be read as either of the first two. Shared by the tool summary and both
+ * shells.
  */
-export function noConstantSentence(L: LabelTable, autonomous: boolean | "untestable"): string {
-  return autonomous === true ? L.tool.noConstantAutonomous : autonomous === false ? L.tool.noConstantGeneral : L.tool.noConstantUntestable;
+export function noConstantSentence(L: LabelTable, autonomous: boolean | "untestable", reason?: "undefined" | "all_zero"): string {
+  if (autonomous === true) return L.tool.noConstantAutonomous;
+  if (autonomous === false) return L.tool.noConstantGeneral;
+  return reason === "all_zero" ? L.tool.noConstantAllZero : L.tool.noConstantUntestable;
 }
 
 /**

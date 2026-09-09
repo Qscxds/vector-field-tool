@@ -17,7 +17,7 @@ import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
-import { equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, stabilitySentence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
@@ -227,13 +227,11 @@ function SceneSummary({ scene }: { scene: Scene }) {
   for (const group of groupTrajectories(scene.trajectories ?? [])) items.push(...trajectoryLines(scene, group, L));
   const fo = scene.firstOrder;
   if (fo) {
-    if (fo.solutions.length === 0) items.push(noConstantSentence(L, fo.autonomous));
-    for (const s of fo.solutions) {
-      items.push(fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: stabilitySentence(L, s) }));
-      // Uniqueness right under its line; silent for a bounded result.
-      const uniqueness = uniquenessSentence(L, s.uniqueness, { y: s.y });
-      if (uniqueness) items.push(uniqueness);
-    }
+    if (fo.solutions.length === 0) items.push(noConstantSentence(L, fo.autonomous, fo.untestableReason));
+    // Per line: the sentence, then the plateau / probe-count notes and the uniqueness sentence when
+    // they apply; then the zero-plateau notice and the scan resolution.
+    for (const s of fo.solutions) items.push(...constantSolutionLines(L, s, fo.spec));
+    items.push(...constantSolutionNotices(L, fo));
     if (fo.singularities?.length) {
       items.push(fill(L.tool.directionSingular, { points: fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator), truncated: fo.singularitiesTruncated ? L.tool.truncated : "" }));
       if (fo.singularitiesWarning === "possible_continuum") items.push(L.ui.singularitiesContinuum);

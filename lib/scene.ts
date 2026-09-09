@@ -8,7 +8,7 @@ import type { Equilibrium, EquilibriaResult } from "./core/equilibria";
 import type { FieldGrid } from "./core/field";
 import type { IntegrationStatus } from "./core/integrate";
 import type { EquilibriumSolution, FirstOrderSpec } from "./core/slope-field";
-import type { Box, Locale, SystemSpec, Vec2 } from "./core/types";
+import type { Box, Locale, SystemSpec, Vec2, Range } from "./core/types";
 
 export type SceneKind = "ping" | "sample_field" | "analyze_system" | "trace_trajectory" | "analyze_first_order";
 
@@ -43,7 +43,13 @@ export type FirstOrderView = {
   spec?: FirstOrderSpec;
   /** Whether the slope is independent of t; "untestable" when it is undefined on most of the range (neither may be claimed). */
   autonomous: boolean | "untestable";
+  /** Why autonomy is untestable (lib/core/slope-field): undefined at (almost) every sample, or exactly 0 at every finite one. */
+  untestableReason?: "undefined" | "all_zero";
   solutions: EquilibriumSolution[];
+  /** The scan resolution Δy of the constant-solution search; roots closer than this may have been merged or missed (always shown). */
+  resolution?: number;
+  /** Intervals on which the right-hand side evaluates to exactly 0 with no constant solution claimed inside (an underflow plateau or a flat region). */
+  zeroPlateaus?: Range[];
   /** Points where M = N = 0: the direction is undefined there. */
   singularities?: Vec2[];
   /** True when more singular points were found than are listed (the list holds the first maxPoints, sorted by t). */
