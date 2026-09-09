@@ -1,13 +1,14 @@
 /**
- * Equilibrium search: seeds on a grid, damped Newton (row-equilibrated solve; Levenberg-Marquardt
- * fallback when the Jacobian is numerically rank-deficient), LOCAL acceptance of a root (the
- * residual against the Jacobian at the point and its rounding floor, never a residual tolerance
- * taken from the box), a vanishing test (the field must tend to its value at the point from every
- * defined direction, else the point is a singularity of the field and goes to `singularPoints`),
- * de-duplication within the resolution each run achieved, classification.
+ * Equilibrium search: seeds on a grid, damped Newton (row-equilibrated solve; truncated
+ * pseudo-inverse step when the Jacobian is numerically rank-deficient), LOCAL acceptance of a
+ * root (the residual against the Jacobian at the point and its rounding floor, never a residual
+ * tolerance taken from the box), a vanishing test (the field must tend to its value at the point
+ * from every defined direction, else the point is a singularity of the field and goes to
+ * `singularPoints`), de-duplication within the resolution each run achieved, classification with
+ * per-entry Jacobian errors.
  *
  * Missing an equilibrium is worse than misclassifying one (it silently tells the student
- * "nothing is there"), so the search seeds Newton from TWO independent sources:
+ * "nothing is there"), so the search seeds Newton from FOUR independent sources:
  *
  * 1. A regular seedGrid x seedGrid grid of cell centres. Its density adapts to the field's
  *    structure and is SCALE-FREE (a rule based on the box size in units would flip with a change
@@ -23,6 +24,18 @@
  *    edge; "small" must be relative to something measured, and the edge band is what is there).
  *    Candidates are taken in increasing |F| order and capped at SCAN_SEED_CAP; the cap is
  *    reported in `seeding.capped`, never applied silently.
+ * 3. Domain-edge seeds: from every scan cell next to an undefined cell, the last finite point
+ *    toward the undefined neighbour (bisection) seeds a run ON the edge itself, so a root set
+ *    lying along the edge (x' = sqrt(x) y, y' = x on x = 0) is found point by point instead of
+ *    being walked to the origin by a linearization across the edge. Capped at EDGE_CELL_CAP
+ *    cells (`seeding.edgeCapped`).
+ * 4. A sign-change quadtree: f and g at the scan cells' corners; a cell on whose corners BOTH
+ *    change sign seeds a run from its centre and is split into four (its sub-cells with both
+ *    sign changes queued) until a located root lies inside, down to REFINE_MAX_DEPTH. This is
+ *    the mechanism that does not depend on |F| minima or on a seed happening to fall into a
+ *    root's basin (the origin of x' = y, y' = -x - y + x⁷ on [-100, 100]²). Capped by
+ *    REFINE_CELL_CAP runs, REFINE_VISIT_CAP cells and REFINE_ROOT_CAP located roots
+ *    (`seeding.refineCapped`).
  *
  * Roots on the edge of the field's domain (x' = sqrt(x), y' = y at the origin: the field is NaN
  * for x < 0) are reached with one-sided differences for the Jacobian columns whose stencil leaves
@@ -49,7 +62,7 @@
  */
 import { classify, type ClassifyResult } from "./classify";
 import { assertBox } from "./field";
-import { jacobianAt, jacobianSensitivity, jacobianWithError } from "./jacobian";
+import { jacobianAt, jacobianSensitivityEntries, jacobianWithError } from "./jacobian";
 import type { CompiledSystem } from "./parse";
 import type { Box, Matrix2, Vec2 } from "./types";
 import { LIPSCHITZ_FIRST_FRACTION, MIN_LEVELS_FOR_GROWTH, lipschitzProbe, type UniquenessResult } from "./uniqueness";
@@ -72,6 +85,14 @@ export type SeedingReport = {
   seeds: number;
   /** True when candidates exceeded SCAN_SEED_CAP: some local minima were NOT searched. */
   capped: boolean;
+  /** Domain-edge seeds run: points ON the edge of the field's domain, found by bisection from each edge cell toward its undefined neighbour. */
+  edgeSeeds: number;
+  /** True when more edge cells existed than EDGE_CELL_CAP: some of the domain's edge was NOT searched. */
+  edgeCapped: boolean;
+  /** Sign-change cells (both f and g change sign on the cell's corners) from which Newton ran, over all quadtree depths. */
+  refined: number;
+  /** True when the sign-change quadtree hit REFINE_CELL_CAP with cells still pending: some sign-change cells were NOT searched. */
+  refineCapped: boolean;
 };
 
 export type EquilibriaResult = {
@@ -114,6 +135,19 @@ export const SEED_GRID_MIN = 12;
 export const SEED_GRID_MAX = 32;
 export const SCAN_GRID_DEFAULT = 64;
 export const SCAN_SEED_CAP = 400;
+/** Edge cells (finite centre next to an undefined centre) bisected for a seed on the domain's edge, at most. */
+export const EDGE_CELL_CAP = 256;
+/** Sign-change quadtree (review J item 4): deepest subdivision of a scan cell, and the total number of cells Newton runs from. */
+export const REFINE_MAX_DEPTH = 12;
+export const REFINE_CELL_CAP = 1024;
+/** Cells examined (popped, split) by the quadtree, at most: bounds the corner evaluations (5 per split). */
+export const REFINE_VISIT_CAP = 8192;
+/**
+ * Located roots at which the quadtree stops running Newton: along a continuum every sub-cell
+ * holds a new root and the refinement would only add points (and quadratic continuum-analysis
+ * cost) without changing the verdict, which needs a few dozen.
+ */
+export const REFINE_ROOT_CAP = 128;
 /** Newton stops on a step below this fraction of the box size; a root is located to about this precision. */
 export const NEWTON_STEP_TOL = 1e-13;
 /**
@@ -310,7 +344,7 @@ const norm = (v: Vec2) => Math.hypot(v.x, v.y);
 const isFiniteVec = (v: Vec2) => Number.isFinite(v.x) && Number.isFinite(v.y);
 
 /**
- * Solves J d = -F, falling back to Levenberg-Marquardt when J is numerically rank-deficient.
+ * Solves J d = -F, or takes the truncated pseudo-inverse step when J is numerically rank-deficient.
  *
  * Singularity is judged on the ROW-EQUILIBRATED matrix (each row divided by its largest entry,
  * F by the same factors), never on det against ||J||²: J = [[1e8, 1], [-1, 1e-8]] has det = 2,
@@ -321,10 +355,15 @@ const isFiniteVec = (v: Vec2) => Number.isFinite(v.x) && Number.isFinite(v.y);
  * indistinguishable from proportional and the least-squares step is used. Cramer's rule on the
  * scaled system is accurate whenever the scaled determinant is not tiny.
  *
- * Marquardt's diagonal scaling (JᵀJ + λ diag(JᵀJ)) keeps the step in a weak direction
- * Newton-sized (for x' = -x³ the x step is x/3, geometric convergence) instead of killing it with
- * a λ taken from the strong direction (review C3). `lm` tells the caller which branch produced
- * the step.
+ * A numerically rank-deficient J (rows proportional to within the FD error) gets the TRUNCATED
+ * pseudo-inverse step: J ≈ σ₁ u₁ v₁ᵀ and d = -v₁ (u₁ · F) / σ₁, the least-squares step of minimum
+ * norm restricted to the one resolvable direction (review J item 2). For F = h(x, y) w with a
+ * constant vector w (the SI model x' = -xy, y' = xy) this is d = -h ∇h / |∇h|², Newton's step on
+ * the scalar h along its gradient, which converges to the NEAREST zero of h: every seed lands on
+ * the axis it started next to and the two axes of equilibria are found. Marquardt's scaled
+ * normal equations (JᵀJ + λ diag JᵀJ) d = -JᵀF gave d = (-h / 2h_x, -h / 2h_y) instead (the
+ * regularization is the whole determinant when J is rank 1), which halves every seed toward the
+ * origin. `lm` tells the caller which branch produced the step.
  */
 function newtonDirection(J: Matrix2, F: Vec2): { dir: Vec2; lm: boolean } | null {
   const [[a, b], [c, d]] = J;
@@ -339,22 +378,27 @@ function newtonDirection(J: Matrix2, F: Vec2): { dir: Vec2; lm: boolean } | null
       return { dir: { x: -(d1 * fx - b1 * fy) / detS, y: -(-c1 * fx + a1 * fy) / detS }, lm: false };
     }
   }
-  const g00 = a * a + c * c;
-  const g11 = b * b + d * d;
-  const g01 = a * b + c * d;
-  const lambda = 1e-6;
-  // Only guards against an exactly zero diagonal: any larger floor would dominate g00 = a² once the
-  // weak-direction derivative is ~1e-16 (x' = -x³ at x ~ 1e-8) and stall the convergence.
-  const floor = 1e-300;
-  const m00 = g00 * (1 + lambda) + floor;
-  const m11 = g11 * (1 + lambda) + floor;
-  const g0 = -(a * F.x + c * F.y);
-  const g1 = -(b * F.x + d * F.y);
-  const mdet = m00 * m11 - g01 * g01;
-  // Entries above ~1e154 (a one-sided derivative of sqrt at a domain edge) overflow JᵀJ: no
-  // usable direction; the caller keeps the point if its residual is already below tolerance.
-  if (!(Math.abs(mdet) > 0) || !Number.isFinite(mdet)) return null;
-  return { dir: { x: (m11 * g0 - g01 * g1) / mdet, y: (-g01 * g0 + m00 * g1) / mdet }, lm: true };
+  // Rank-one step on the matrix scaled by its largest entry (entries up to ~1e154, a one-sided
+  // derivative of sqrt at a domain edge, would overflow JᵀJ otherwise): v₁ is the dominant
+  // eigenvector of JᵀJ (the one of the two closed forms without cancellation), and
+  // d = -v₁ (v₁ · JᵀF) / λ₁ since u₁ σ₁ = J v₁.
+  const m = Math.max(r0, r1);
+  if (!(m > 0)) return null;
+  const A = a / m, B = b / m, C = c / m, D = d / m;
+  const g00 = A * A + C * C, g11 = B * B + D * D, g01 = A * B + C * D;
+  const half = (g00 + g11) / 2;
+  const l1 = half + Math.hypot((g00 - g11) / 2, g01);
+  if (!(l1 > 0)) return null;
+  let vx: number, vy: number;
+  if (g00 >= g11) { vx = l1 - g11; vy = g01; } else { vx = g01; vy = l1 - g00; }
+  const vn = Math.hypot(vx, vy);
+  if (!(vn > 0)) return null;
+  vx /= vn; vy /= vn;
+  const gx = (A * F.x + C * F.y) / m, gy = (B * F.x + D * F.y) / m; // JᵀF / m²
+  const coef = -(vx * gx + vy * gy) / l1;
+  const dir = { x: coef * vx, y: coef * vy };
+  if (!isFiniteVec(dir)) return null;
+  return { dir, lm: true };
 }
 
 /**
@@ -615,7 +659,6 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   candidates.sort((u, v) => u.m - v.m);
   const capped = candidates.length > SCAN_SEED_CAP;
   const scanSeeds = (capped ? candidates.slice(0, SCAN_SEED_CAP) : candidates).map((c) => c.at);
-  const seeding: SeedingReport = { seedGrid, scanGrid, signChanges, candidates: candidates.length, seeds: scanSeeds.length, capped };
 
   // Every located root comes with the radius within which it lies (locTol, >= stepTol). Two
   // converged points are the SAME root when their claimed disks intersect, |p - q| <= locTol_p +
@@ -629,22 +672,142 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   const located: NewtonResult[] = [];
   const found: Vec2[] = [];
   const stalls: Vec2[] = [];
-  for (const seed of [...seeds, ...scanSeeds]) {
+  // Runs Newton from a seed and registers what it finds: the located root (new or already
+  // known: the run that reached it is returned either way), or null for a diverged, aborted or
+  // out-of-box run; a stall goes to the vanishing test later.
+  const runSeed = (seed: Vec2): NewtonResult | null => {
     opts.checkpoint?.();
     const r = newton(sys, seed, box, scale, maxIterations, { points: found, radius: ABORT_RADIUS * scale });
-    if (r === null) continue;
+    if (r === null) return null;
     const p = r.at, margin = r.locTol;
     if (p.x < box.x.min - margin || p.x > box.x.max + margin || p.y < box.y.min - margin || p.y > box.y.max + margin) {
-      continue;
+      return null;
     }
     if (!r.root) {
       stalls.push(p);
-      continue;
+      return null;
     }
-    if (located.some((q) => sameRoot(q, r))) continue;
+    const known = located.find((q) => sameRoot(q, r));
+    if (known) return known;
     located.push(r);
     found.push(p);
+    return r;
+  };
+  for (const seed of [...seeds, ...scanSeeds]) runSeed(seed);
+
+  // Domain-edge seeds (review J item 5): a root ON the edge of the field's domain (x' = sqrt(x) y,
+  // y' = x vanishes at every point of x = 0) is invisible to the |F| minima along the edge band
+  // (|F| there is set by the distance to the edge, not by the root) and Newton from a cell centre
+  // linearizes sqrt across the edge and walks along it instead of to it. So every edge cell
+  // (finite centre, undefined axis neighbour) seeds Newton from the edge itself: the last finite
+  // point on the segment toward the undefined neighbour, by bisection down to the segment's
+  // rounding floor. From there the pseudo-inverse step (the one-sided Jacobian is rank one to the
+  // FD error) lands exactly on the edge point, where F is evaluated, not linearized. Edge cells
+  // are taken in increasing |F| order, at most EDGE_CELL_CAP of them (reported, never silent).
+  const edgeCells: { i: number; j: number; m: number }[] = [];
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const m = mag[j * n + i];
+      if (Number.isFinite(m) && nextToUndefined(i, j)) edgeCells.push({ i, j, m });
+    }
   }
+  edgeCells.sort((u, v) => u.m - v.m);
+  const edgeCapped = edgeCells.length > EDGE_CELL_CAP;
+  let edgeSeeds = 0;
+  for (const { i, j } of edgeCapped ? edgeCells.slice(0, EDGE_CELL_CAP) : edgeCells) {
+    const c = cellCentre(i, j);
+    for (const [di, dj] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      if (!inGrid(i + di, j + dj) || Number.isFinite(mag[(j + dj) * n + i + di])) continue;
+      const u = cellCentre(i + di, j + dj);
+      let lo = 0, hi = 1; // lo: finite, hi: undefined
+      for (let k = 0; k < 64; k++) {
+        const mid = (lo + hi) / 2;
+        if (mid <= lo || mid >= hi) break;
+        if (isFiniteVec(sys.eval({ x: c.x + mid * (u.x - c.x), y: c.y + mid * (u.y - c.y) }))) lo = mid;
+        else hi = mid;
+      }
+      edgeSeeds++;
+      runSeed({ x: c.x + lo * (u.x - c.x), y: c.y + lo * (u.y - c.y) });
+    }
+  }
+
+  // Sign-change quadtree (review J item 4), the mechanism independent of |F| minima and of the
+  // seed grid: f and g are evaluated at the (n + 1)² CORNERS of the scan cells; a cell on whose
+  // corners both f and g change sign (min <= 0 <= max, all four finite) is a candidate and
+  // Newton runs from its centre. If no located root lies inside the cell afterwards (the run
+  // diverged, stalled, or converged elsewhere: on [-100, 100]² the cell containing the origin of
+  // x' = y, y' = -x - y + x⁷ has its centre in a saddle's basin), the cell is split into four,
+  // the five new corner values are evaluated, and the sub-cells that still show both sign
+  // changes are queued, breadth first, down to REFINE_MAX_DEPTH. The number of cells Newton runs
+  // from is capped at REFINE_CELL_CAP, the number of cells examined at REFINE_VISIT_CAP, the
+  // refinement stops once REFINE_ROOT_CAP roots are located (a continuum), and any of the caps
+  // is reported in `seeding.refineCapped`, never applied silently. A sign
+  // change of both components on a cell's boundary is a scale-free, unit-free signal: it does
+  // not compare |F| with anything.
+  const cornerX = (i: number) => box.x.min + (i * width) / n;
+  const cornerY = (j: number) => box.y.min + (j * height) / n;
+  type Cell = { x0: number; x1: number; y0: number; y1: number; depth: number; f: number[]; g: number[] };
+  const bothChange = (f: number[], g: number[]) => {
+    if (!f.every(Number.isFinite) || !g.every(Number.isFinite)) return false;
+    const changes = (v: number[]) => Math.min(...v) <= 0 && Math.max(...v) >= 0;
+    return changes(f) && changes(g);
+  };
+  const cf = new Float64Array((n + 1) * (n + 1));
+  const cg = new Float64Array((n + 1) * (n + 1));
+  for (let j = 0; j <= n; j++) {
+    for (let i = 0; i <= n; i++) {
+      const F = sys.eval({ x: cornerX(i), y: cornerY(j) });
+      cf[j * (n + 1) + i] = F.x;
+      cg[j * (n + 1) + i] = F.y;
+    }
+  }
+  const level0: { cell: Cell; m: number }[] = [];
+  for (let j = 0; j < n; j++) {
+    for (let i = 0; i < n; i++) {
+      const ks = [j * (n + 1) + i, j * (n + 1) + i + 1, (j + 1) * (n + 1) + i, (j + 1) * (n + 1) + i + 1];
+      const f = ks.map((k) => cf[k]), g = ks.map((k) => cg[k]);
+      if (!bothChange(f, g)) continue;
+      const m = mag[j * n + i];
+      level0.push({ cell: { x0: cornerX(i), x1: cornerX(i + 1), y0: cornerY(j), y1: cornerY(j + 1), depth: 0, f, g }, m: Number.isFinite(m) ? m : Infinity });
+    }
+  }
+  level0.sort((u, v) => u.m - v.m);
+  const queue: Cell[] = level0.map((e) => e.cell);
+  let refined = 0;
+  let head = 0;
+  const rootInside = (c: Cell) => located.some((r) => r.at.x >= c.x0 - r.locTol && r.at.x <= c.x1 + r.locTol && r.at.y >= c.y0 - r.locTol && r.at.y <= c.y1 + r.locTol);
+  let visited = 0;
+  let refineCapped = false;
+  while (head < queue.length) {
+    if (visited >= REFINE_VISIT_CAP) { refineCapped = true; break; }
+    const c = queue[head++];
+    visited++;
+    // Newton runs only when no located root lies in the cell already (a run from the centre of a
+    // cell around a known root would land on it again); the cell is split regardless, because a
+    // cell can hold several roots (on [-100, 100]² the origin and the saddle (1, 0) of the x⁷
+    // system share a cell and its boundary y = 0): the sub-cells that do not contain the known
+    // root but still show both sign changes are where a second root hides.
+    if (!rootInside(c)) {
+      if (refined >= REFINE_CELL_CAP || located.length >= REFINE_ROOT_CAP) { refineCapped = true; break; }
+      refined++;
+      runSeed({ x: (c.x0 + c.x1) / 2, y: (c.y0 + c.y1) / 2 });
+    }
+    if (c.depth >= REFINE_MAX_DEPTH) continue;
+    const xm = (c.x0 + c.x1) / 2, ym = (c.y0 + c.y1) / 2;
+    // Corner order of a cell: [x0y0, x1y0, x0y1, x1y1]; new values: bottom, left, centre, right, top.
+    const at = (x: number, y: number) => sys.eval({ x, y });
+    const bottom = at(xm, c.y0), left = at(c.x0, ym), centre = at(xm, ym), right = at(c.x1, ym), top = at(xm, c.y1);
+    const sub = (x0: number, x1: number, y0: number, y1: number, F: Vec2[]) => {
+      const f = F.map((v) => v.x), g = F.map((v) => v.y);
+      if (bothChange(f, g)) queue.push({ x0, x1, y0, y1, depth: c.depth + 1, f, g });
+    };
+    const old = c.f.map((fx, k) => ({ x: fx, y: c.g[k] }));
+    sub(c.x0, xm, c.y0, ym, [old[0], bottom, left, centre]);
+    sub(xm, c.x1, c.y0, ym, [bottom, old[1], centre, right]);
+    sub(c.x0, xm, ym, c.y1, [left, centre, old[2], top]);
+    sub(xm, c.x1, ym, c.y1, [centre, right, top, old[3]]);
+  }
+  const seeding: SeedingReport = { seedGrid, scanGrid, signChanges, candidates: candidates.length, seeds: scanSeeds.length, capped, edgeSeeds, edgeCapped, refined, refineCapped };
   // the resolution the roots were located to.
   const dedupe = located.reduce((m, r) => Math.max(m, r.locTol), stepTol);
 
@@ -709,11 +872,13 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   // this is the level below which an entry, the determinant or the trace is zero for this
   // problem. Local to the point, never a box-wide statistic (review C4).
   const equilibria: Equilibrium[] = located.map(({ at, locTol }) => {
-    const { J: jacobian, error, domainEdge } = jacobianWithError(sys, at);
+    const { J: jacobian, errors, domainEdge } = jacobianWithError(sys, at);
     if (domainEdge) return { at, jacobian, ...classify(jacobian), caveat: "domainEdge" };
     const locationError = Math.max(10 * stepTol, locTol);
-    const zeroFloor = Number.isFinite(error) ? 10 * (error + jacobianSensitivity(sys, at, jacobian) * locationError) : Infinity;
-    return { at, jacobian, ...classify(jacobian, undefined, { zeroFloor }) };
+    // Per entry (review J item 6): the 1e8 entry's rounding must not be charged to the 1e-8 entry.
+    const S = jacobianSensitivityEntries(sys, at, jacobian);
+    const entryErrors = errors.map((row, i) => row.map((e, j) => 10 * (e + S[i][j] * locationError))) as Matrix2;
+    return { at, jacobian, ...classify(jacobian, undefined, { entryErrors }) };
   });
 
   const singular = singularPoints.length ? { singularPoints } : {};

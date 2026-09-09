@@ -419,14 +419,21 @@ describe("ill-scaled linear systems through findEquilibria (J.5c)", () => {
     expect(Math.abs(eig[0] + 1)).toBeLessThan(1e-5);
   });
 
-  it("x' = 1e10 x, y' = 1e-10 y: the small eigenvalue is below the Jacobian's error and is honestly not resolved", () => {
-    // Same error e ~ 4.4e-5 (the 1e10 entry sets the rounding floor of the whole matrix). The
-    // determinant 1 is below e (|a| + |d|) ~ 4.4e5, so det is zero to this precision: non_hyperbolic
-    // with the nonHyperbolic caveat, although in exact arithmetic the eigenvalue 1e-10 is positive.
+  it("x' = 1e10 x, y' = 1e-10 y: with per-entry errors the 1e-10 eigenvalue is resolved (review J item 6)", () => {
+    // J = diag(1e10, 1e-10). Per-entry errors: e_a ~ 4.4e-6 (rounding of |f| = 1e4 on the x
+    // stencil at h = 1e-6), e_d ~ 4.4e-26 (|g| = 1e-16 on the y stencil), e_b = e_c = 0 (f does
+    // not depend on y, g not on x), times the 10x margin. err(det) = e_a |d| + e_d |a| ~ 4.4e-15 +
+    // 4.4e-15 << det = 1: resolved. tr > 0, disc = (a - d)² > 0: real, both positive -> unstable
+    // node with eigenvalues 1e10 and det / 1e10 = 1e-10. (Under the old single error e = 4.4e-5 for
+    // all four entries, e (|a| + |d|) ~ 4.4e5 > 1 hid the determinant and the point was reported
+    // non_hyperbolic; that expectation was derived from the coarser error model.)
     const r = findEquilibria(compileSystem({ f: "1e10*x", g: "1e-10*y" }), box(-1, 1));
     expect(r.points).toHaveLength(1);
-    expect(r.points[0].classification).toBe("non_hyperbolic");
-    expect(r.points[0].caveat).toBe("nonHyperbolic");
+    expect(r.points[0].classification).toBe("unstable_node");
+    expect(r.points[0].caveat).toBeUndefined();
+    const eig = r.points[0].eigenvalues.map((e) => e.re).sort((a, b) => a - b);
+    expect(eig[1] / 1e10).toBeCloseTo(1, 9);
+    expect(eig[0] / 1e-10).toBeCloseTo(1, 6);
   });
 
   it("a genuine centre and a double root keep their honest verdicts", () => {
@@ -476,13 +483,22 @@ describe("local acceptance, ill-scaled solve, resolution dedupe, vanishing test 
     expect(r6.points[0].determinant).toBeCloseTo(2, 3);
   });
 
-  it.fails("J.3/J.6: the 1e8 variant is an unstable node (needs per-entry Jacobian errors, review J item 6)", () => {
-    // tr = 1e8 + 1e-8, det = 2: eigenvalues ~1e8 and ~2e-8, both positive -> unstable node. With a
-    // single error for all entries (~4e-5 from the 1e8 entry) the determinant 2 is below the
-    // propagated error e (|a| + |b| + |c| + |d|) ~ 4e3 and is called zero: non_hyperbolic today.
-    const r = findEquilibria(compileSystem({ f: "1e8*x + y", g: "-x + 1e-8*y" }), box(-1, 1));
-    expect(r.points).toHaveLength(1);
-    expect(r.points[0].classification).toBe("unstable_node");
+  it("J.3/J.6: the 1e8 variant is an unstable node with eigenvalues ~1e8 and ~2e-8 (per-entry Jacobian errors)", () => {
+    // tr = 1e8 + 1e-8, det = 2: eigenvalues ~1e8 and det / 1e8 = 2e-8, both positive -> unstable
+    // node. A single error for all entries (~4e-7 from the 1e8 entry, with the 10x margin) put
+    // the determinant 2 below e (|a| + |b| + |c| + |d|) ~ 40; per entry, err(det) = e_a |d| +
+    // e_d |a| + e_b |c| + e_c |b| ~ 4e-15 (e_a 4.4e-7 · 1e-8, e_d 4.4e-23 · 1e8, e_b, e_c ~ 4e-15).
+    for (const b of [box(-1, 1), box(-1000, 1000), offsetBox]) {
+      for (const s of ["1", "1e-6", "1e6"]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*(1e8*x + y)`, g: `${s}*(-x + 1e-8*y)` }), b);
+        expect(r.points, `${s} ${JSON.stringify(b)}`).toHaveLength(1);
+        expect(r.points[0].classification).toBe("unstable_node");
+        expect(r.points[0].caveat).toBeUndefined();
+        const eig = r.points[0].eigenvalues.map((e) => e.re / Number(s)).sort((u, v) => u - v);
+        expect(eig[1] / 1e8).toBeCloseTo(1, 6);
+        expect(eig[0] / 2e-8).toBeCloseTo(1, 3);
+      }
+    }
   });
 
   it("J.3: the saddles of x' = y, y' = -x - y + x⁷ survive a huge box (det J ~ 1e14 at the scan seeds)", () => {
@@ -574,6 +590,148 @@ describe("local acceptance, ill-scaled solve, resolution dedupe, vanishing test 
       expect(near(r.points[1].at, 1, 0, 1e-9)).toBe(true);
       expect(r.points[1].classification).toBe("unstable_node");
       expect(r.singularPoints).toBeUndefined();
+    }
+  });
+});
+
+describe("rank-one steps, sign-change quadtree, domain-edge lines, error-based bands (review J items 2, 4, 5, 6, 9)", () => {
+  const offsetBox = { x: { min: -1, max: 3 }, y: { min: -2, max: 2 } };
+  const skewBox = { x: { min: -1.3, max: 2.1 }, y: { min: -0.7, max: 1.9 } };
+  const onAxis = (p: { x: number; y: number }) => Math.min(Math.abs(p.x), Math.abs(p.y)) <= 1e-9 * Math.max(1, Math.hypot(p.x, p.y));
+
+  it("J.2: the SI model x' = -xy, y' = xy has both axes as equilibria: a continuum (one connected cross) on every box and scale", () => {
+    // F = xy (-1, 1) vanishes exactly on {xy = 0}: the two axes, which meet at the origin, so the
+    // equilibrium set is ONE connected continuum (the connectedness relation "the field vanishes
+    // between neighbours" joins the two axes through the origin). J = [[-y, -x], [y, x]] has
+    // det = 0 everywhere: every point is non-hyperbolic. The rank-one Jacobian used to send every
+    // Newton run to the origin (the Marquardt-scaled step is -(x, y) / 2); the pseudo-inverse step
+    // -h ∇h / |∇h|² lands on the nearest axis. Same for x' = xy, y' = 0.
+    for (const [f, g] of [["-x*y", "x*y"], ["x*y", "0"]]) {
+      for (const b of [box(-2, 2), offsetBox, skewBox, box(-200, 200)]) {
+        for (const s of ["1", "1e-6", "1e6"]) {
+          const r = findEquilibria(compileSystem({ f: `${s}*(${f})`, g: `${s}*(${g})` }), b, { maxPoints: 200 });
+          const label = `${f} ${s} ${JSON.stringify(b)}`;
+          expect(r.warning, label).toBe("possible_continuum");
+          expect(r.geometry!.components, label).toBe(1);
+          expect(r.geometry!.continuumComponents, label).toBe(1);
+          expect(r.points.length, label).toBeGreaterThanOrEqual(20);
+          for (const p of r.points) {
+            expect(onAxis(p.at), label).toBe(true);
+            expect(p.classification, label).toBe("non_hyperbolic");
+          }
+          // Both axes are represented, away from the origin.
+          expect(r.points.some((p) => Math.abs(p.at.y) <= 1e-9 && Math.abs(p.at.x) > 0.3), label).toBe(true);
+          expect(r.points.some((p) => Math.abs(p.at.x) <= 1e-9 && Math.abs(p.at.y) > 0.3), label).toBe(true);
+          expect(r.singularPoints, label).toBeUndefined();
+        }
+      }
+    }
+  });
+
+  it("J.4: x' = y, y' = -x - y + x⁷ finds exactly (0, 0) stable spiral and (±1, 0) saddles on every box and scale", () => {
+    // Roots of x⁷ = x: 0, ±1. J = [[0, 1], [7x⁶ - 1, -1]]: at 0 trace -1, det 1, disc -3 -> stable
+    // spiral; at ±1 det -6 -> saddle. On [-100, 100]² and larger the origin sits on a scan-cell
+    // corner whose neighbouring centres lie in the saddles' basins (no |F| minimum, no seed in its
+    // basin); the sign-change quadtree splits the cell that has the origin at its corner until a
+    // run from a sub-cell centre lands on it, so `seeding.refined` is positive.
+    for (const b of [box(-3, 3), box(-10, 10), box(-100, 100), box(-1000, 1000), { x: { min: -30, max: 170 }, y: { min: -120, max: 80 } }]) {
+      for (const s of ["1", "1e-6", "1e6"]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*y`, g: `${s}*(-x - y + x^7)` }), b);
+        const label = `${s} ${JSON.stringify(b)}`;
+        expect(r.points, label).toHaveLength(3);
+        expect(r.warning, label).toBeUndefined();
+        expect(r.seeding.refined, label).toBeGreaterThan(0);
+        expect(r.seeding.refineCapped, label).toBe(false);
+        const origin = r.points.find((p) => near(p.at, 0, 0, 1e-9))!;
+        expect(origin, label).toBeTruthy();
+        expect(origin.classification, label).toBe("stable_spiral");
+        expect(origin.trace / Number(s)).toBeCloseTo(-1, 6);
+        expect(origin.determinant / Number(s) ** 2).toBeCloseTo(1, 6);
+        for (const x of [-1, 1]) {
+          const saddle = r.points.find((p) => near(p.at, x, 0, 1e-9))!;
+          expect(saddle, label).toBeTruthy();
+          expect(saddle.classification, label).toBe("saddle");
+          expect(saddle.determinant / Number(s) ** 2).toBeCloseTo(-6, 5);
+        }
+      }
+    }
+  });
+
+  it("J.4: the quadtree caps are reported, never silent: sin(20πx), sin(20πy) on [-1, 1]²", () => {
+    // 41² = 1681 roots (k/20, m/20): far more sign-change cells than REFINE_ROOT_CAP roots, so the
+    // refinement stops and says so; the scan cap is hit as before.
+    const r = findEquilibria(compileSystem({ f: "sin(20*pi*x)", g: "sin(20*pi*y)" }), box(-1, 1));
+    expect(r.seeding.refineCapped).toBe(true);
+    expect(r.seeding.capped).toBe(true);
+    expect(r.truncated).toBe(true);
+    // A field without a common sign change never enters the quadtree: x' = y, y' = x⁸ + 1.
+    const none = findEquilibria(compileSystem({ f: "y", g: "x^8 + 1" }), box(-100, 100));
+    expect(none.seeding.refined).toBe(0);
+    expect(none.seeding.refineCapped).toBe(false);
+    expect(none.points).toEqual([]);
+  });
+
+  it("J.5: a line of equilibria on the edge of the field's domain: x' = sqrt(x) y, y' = x vanishes on all of x = 0", () => {
+    // sqrt(x) is undefined for x < 0; F(0, y) = (0, 0) for every y, so the whole edge x = 0 is an
+    // equilibrium set: one connected line, every point a domain-edge point (no linearization).
+    // Newton from a cell centre linearizes sqrt across the edge (d = (-x, -y/2)) and walked every
+    // seed to the origin; the edge seeds (bisection from each edge cell toward its undefined
+    // neighbour) start ON the edge and the rank-one step lands there exactly.
+    for (const b of [box(-2, 2), offsetBox, skewBox, box(-200, 200)]) {
+      for (const s of ["1", "1e-6", "1e6"]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*sqrt(x)*y`, g: `${s}*x` }), b, { maxPoints: 200 });
+        const label = `${s} ${JSON.stringify(b)}`;
+        const height = b.y.max - b.y.min;
+        expect(r.warning, label).toBe("possible_continuum");
+        expect(r.geometry!.components, label).toBe(1);
+        expect(r.geometry!.continuumComponents, label).toBe(1);
+        expect(r.seeding.edgeSeeds, label).toBeGreaterThanOrEqual(60);
+        expect(r.seeding.edgeCapped, label).toBe(false);
+        expect(r.points.length, label).toBeGreaterThanOrEqual(20);
+        for (const p of r.points) {
+          expect(Math.abs(p.at.x), label).toBeLessThanOrEqual(1e-12 * (b.x.max - b.x.min));
+          expect(p.classification, label).toBe("non_hyperbolic");
+          expect(p.caveat, label).toBe("domainEdge");
+        }
+        // The line is found along the whole edge, not only near the origin.
+        const ys = r.points.map((p) => p.at.y);
+        expect(Math.max(...ys) - Math.min(...ys), label).toBeGreaterThan(0.8 * height);
+      }
+    }
+    // The isolated domain-edge root of x' = sqrt(x), y' = y is still a single point: every edge seed converges to it.
+    const single = findEquilibria(compileSystem({ f: "sqrt(x)", g: "y" }), { x: { min: -1, max: 2 }, y: { min: -1, max: 1 } });
+    expect(single.points).toHaveLength(1);
+    expect(single.seeding.edgeSeeds).toBeGreaterThanOrEqual(60);
+    expect(single.warning).toBeUndefined();
+  });
+
+  it("J.9: the 121 lattice points of x' = sin(πx), y' = sin(πy) get uniform verdicts, decided by the Jacobian's error", () => {
+    // At (k, m): J = diag(π cos πk, π cos πm) = diag(±π, ±π). Equal signs: a star node whose
+    // finite-difference diagonal entries differ by rounding (~1e-10) while the off-diagonals are
+    // exactly 0 (f does not depend on y): disc = (a - d)² is within its error 2 |a - d| (e_a + e_d)
+    // (e ~ 4e-9 after the 10x margin), so EVERY such point is star_node with the repeatedRoot
+    // caveat, whether or not the two entries happened to come out bit-identical. Opposite signs:
+    // det = -π² -> saddle, no caveat. 61 of the first kind, 60 of the second, on every scale.
+    for (const s of ["1", "1e-6", "1e6"]) {
+      const r = findEquilibria(compileSystem({ f: `${s}*sin(pi*x)`, g: `${s}*sin(pi*y)` }), box(-5, 5), { maxPoints: 200 });
+      expect(r.points, s).toHaveLength(121);
+      let stars = 0, saddles = 0;
+      for (const p of r.points) {
+        const k = Math.round(p.at.x), m = Math.round(p.at.y);
+        expect(near(p.at, k, m, 1e-9), s).toBe(true);
+        if ((k + m) % 2 === 0) {
+          stars++;
+          expect(p.classification, `${s} (${k}, ${m})`).toBe("star_node");
+          expect(p.caveat, `${s} (${k}, ${m})`).toBe("repeatedRoot");
+          expect(Math.abs(p.eigenvalues[0].re / Number(s)), `${s} (${k}, ${m})`).toBeCloseTo(Math.PI, 8);
+        } else {
+          saddles++;
+          expect(p.classification, `${s} (${k}, ${m})`).toBe("saddle");
+          expect(p.caveat, `${s} (${k}, ${m})`).toBeUndefined();
+        }
+      }
+      expect(stars).toBe(61);
+      expect(saddles).toBe(60);
     }
   });
 });

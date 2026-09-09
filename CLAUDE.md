@@ -26,14 +26,17 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   `checkpoint` for wall-clock budgets), `jacobian` (+ `jacobianWithError`), `classify` (trace/det
   classification; `caveat` is a key: center / nonHyperbolic / notFinite / repeatedRoot; optional
   `zeroFloor` = the numerical error of the Jacobian, never a box-wide statistic), `equilibria`
-  (seeded damped Newton on the row-equilibrated Jacobian + Marquardt-scaled LM when it is
-  numerically rank-deficient, difference step shrinking with the Newton step; a root is accepted
+  (damped Newton on the row-equilibrated Jacobian + truncated pseudo-inverse step when it is
+  numerically rank-deficient, difference step shrinking with the Newton step; seeded from a grid,
+  the |F| minima of a scan, the domain's edge (bisection) and a sign-change quadtree, every cap
+  reported in `seeding`; a root is accepted
   by a LOCAL test only: Newton step below the location tolerance, or residual at its rounding
   floor, never a residual tolerance from the box; a vanishing test drops points where the field
   is discontinuous into `singularPoints`; duplicates merge within the resolution each run
   achieved, never a fraction of the box; a
   continuum needs a count signal AND a shape signal AND connectedness (the field vanishes between
-  neighbours), else `multiple_non_hyperbolic`), `slope-field` (first-order base: `FirstOrderSpec` explicit `dy/dt = g(t, y)`
+  neighbours), else `multiple_non_hyperbolic`; classification uses PER-ENTRY Jacobian errors, and
+  a repeated root decided within error always carries `repeatedRoot`), `slope-field` (first-order base: `FirstOrderSpec` explicit `dy/dt = g(t, y)`
   or differential `M dt + N dy = 0`; `toSystem` returns a SystemSpec with `variables: "ty"` (the
   student's t is the horizontal coordinate x of the reduced planar system), constant solutions
   checked along whole lines,
