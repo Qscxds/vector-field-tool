@@ -218,6 +218,13 @@ describe("label tables", () => {
     expect(labels("en").ui.secondOrderNotAffine).toMatch(/linearly/);
   });
 
+  it("the second-order syntax hint says the reduction is checked numerically at sample points, in both languages (J review C.2)", () => {
+    expect(labels("en").ui.syntaxHintSecondOrder).toMatch(/checked numerically at sample points/);
+    expect(labels("en").ui.syntaxHintSecondOrder).toMatch(/cannot be detected/);
+    expect(labels("zh").ui.syntaxHintSecondOrder).toMatch(/采样点/);
+    expect(labels("zh").ui.syntaxHintSecondOrder).toMatch(/数值检验/);
+  });
+
   it("caveats read as full sentences in both languages", () => {
     for (const locale of LOCALES) {
       for (const text of Object.values(labels(locale).caveat)) {
