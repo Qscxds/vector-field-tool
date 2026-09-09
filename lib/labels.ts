@@ -83,7 +83,8 @@ export type LabelTable = {
     | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
-    | "secondOrderImplicitProduct",
+    | "secondOrderImplicitProduct"
+    | "downloadPng" | "downloadFailed" | "exportRange" | "exportSnapshot" | "interactionHintTouch",
     string
   >;
 };
@@ -317,6 +318,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       equationSecond: "{equation}",
       presetCustom: "自定义",
       secondOrderImplicitProduct: "「{name}」缺少乘号；乘号要写出来，例如 x*x'' 或 t*x''。",
+      downloadPng: "下载 PNG",
+      downloadFailed: "生成图片失败，请重试。",
+      exportRange: "{hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}]",
+      exportSnapshot: "t = {t}",
+      interactionHintTouch: "轻点预览解曲线 · 长按固定 · 双指缩放 · 拖动平移 · 双击复位",
     },
   },
   en: {
@@ -547,6 +553,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       equationSecond: "{equation}",
       presetCustom: "Custom",
       secondOrderImplicitProduct: "“{name}” is missing a multiplication sign; write the multiplication explicitly, e.g. x*x'' or t*x''.",
+      downloadPng: "Download PNG",
+      downloadFailed: "The picture could not be generated; please try again.",
+      exportRange: "{hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
+      exportSnapshot: "t = {t}",
+      interactionHintTouch: "Tap to preview a solution · hold to keep it · pinch to zoom · drag to pan · double-tap to reset",
     },
   },
 };

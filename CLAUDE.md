@@ -76,7 +76,14 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   problem domain, never at the view edge).
 - `components/VectorFieldCanvas.tsx` draws a Scene on a base + overlay canvas; data props only,
   never calls lib/core; draws the axis names (t or x from `scene.system.variables`, and y);
-  reports pointer/wheel as world/screen coordinates.
+  reports pointer/wheel as world/screen coordinates. Touch pointers go through `lib/gestures.ts`
+  (pure state machine, every event carries its time: pinch = distance ratio -> `onWheelZoom` about
+  the midpoint, one-finger pan, tap -> hover preview that stays, double tap (300 ms / 30 px) ->
+  reset, long press (500 ms, < 8 px) -> keep); mouse and pen keep the original handlers.
+  `components/drawScene.ts` is the base-layer drawing shared with `components/exportScenePng.ts`
+  (2x PNG, white footer strip with the one-line text of `lib/export-footer.ts`: equation, displayed
+  range at 3 significant digits, `t = t0` when time-dependent, origin; canvas drawing is browser
+  only and not unit-tested, the footer text and file name are).
   `components/useInteractiveScene.ts` the interaction state shared by both shells (home box,
   viewport with `equalScale` (default true; false fills the canvas with the entered box and the
   web shell shows a persistent not-to-scale warning), resampled field, debounced features, rAF

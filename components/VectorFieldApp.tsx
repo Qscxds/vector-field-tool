@@ -8,6 +8,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
+import { exportScenePng } from "@/components/exportScenePng";
+import { exportFileName, exportFooterText } from "@/lib/export-footer";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
@@ -125,8 +127,29 @@ const VF_STYLE = `
   .vf-columns { flex-direction: column; gap: 14px; }
   .vf-form { width: auto; flex: none; }
   .vf-canvas { width: 100%; }
+  .vf-app [data-preset-select], .vf-app [data-copy-link], .vf-app [data-download-png] { width: 100%; }
+}
+/* Touch screens: 44 px targets, and 16 px text so iOS does not zoom into a focused field. */
+@media (pointer: coarse) {
+  .vf-app button, .vf-app select, .vf-app input:not([type="checkbox"]) { min-height: 44px; font-size: 16px; }
+  .vf-app input[type="checkbox"] { width: 22px; height: 22px; }
 }
 `;
+
+/** Whether the primary pointer is a finger (the interaction hint then names taps, not clicks); false until mounted. */
+function useCoarsePointer(): boolean {
+  const [coarse, setCoarse] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined" || typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia("(pointer: coarse)");
+    const update = () => setCoarse(query.matches);
+    update();
+    query.addEventListener("change", update);
+    return () => query.removeEventListener("change", update);
+  }, []);
+  return coarse;
+}
+
 
 /** Width of the picture column, measured with a ResizeObserver; null until mounted (server render). */
 function useMeasuredWidth(): [React.RefObject<HTMLDivElement | null>, number | null] {
@@ -377,6 +400,28 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
 
   const [copied, setCopied] = useState(false);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
+  const coarsePointer = useCoarsePointer();
+  // PNG export: the picture on screen (same drawScene) at 2x with a one-line footer, saved through
+  // a temporary link whose object URL is revoked once the click has been dispatched.
+  const [downloadFailed, setDownloadFailed] = useState(false);
+  const downloadPng = useCallback(async () => {
+    if (!scene || !viewport) return;
+    setDownloadFailed(false);
+    try {
+      const footer = exportFooterText(scene, viewport, locale, window.location.origin);
+      const blob = await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer, scale: 2 });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = exportFileName(presetId ?? form.mode, new Date());
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch {
+      setDownloadFailed(true);
+    }
+  }, [scene, viewport, locale, form.arrowMode, form.mode, presetId]);
   const fallbackInputRef = useRef<HTMLInputElement | null>(null);
   const copyLink = useCallback(async () => {
     const url = buildShareUrl(window.location.origin, "/vector-field", appState);
@@ -576,6 +621,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           <button type="button" onClick={copyLink} style={buttonStyle} disabled={compiled.error !== null} data-copy-link aria-live="polite">
             {copied ? L.ui.copied : L.ui.copyLink}
           </button>
+          <button type="button" onClick={downloadPng} style={buttonStyle} disabled={!scene || !viewport} data-download-png>
+            {L.ui.downloadPng}
+          </button>
+          {downloadFailed ? (
+            <p role="alert" style={{ margin: 0, color: "#991b1b" }} data-download-failed>
+              {L.ui.downloadFailed}
+            </p>
+          ) : null}
           {fallbackUrl ? (
             <label style={labelStyle}>
               <span>{L.ui.copyLinkFallback}</span>
@@ -631,7 +684,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                   yMin: formatNumber(viewport.box.y.min, 3),
                   yMax: formatNumber(viewport.box.y.max, 3),
                 })}{" "}
-                · {L.ui.interactionHint}
+                · {coarsePointer ? L.ui.interactionHintTouch : L.ui.interactionHint}
               </p>
             </>
           ) : (

@@ -62,7 +62,11 @@ app/layout.tsx             根布局（含 iframe 内的 history 补丁，不要
 app/opengraph-image.tsx    OG 图（next/og ImageResponse，1200×630，画 logistic 斜率场 + 站名，构建时静态生成）
 app/icon.svg / robots.ts / sitemap.ts  站标；robots.txt（禁 /embed 与 /mcp）；sitemap.xml（/、/vector-field、/help）
 base-url.ts                公网地址：BASE_URL 或 Vercel 系统变量，喂给 assetPrefix
-components/VectorFieldCanvas.tsx   两层 canvas：底层画场 / 等值线 / 轨线 / 标记，overlay 画悬停预览；上报指针与滚轮
+components/VectorFieldCanvas.tsx   两层 canvas：底层画场 / 等值线 / 轨线 / 标记，overlay 画悬停预览；上报指针与滚轮；触摸走 lib/gestures（捏合缩放、单指平移、轻点预览、长按固定、双击复位）
+components/drawScene.ts            底层画面的绘制函数 drawScene，屏幕与 PNG 导出共用（同一张图）
+components/exportScenePng.ts       2 倍 PNG 导出：drawScene + 一行页脚（方程、显示范围、站点地址），仅浏览器可运行
+lib/gestures.ts                    纯触摸手势状态机（无 React、无时钟），有推导测试
+lib/export-footer.ts               PNG 页脚文案与文件名（纯函数，有测试）
 components/useInteractiveScene.ts  交互状态机：视口、重采样、防抖重算、hover 节流、点击固定
 lib/core/                  parse field integrate jacobian classify equilibria slope-field detect-form exact types
 lib/render/                viewport arrows ticks color contours
