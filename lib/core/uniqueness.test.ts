@@ -260,20 +260,38 @@ describe("the verdict does not depend on the box (review J: smooth right-hand si
     }
   });
 
-  it("a steep exponential, 1 - exp(-100 y) at 0: bounded at scales 2 and 20; at scale 200 the side below is untestable, never a false claim", () => {
+  it("a steep exponential, 1 - exp(-100 y) at 0, is bounded at scales 2, 20, 200 and 2000 when the probe knows the magnitude of g, and stops where 100 δ lies in [0.0045, 0.01805] whatever the scale", () => {
     // Above the line D = (1 - e^{-100 δ}) / δ levels off at 100 whatever the scale. Below it
-    // h = 1 - e^{100 δ}: with scale 20 the ladder starts at δ = 0.2 (e^20 = 4.8e8) and drops by
-    // less than 1e15 over any four levels, so the descent continues to where D levels off at 100.
-    // With scale 200 it starts at e^200 = 7e86 and the next level, e^50 = 5e21, is already
-    // below 10 eps of it: a black-box probe cannot tell such a value from rounding residue of the
-    // first, so that side stops with one usable level, "untestable": no claim, rather than the
-    // false "unbounded" of a fixed ladder. Bounded on the other side; the worse side decides.
-    for (const scale of [2, 20]) {
-      const r = lipschitzProbe((d) => 1 - Math.exp(-100 * d), scale);
+    // h = 1 - e^{100 δ} and |h| / δ = 100 D(u) with D(u) = (e^u - 1) / u, u = 100 δ, so
+    // log D(u) = u/2 + u²/24 - u⁴/2880 + ... The descent compares a level with the one two
+    // coarser (u against 16 u) and stops when |log(D(16u) / D(u))| = 7.5 u + 10.625 u² - 22.8 u⁴
+    // falls below 0.05 · log 16 = 0.13863, i.e. at the first usable u <= 0.018024 (the quartic
+    // moves the bound by 2e-6); the previous level, 4 u, must still have failed the test, so
+    // 4 u >= 0.018024. The finest offset therefore satisfies 0.0045 <= 100 δ <= 0.01805 whatever
+    // the scale sets as the first offset (scale 2: 0.0078; 20: 0.00488; 200: 0.0122; 2000:
+    // 0.00763, its first offset giving e^2000 = Infinity and being skipped). The local exponent at
+    // the stop is negative (D shrinks with δ) and smaller than 0.05 in size by construction.
+    // Each value e^200, e^50, e^12.5 is exact to eps of itself, so measured against its own
+    // magnitude none is at the floor and the verdict does not depend on the box.
+    const g = (d: number) => 1 - Math.exp(-100 * d);
+    const magnitude = (d: number) => Math.abs(g(d));
+    for (const scale of [2, 20, 200, 2000]) {
+      const r = lipschitzProbe(g, scale, { magnitude });
       expect(r.verdict, `scale ${scale}`).toBe("bounded_at_tested_scales");
+      expect(r.sides.below.verdict, `scale ${scale}`).toBe("bounded_at_tested_scales");
       expect(Math.abs(r.exponent), `scale ${scale}`).toBeLessThan(LEVEL_OFF_EXPONENT);
+      expect(r.sides.below.exponent, `scale ${scale}`).toBeLessThan(0);
+      expect(100 * r.sides.below.finestOffset, `scale ${scale}`).toBeGreaterThanOrEqual(0.0045);
+      expect(100 * r.sides.below.finestOffset, `scale ${scale}`).toBeLessThanOrEqual(0.01805);
     }
-    const wide = lipschitzProbe((d) => 1 - Math.exp(-100 * d), 200);
+    // The raw probe (no magnitude) has only the neighbouring levels as a yardstick: with scale 20
+    // the ladder starts at δ = 0.2 (e^20 = 4.8e8) and drops by less than 1e15 over any four
+    // levels, so it too reaches the level-off; with scale 200 it starts at e^200 = 7e86 and the
+    // next level, e^50 = 5e21, is below 10 eps of it: indistinguishable from rounding residue of
+    // the first for a black box, so that side stops with one usable level, "untestable": no
+    // claim, rather than the false "unbounded" of a fixed ladder. The worse side decides.
+    for (const scale of [2, 20]) expect(lipschitzProbe(g, scale).verdict, `raw, scale ${scale}`).toBe("bounded_at_tested_scales");
+    const wide = lipschitzProbe(g, 200);
     expect(wide.sides.above.verdict).toBe("bounded_at_tested_scales");
     expect(wide.sides.below).toMatchObject({ verdict: "untestable", levels: 1 });
     expect(wide.verdict).toBe("untestable");

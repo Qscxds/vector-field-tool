@@ -578,8 +578,9 @@ const UNIQUENESS_RANK: Record<UniquenessVerdict, number> = { unbounded: 3, borde
 /**
  * Uniqueness at y = c: the Lipschitz probe on d -> g(t, c + d) - g(t, c) at every usable t (the
  * residual g(t, c) is subtracted so a root located to a few ulps does not read as a 1/δ growth;
- * an undefined value at d = 0 counts as 0). The worst probe decides; the first offset is 1e-2 of
- * the y span, and the verdict is decided at the finest scales (uniqueness.ts).
+ * an undefined value at d = 0 counts as 0; |g(t, c + d)| + |g(t, c)| is the magnitude the rounding
+ * floor of the difference is measured against, local to each offset). The worst probe decides; the
+ * first offset is 1e-2 of the y span, and the verdict is decided at the finest scales (uniqueness.ts).
  */
 function solutionUniqueness(slope: (x: number, y: number) => number, c: number, goodX: number[], span: number, checkpoint?: () => void): SolutionUniqueness {
   let worst: SolutionUniqueness | undefined;
@@ -587,7 +588,7 @@ function solutionUniqueness(slope: (x: number, y: number) => number, c: number, 
   for (const x of goodX) {
     const s0 = slope(x, c);
     const base = Number.isFinite(s0) ? s0 : 0;
-    const r = lipschitzProbe((d) => slope(x, c + d) - base, span, { checkpoint, center: c });
+    const r = lipschitzProbe((d) => slope(x, c + d) - base, span, { checkpoint, center: c, magnitude: (d) => Math.abs(slope(x, c + d)) + Math.abs(base) });
     if (r.verdict === "unbounded") failing++;
     const side: SolutionUniqueness["side"] = r.sides.above.verdict === r.verdict || r.sides.below.verdict !== r.verdict ? "above" : "below";
     if (!worst || UNIQUENESS_RANK[r.verdict] > UNIQUENESS_RANK[worst.verdict]) {

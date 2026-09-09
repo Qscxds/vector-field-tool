@@ -576,15 +576,17 @@ describe("constant solutions are accepted by a local criterion, never by a box-w
     // g' = 100 e^{-100y} > 0: below the line g < 0 (moving down, away), above g > 0 (up, away):
     // unstable. exp(-100 y) is 2.7e43 at y = -1, which used to make the tolerance 2.7e34 and turn
     // 145 samples with |g| < 1 into constant solutions. The uniqueness probe below the line
-    // starts at 1e-2 of the span: e^2 and e^20 at half-widths 1 and 10 (bounded, D levels off at
-    // 100); at half-width 100 it starts at e^200, next to which every finer value looks like
-    // rounding residue, so that side is untestable (see uniqueness.test.ts): no claim is made.
+    // starts at 1e-2 of the span (e^2, e^20, e^200 at half-widths 1, 10, 100); each value is
+    // measured against its own magnitude |g|, so the descent runs on to where the quotients level
+    // off at 100 (uniqueness.test.ts derives the stop, at 100 δ in [0.0045, 0.01805]): bounded
+    // on every box, with the same local exponent up to the grid of offsets.
     for (const half of [1, 10, 100]) {
       const r = firstOrderEquilibria("1 - exp(-100*y)", { min: -half, max: half }, { tRange: { min: -5, max: 5 } });
       expect(r.solutions, `half-width ${half}`).toHaveLength(1);
       expect(r.solutions[0].y).toBe(0);
       expect(r.solutions[0].stability).toBe("unstable");
-      expect(r.solutions[0].uniqueness?.verdict).toBe(half === 100 ? "untestable" : "bounded_at_tested_scales");
+      expect(r.solutions[0].uniqueness?.verdict, `half-width ${half}`).toBe("bounded_at_tested_scales");
+      expect(Math.abs(r.solutions[0].uniqueness!.exponent), `half-width ${half}`).toBeLessThan(0.05);
     }
   });
 

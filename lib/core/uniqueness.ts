@@ -23,10 +23,16 @@
  * - leveling off: |log(D_k / D_{k-2})| / log(δ_{k-2} / δ_k) < LEVEL_OFF_EXPONENT (0.05), i.e. the
  *   quotients moved by less than δ^±0.05 per level over the last two levels: the derivative is
  *   bounded at the scale where they leveled off, "bounded_at_tested_scales";
- * - the rounding floor: |h(δ_k)| < eps · max |h| over the last FLOOR_WINDOW (4) finite levels /
- *   ROUNDING_GUARD (the quotient can no longer be resolved against the values at the neighbouring
- *   scales; a value of exactly 0 always ends the descent), an offset the point's own coordinate
- *   cannot carry (δ < POSITION_GUARD · eps · |center|, where center + δ rounds), or
+ * - the rounding floor: |h(δ_k)| < eps · m_k / ROUNDING_GUARD, where m_k is the magnitude of the
+ *   quantities h(δ_k) was formed from AT THAT OFFSET (`magnitude(d)`: |g(c + d)| + |g(c)| for a
+ *   constant solution, |F(q)| + |F(p)| for an equilibrium), so the floor is local to the level,
+ *   never a statistic of the ladder: below y = 0 of 1 - exp(-100 y) on a box of half-width 100 the
+ *   values e^200, e^50, e^12.5 are each exact to eps of themselves, and the descent runs on to
+ *   where D levels off at 100, as it does on a small box. Without `magnitude` (the raw probe) m_k
+ *   is max |h| over the last FLOOR_WINDOW (4) finite levels, the only yardstick a black box offers
+ *   (there the e^200 start is untestable, never a false claim). A value of exactly 0 always ends
+ *   the descent. So does an offset the point's own coordinate cannot carry
+ *   (δ < POSITION_GUARD · eps · |center|, where center + δ rounds), or
  *   LIPSCHITZ_MAX_LEVELS (60) levels: the growth persisted down to the floor, and α is fitted
  *   (least squares of log D against log δ) over the last TAIL_LEVELS (4) usable levels;
  *   "unbounded" when α >= UNBOUNDED_EXPONENT (0.25), "borderline" when α >= BORDERLINE_EXPONENT
@@ -113,6 +119,13 @@ export type LipschitzProbeOptions = {
    * the descent. Default 0 (no such floor).
    */
   center?: number;
+  /**
+   * The magnitude of the quantities h(d) was formed from, at offset d (|g(c + d)| + |g(c)| for a
+   * difference g(c + d) - g(c)): the rounding floor of h(d) is eps of it. Called only right after
+   * h(d) returned a finite value. Without it the floor is estimated from |h| at the neighbouring
+   * coarser levels (FLOOR_WINDOW), which mistakes a steep exponential's drop for rounding.
+   */
+  magnitude?: (d: number) => number;
 };
 
 /** Offsets δ_k = scale · 1e-2 · 4^-k, k = 0..levels - 1, largest first. */
@@ -137,7 +150,7 @@ function fittedExponent(levels: readonly { delta: number; D: number }[]): number
   return -(sxy / sxx);
 }
 
-function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center: number): SideResult {
+function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center: number, magnitude?: (d: number) => number): SideResult {
   const usable: { delta: number; D: number }[] = [];
   const positionFloor = POSITION_GUARD * EPS * Math.abs(center);
   const recent: number[] = [];
@@ -156,12 +169,16 @@ function probeSide(h: (d: number) => number, scale: number, sign: 1 | -1, center
     if (a > maxH) maxH = a;
     // Nothing to resolve yet: h vanished at every finite level so far.
     if (maxH === 0) continue;
-    // Rounding floor, local in scale: |h| within 10 eps of the values at the neighbouring coarser
-    // levels (a value of exactly 0 always is). The largest value of the whole ladder would be the
-    // wrong yardstick: 1 - exp(-100 y) on a box of half-width 100 is e^200 at the first offset.
+    // Rounding floor, local to the level: 10 eps of the magnitude this value was formed from at
+    // this offset when the caller can say (|g(c + d)| + |g(c)|), else of the values at the
+    // neighbouring coarser levels, the only yardstick a black box offers (the largest value of
+    // the whole ladder would be worse still: e^200 at the first offset of 1 - exp(-100 y) on a
+    // box of half-width 100). A value of exactly 0 always ends the descent.
     recent.push(a);
     if (recent.length > FLOOR_WINDOW) recent.shift();
-    if (a < (EPS * Math.max(...recent)) / ROUNDING_GUARD) break;
+    const m = magnitude ? magnitude(sign * delta) : NaN;
+    const yardstick = Number.isFinite(m) ? m : Math.max(...recent);
+    if (a === 0 || a < (EPS * yardstick) / ROUNDING_GUARD) break;
     usable.push({ delta, D: a / delta });
     const n = usable.length;
     if (n >= MIN_LEVELS) {
@@ -212,9 +229,9 @@ export function lipschitzProbe(h: (d: number) => number, scale: number, opts: Li
   if (!(scale > 0) || !Number.isFinite(scale)) throw new RangeError("scale must be a positive finite number.");
   const center = opts.center ?? 0;
   opts.checkpoint?.();
-  const above = probeSide(h, scale, 1, center);
+  const above = probeSide(h, scale, 1, center, opts.magnitude);
   opts.checkpoint?.();
-  const below = probeSide(h, scale, -1, center);
+  const below = probeSide(h, scale, -1, center, opts.magnitude);
   return combine(above, below, scale);
 }
 
@@ -222,20 +239,26 @@ export function lipschitzProbe(h: (d: number) => number, scale: number, opts: Li
  * Uniqueness at the equilibria of a planar system: for each point, |F(p + d e) - F(p)| / d is
  * probed along the four axis directions (+x, -x, +y, -y); the result is the worse of the two axes,
  * tagged with `along`. The residual F(p) of the numerically located point is subtracted so that a
- * root found to 1e-9 does not read as a 1/δ growth. The first offset is 1e-2 of the longer side of
- * the box; the verdict is decided at the finest scales and does not depend on the box.
+ * root found to 1e-9 does not read as a 1/δ growth, and |F(q)| + |F(p)| is the magnitude the
+ * rounding floor is measured against. The first offset is 1e-2 of the longer side of the box; the
+ * verdict is decided at the finest scales and does not depend on the box.
  */
 export function equilibriaUniqueness(sys: CompiledSystem, points: readonly Vec2[], box: Box, opts: LipschitzProbeOptions = {}): UniquenessResult[] {
   const scale = Math.max(box.x.max - box.x.min, box.y.max - box.y.min);
   return points.map((p) => {
     const f0 = sys.eval(p);
     const base = Number.isFinite(f0.x) && Number.isFinite(f0.y) ? f0 : { x: 0, y: 0 };
+    const baseMagnitude = Math.hypot(base.x, base.y);
     const h = (q: Vec2) => {
       const f = sys.eval(q);
       return Math.hypot(f.x - base.x, f.y - base.y);
     };
-    const alongX = lipschitzProbe((d) => h({ x: p.x + d, y: p.y }), scale, { checkpoint: opts.checkpoint, center: p.x });
-    const alongY = lipschitzProbe((d) => h({ x: p.x, y: p.y + d }), scale, { checkpoint: opts.checkpoint, center: p.y });
+    const magnitude = (q: Vec2) => {
+      const f = sys.eval(q);
+      return Math.hypot(f.x, f.y) + baseMagnitude;
+    };
+    const alongX = lipschitzProbe((d) => h({ x: p.x + d, y: p.y }), scale, { checkpoint: opts.checkpoint, center: p.x, magnitude: (d) => magnitude({ x: p.x + d, y: p.y }) });
+    const alongY = lipschitzProbe((d) => h({ x: p.x, y: p.y + d }), scale, { checkpoint: opts.checkpoint, center: p.y, magnitude: (d) => magnitude({ x: p.x, y: p.y + d }) });
     const worstX = worse(alongX.sides.above, alongX.sides.below);
     const worstY = worse(alongY.sides.above, alongY.sides.below);
     const pick = RANK[worstY.verdict] > RANK[worstX.verdict] ? alongY : alongX;
