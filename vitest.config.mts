@@ -9,5 +9,7 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["*.test.ts", "lib/**/*.test.ts", "app/**/*.test.ts"],
+    // Review agents leave scratch tests under lib/**/__probe__/ (gitignored); never part of the gate.
+    exclude: ["**/node_modules/**", "**/__probe__/**"],
   },
 });
