@@ -19,7 +19,6 @@ import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/s
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
-import { identicallyZeroLine } from "@/lib/labels-forms";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
 import { buildShareUrl, encodeState, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
@@ -819,7 +818,6 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
   return (
     <div>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.formsHeading}</h2>
-      {identicallyZeroLine(fo, L) ? <p style={{ margin: "0 0 6px" }} data-identically-zero>{identicallyZeroLine(fo, L)}</p> : null}
       {reported.length ? (
         <>
           <ul style={{ margin: 0, paddingLeft: 20 }}>

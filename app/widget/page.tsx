@@ -20,7 +20,6 @@ import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
-import { identicallyZeroLine } from "@/lib/labels-forms";
 import type { Scene, SceneKind } from "@/lib/scene";
 
 const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order"]);
@@ -243,8 +242,6 @@ function SceneSummary({ scene }: { scene: Scene }) {
     }
     const all = fo.forms ?? [];
     const reported = reportedForms(all);
-    const zeroLine = identicallyZeroLine(fo, L);
-    if (zeroLine) items.push(zeroLine);
     if (reported.length) {
       items.push(L.tool.formsHeader);
       for (const f of reported) items.push(fill(f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine, { form: L.form[f.form], evidence: f.evidence }));
