@@ -1,6 +1,10 @@
 /**
- * Equilibrium search: seeds on a grid, damped Newton (Levenberg-Marquardt fallback when the
- * Jacobian is singular), de-duplication, classification.
+ * Equilibrium search: seeds on a grid, damped Newton (row-equilibrated solve; Levenberg-Marquardt
+ * fallback when the Jacobian is numerically rank-deficient), LOCAL acceptance of a root (the
+ * residual against the Jacobian at the point and its rounding floor, never a residual tolerance
+ * taken from the box), a vanishing test (the field must tend to its value at the point from every
+ * defined direction, else the point is a singularity of the field and goes to `singularPoints`),
+ * de-duplication within the resolution each run achieved, classification.
  *
  * Missing an equilibrium is worse than misclassifying one (it silently tells the student
  * "nothing is there"), so the search seeds Newton from TWO independent sources:
@@ -32,7 +36,9 @@
  * - many non-hyperbolic points that do not form a curve -> warning 'multiple_non_hyperbolic'
  * - more points than maxPoints            -> `truncated` true; the warning keeps its geometric value,
  *                                            and is 'hit_limit' when there is no other
- * - a seed that diverges or stalls        -> silently dropped
+ * - a seed that diverges or stalls        -> dropped, unless the field is discontinuous where it
+ *                                            stalled: then `singularPoints` (best effort: only
+ *                                            points some run actually ends at are tested)
  *
  * A continuum of equilibria needs a count signal (many non-hyperbolic points), connectedness (the
  * field vanishes between neighbours: a chord-midpoint Newton polish lands strictly between them)
@@ -43,10 +49,10 @@
  */
 import { classify, type ClassifyResult } from "./classify";
 import { assertBox } from "./field";
-import { determinant, jacobianAt, jacobianSensitivity, jacobianWithError } from "./jacobian";
+import { jacobianAt, jacobianSensitivity, jacobianWithError } from "./jacobian";
 import type { CompiledSystem } from "./parse";
 import type { Box, Matrix2, Vec2 } from "./types";
-import type { UniquenessResult } from "./uniqueness";
+import { LIPSCHITZ_FIRST_FRACTION, MIN_LEVELS_FOR_GROWTH, lipschitzProbe, type UniquenessResult } from "./uniqueness";
 
 /** `uniqueness` is attached by the callers that ask for it (equilibriaUniqueness in uniqueness.ts); findEquilibria leaves it unset. */
 export type Equilibrium = { at: Vec2; jacobian: Matrix2; uniqueness?: UniquenessResult } & ClassifyResult;
@@ -84,6 +90,13 @@ export type EquilibriaResult = {
   geometry?: { collinearity: number; curveLike: number; connected: number; components: number; continuumComponents: number };
   /** How the search was seeded, including whether the scan cap was hit. */
   seeding: SeedingReport;
+  /**
+   * Converged Newton points that failed the vanishing test: the field is undefined or
+   * discontinuous there (x' = xy / (x² + y²), y' = y - x at the origin: |F| tends to 0 along the
+   * axes and to 0.5 along the diagonals), so they are NOT equilibria and are not in `points`.
+   * Present only when non-empty.
+   */
+  singularPoints?: Vec2[];
 };
 
 /** Continuum test thresholds (H2.7). */
@@ -103,6 +116,30 @@ export const SCAN_GRID_DEFAULT = 64;
 export const SCAN_SEED_CAP = 400;
 /** Newton stops on a step below this fraction of the box size; a root is located to about this precision. */
 export const NEWTON_STEP_TOL = 1e-13;
+/**
+ * Scaled determinant (rows equilibrated by their largest entry) below which a Jacobian is treated
+ * as numerically rank-deficient and the least-squares step is used: the FD Jacobian's relative
+ * error (~1e-8 at h = 1e-6 with rounding eps |f| / h) makes smaller scaled determinants noise.
+ */
+export const SINGULAR_SCALED_DET = 1e-8;
+/**
+ * A Newton run within this fraction of the box of an already found root, whose own step predicts
+ * a landing at least twice as close to that root, is abandoned (it would reproduce the root).
+ */
+export const ABORT_RADIUS = 1e-6;
+/** Relative resolution of a root's location: two converged points closer than this times |p| are one root. */
+export const LOCATION_RELATIVE_TOL = 1e-9;
+/**
+ * Vanishing test (review J item 8): |F(p + δ e) - F(p)| ~ δ^β is fitted along 8 directions with
+ * δ from VANISHING_DELTA_FACTOR × stepTol downward (lipschitzProbe's levels); β <= this in some
+ * defined direction means F does not tend to F(p) there: the field is discontinuous at p and p
+ * is a singular point, not an equilibrium (x' = xy / (x² + y²): F is 0.5 along every diagonal at
+ * every distance). A Hölder root (sqrt(x): β = 1/2) still vanishes and stays an equilibrium.
+ */
+export const VANISHING_MIN_EXPONENT = 0.1;
+/** First probe offset of the vanishing test, as a multiple of stepTol (the location resolution). */
+export const VANISHING_DELTA_FACTOR = 1e3;
+const EPS = 2.220446049250313e-16;
 
 /** Ratio λ_min / λ_max of the covariance matrix of a point cloud: 0 for a perfect line, 1 for an isotropic cloud. NaN for fewer than 3 points. */
 export function collinearity(points: Vec2[]): number {
@@ -199,7 +236,6 @@ function connectedComponents(
   dedupe: number,
   box: Box,
   scale: number,
-  fTol: number,
   maxIterations: number,
   checkpoint: (() => void) | undefined,
 ): { component: number[]; count: number; connected: number } {
@@ -236,8 +272,9 @@ function connectedComponents(
     const p = pts[i], q = pts[j];
     checkpoint?.();
     const mid = { x: (p.x + q.x) / 2, y: (p.y + q.y) / 2 };
-    const polished = newton(sys, mid, box, scale, fTol, maxIterations);
-    if (!polished) continue;
+    const run = newton(sys, mid, box, scale, maxIterations);
+    if (!run?.root) continue;
+    const polished = run.at;
     const gap = Math.hypot(q.x - p.x, q.y - p.y);
     const between = Math.hypot(polished.x - p.x, polished.y - p.y) < 0.9 * gap && Math.hypot(polished.x - q.x, polished.y - q.y) < 0.9 * gap;
     if (between && !known.some((r) => Math.hypot(r.x - polished.x, r.y - polished.y) <= dedupe)) {
@@ -259,7 +296,7 @@ export type FindEquilibriaOptions = {
   seedGrid?: number;
   /** Cells per axis of the |F| scan that seeds the self-check and measures the sign changes. Default 64. */
   scanGrid?: number;
-  /** Relative residual tolerance for convergence. Default 1e-9. */
+  /** @deprecated Ignored: acceptance is local (the residual against the Jacobian at the point and its rounding floor), never a relative residual tolerance (review J item 1). */
   tol?: number;
   /** Maximum points returned. Default 30. */
   maxPoints?: number;
@@ -273,18 +310,34 @@ const norm = (v: Vec2) => Math.hypot(v.x, v.y);
 const isFiniteVec = (v: Vec2) => Number.isFinite(v.x) && Number.isFinite(v.y);
 
 /**
- * Solves J d = -F, falling back to Levenberg-Marquardt when J is (nearly) singular. Marquardt's
- * diagonal scaling (JᵀJ + λ diag(JᵀJ)) keeps the step in a weak direction Newton-sized (for
- * x' = -x³ the x step is x/3, geometric convergence) instead of killing it with a λ taken from
- * the strong direction (review C3). `lm` tells the caller which branch produced the step.
+ * Solves J d = -F, falling back to Levenberg-Marquardt when J is numerically rank-deficient.
+ *
+ * Singularity is judged on the ROW-EQUILIBRATED matrix (each row divided by its largest entry,
+ * F by the same factors), never on det against ||J||²: J = [[1e8, 1], [-1, 1e-8]] has det = 2,
+ * which is 2e-16 ||J||_max² and looked "singular" to the old 1e-10 rule although the system is
+ * perfectly solvable (scaled rows [[1, 1e-8], [-1, 1e-8]], scaled det 2e-8; review J item 3). The
+ * scaled determinant is a condition measure that does not depend on the units of f and g; below
+ * SINGULAR_SCALED_DET the FD Jacobian's own relative error (~1e-8) makes the two rows
+ * indistinguishable from proportional and the least-squares step is used. Cramer's rule on the
+ * scaled system is accurate whenever the scaled determinant is not tiny.
+ *
+ * Marquardt's diagonal scaling (JᵀJ + λ diag(JᵀJ)) keeps the step in a weak direction
+ * Newton-sized (for x' = -x³ the x step is x/3, geometric convergence) instead of killing it with
+ * a λ taken from the strong direction (review C3). `lm` tells the caller which branch produced
+ * the step.
  */
-function newtonDirection(J: Matrix2, F: Vec2, scale: number): { dir: Vec2; lm: boolean } | null {
+function newtonDirection(J: Matrix2, F: Vec2): { dir: Vec2; lm: boolean } | null {
   const [[a, b], [c, d]] = J;
   if (![a, b, c, d].every(Number.isFinite)) return null;
-  const det = determinant(J);
-  const jNorm = Math.max(Math.abs(a), Math.abs(b), Math.abs(c), Math.abs(d), 1e-300);
-  if (Math.abs(det) > 1e-10 * jNorm * jNorm) {
-    return { dir: { x: -(d * F.x - b * F.y) / det, y: -(-c * F.x + a * F.y) / det }, lm: false };
+  const r0 = Math.max(Math.abs(a), Math.abs(b));
+  const r1 = Math.max(Math.abs(c), Math.abs(d));
+  if (r0 > 0 && r1 > 0) {
+    const a1 = a / r0, b1 = b / r0, c1 = c / r1, d1 = d / r1;
+    const detS = a1 * d1 - b1 * c1;
+    if (Math.abs(detS) > SINGULAR_SCALED_DET) {
+      const fx = F.x / r0, fy = F.y / r1;
+      return { dir: { x: -(d1 * fx - b1 * fy) / detS, y: -(-c1 * fx + a1 * fy) / detS }, lm: false };
+    }
   }
   const g00 = a * a + c * c;
   const g11 = b * b + d * d;
@@ -305,46 +358,138 @@ function newtonDirection(J: Matrix2, F: Vec2, scale: number): { dir: Vec2; lm: b
 }
 
 /**
- * Damped Newton from `seed`; null when it diverges, stalls or (with `abortNear`) comes within
- * `abortNear.radius` of an already found root, which de-duplication would discard anyway (a
+ * Where a Newton run ended. `root`: the point passed the local acceptance test and `locTol` is
+ * the radius within which the root lies (>= stepTol). `root` false: the run stalled or ran out of
+ * iterations WITHOUT the residual being consistent with a root; findEquilibria still submits such
+ * a point to the vanishing test, because a field that is discontinuous at a point (a
+ * direction-dependent limit) attracts Newton along the directions where |F| tends to 0 and the
+ * iteration ends exactly there; that point is reported as singular, not silently dropped.
+ */
+type NewtonResult = { at: Vec2; locTol: number; root: boolean };
+
+/** Frobenius norm of a 2x2 matrix (>= its spectral norm, so |F| <= ||J||_F |p - r| near a simple root r). */
+const frobenius = (J: Matrix2) => Math.hypot(J[0][0], J[0][1], J[1][0], J[1][1]);
+
+/**
+ * Is the residual F(p) at its rounding floor? Per component: |f(p)| <= 4 eps times the largest
+ * |f| at p and at the stencil points p ± h e_i, and the same for g (the estimator
+ * jacobianWithError uses; per component because g = -y at the stencil says nothing about the
+ * rounding of f = x⁸). A residual at or below it cannot be reduced in floating point, so it is
+ * zero as far as the evaluation can tell. Intermediate terms much larger than F itself
+ * ((1 + y⁴) - 1) raise the true floor above this estimate.
+ */
+function atRoundingFloor(sys: CompiledSystem, p: Vec2, F: Vec2, h: number): boolean {
+  let mx = Math.abs(F.x), my = Math.abs(F.y);
+  for (const q of [{ x: p.x + h, y: p.y }, { x: p.x - h, y: p.y }, { x: p.x, y: p.y + h }, { x: p.x, y: p.y - h }]) {
+    const v = sys.eval(q);
+    if (Number.isFinite(v.x)) mx = Math.max(mx, Math.abs(v.x));
+    if (Number.isFinite(v.y)) my = Math.max(my, Math.abs(v.y));
+  }
+  return Math.abs(F.x) <= 4 * EPS * mx && Math.abs(F.y) <= 4 * EPS * my;
+}
+
+/**
+ * Damped Newton from `seed`; null when it diverges, stalls away from a root, or (with `abortNear`)
+ * its own step predicts a landing on an already found root (the run would only reproduce it; a
  * root on a domain edge is approached only linearly, and 144 grid seeds crawling to the same
- * point would cost 200 iterations each).
+ * point would cost 200 iterations each). The abort needs BOTH closeness (within ABORT_RADIUS of
+ * the known root) and a predicted landing at least twice as close to it: two distinct roots
+ * closer than ABORT_RADIUS are not confused, because a run heading for the other one predicts a
+ * landing away from the known one.
+ *
+ * ACCEPTANCE IS LOCAL (review J item 1). A point p is a root only when the residual is consistent
+ * with a root within the location tolerance, judged at p itself:
+ * - converged: the Newton step d = -J⁻¹F at p (the linear model's distance to the root) is below
+ *   stepTol; or
+ * - the residual |F(p)| is at its rounding floor (nothing smaller can be computed there); or
+ * - at a stall (no step decreases |F|, no usable direction, iterations exhausted): the lower bound
+ *   |F(p)| / ||J(p)|| on the distance to any root (F ≈ J (p - r) near a root) is below stepTol.
+ * No box-wide statistic enters: the old rule |F| <= tol·median|F| over the box accepted |F| = 1 as
+ * zero on a box where the field's median is 1e13 (x' = y, y' = x⁸ + 1 "had" 14 equilibria on
+ * [-100, 100]²). stepTol = NEWTON_STEP_TOL × box size is the location precision the search is
+ * asked for, an input of the search rather than a property of the field.
+ *
+ * The returned `locTol` is the radius within which the root lies: for a simple root the Newton
+ * step itself, for a multiple root (linear convergence with ratio ρ = |d| / previous step) the
+ * remaining geometric tail |d| / (1 - ρ) (x' = -x³: ρ = 2/3, the root is 3 steps away), with a
+ * factor 2 of safety, never below stepTol.
  */
 function newton(
   sys: CompiledSystem,
   seed: Vec2,
   box: Box,
   scale: number,
-  fTol: number,
   maxIterations: number,
   abortNear?: { points: Vec2[]; radius: number },
-): Vec2 | null {
+): NewtonResult | null {
   let p = seed;
   let F = sys.eval(p);
   if (!isFiniteVec(F)) return null;
   let fNorm = norm(F);
   const escape = 2 * scale; // how far outside the box a seed may wander before we give up
-  // Converge on the step as well as on the residual: at a multiple root the residual reaches fTol
-  // while the point is still ~sqrt(fTol) away, and different seeds would stop at different places
-  // (each then mis-classified as hyperbolic). Newton still shrinks the step geometrically there.
   const stepTol = NEWTON_STEP_TOL * scale;
   let lastStep = Infinity;
-  let lastFromLM = false;
+  let hJ = 1e-6 * Math.max(1, Math.hypot(p.x, p.y));
+
+  // Geometric tail of a linearly converging run: with the current step d and the ratio ρ to the
+  // previous one, the root is about d / (1 - ρ) away (ρ -> 0 for quadratic convergence); twice
+  // that is claimed, never less than stepTol.
+  const tail = (dn: number) => Math.max(stepTol, (2 * dn) / (1 - Math.min(dn / lastStep, 0.99)));
+  // The stalled exits (no step decreases |F|, no usable direction, iterations exhausted). A root
+  // when: the residual is at its rounding floor (nothing smaller can be computed there); or, with
+  // a rank-deficient J (no Newton step to judge by), the distance lower bound |F| / ||J||_F is
+  // within stepTol; or, at the iteration limit, the Newton steps are still shrinking (ρ < 1) and
+  // the geometric tail says where the root is (a multiple root of high order needs more than
+  // maxIterations linear steps; the claimed radius is honest about the remaining distance).
+  // A Newton-branch stall above the rounding floor with a step larger than stepTol is not a root:
+  // the model puts the root further away and the residual would not decrease toward it.
+  const stalled = (J: Matrix2, dir: Vec2 | null, exhausted: boolean): NewtonResult => {
+    const newtonDir = dir !== null && isFiniteVec(dir);
+    const dn = newtonDir ? norm(dir) : 0;
+    if (atRoundingFloor(sys, p, F, hJ)) return { at: p, locTol: Math.max(stepTol, dn), root: true };
+    if (newtonDir) {
+      if (exhausted && dn < lastStep) return { at: p, locTol: tail(dn), root: true };
+      return { at: p, locTol: Math.max(stepTol, dn), root: false };
+    }
+    const jn = frobenius(J);
+    if (Number.isFinite(jn) && jn > 0 && fNorm / jn <= stepTol) return { at: p, locTol: stepTol, root: true };
+    return { at: p, locTol: stepTol, root: false };
+  };
 
   for (let iter = 0; iter < maxIterations; iter++) {
-    // A microscopic Levenberg-Marquardt step is not evidence of convergence (it may simply have
-    // been damped); only a Newton-branch step that has shrunk below stepTol counts (review C3).
-    if (fNorm <= fTol && lastStep <= stepTol && !lastFromLM) return p;
     // Finite-difference step for the Jacobian: shrink it with the Newton step. Near a multiple
     // root the truncation error h^2 f_xxx / 6 of a fixed h = 1e-6 swamps the true derivative
     // (3x^2 for x' = -x^3 once x < 6e-7) and the damped step crawls; h ~ step/100 keeps the
     // error far below the derivative while rounding (eps |f| / h) stays negligible.
-    const hJ = Math.min(1e-6 * Math.max(1, Math.hypot(p.x, p.y)), Math.max(1e-2 * lastStep, 1e-15 * scale));
+    hJ = Math.min(1e-6 * Math.max(1, Math.hypot(p.x, p.y)), Math.max(1e-2 * lastStep, 1e-15 * scale));
     // One-sided columns where the stencil leaves the field's domain (a root on the domain edge).
-    const nd = newtonDirection(jacobianAt(sys, p, hJ, 0, { oneSided: true }), F, scale);
-    if (nd === null || !isFiniteVec(nd.dir)) return fNorm <= fTol ? p : null;
+    const J = jacobianAt(sys, p, hJ, 0, { oneSided: true });
+    const nd = newtonDirection(J, F);
+    if (nd === null || !isFiniteVec(nd.dir)) return stalled(J, null, false);
     const dir = nd.dir;
-    lastFromLM = nd.lm;
+    const dn = norm(dir);
+
+    if (!nd.lm && dn <= stepTol) {
+      // Converged: the model puts the root within stepTol. Take the last step when it helps.
+      const q = { x: p.x + dir.x, y: p.y + dir.y };
+      const Fq = sys.eval(q);
+      if (isFiniteVec(Fq) && norm(Fq) <= fNorm) {
+        p = q;
+        F = Fq;
+        fNorm = norm(Fq);
+      }
+      return { at: p, locTol: tail(dn), root: true };
+    }
+    // A microscopic Levenberg-Marquardt step is not evidence of convergence (it may simply have
+    // been damped, review C3): LM runs can only end at a stalled exit, judged by the residual.
+
+    if (abortNear && !nd.lm) {
+      const landing = { x: p.x + dir.x, y: p.y + dir.y };
+      if (abortNear.points.some((q) => {
+        const dq = Math.hypot(q.x - p.x, q.y - p.y);
+        return dq <= abortNear.radius && Math.hypot(q.x - landing.x, q.y - landing.y) <= 0.5 * dq;
+      })) return null;
+    }
 
     // Backtracking: accept the first step that does not increase the residual. A step into
     // undefined territory (non-finite F) is halved like any other rejected step.
@@ -354,7 +499,7 @@ function newton(
       const q = { x: p.x + step * dir.x, y: p.y + step * dir.y };
       const Fq = sys.eval(q);
       if (isFiniteVec(Fq) && norm(Fq) < fNorm) {
-        lastStep = step * norm(dir);
+        lastStep = step * dn;
         p = q;
         F = Fq;
         fNorm = norm(Fq);
@@ -364,16 +509,17 @@ function newton(
       step /= 2;
     }
     // No decrease possible: either we are at the root up to rounding, or the seed is hopeless.
-    if (!accepted) return fNorm <= fTol ? p : null;
+    if (!accepted) return stalled(J, nd.lm ? null : dir, false);
     if (
       p.x < box.x.min - escape || p.x > box.x.max + escape ||
       p.y < box.y.min - escape || p.y > box.y.max + escape
     ) {
       return null;
     }
-    if (abortNear && abortNear.points.some((q) => Math.hypot(q.x - p.x, q.y - p.y) <= abortNear.radius)) return null;
   }
-  return fNorm <= fTol ? p : null;
+  const J = jacobianAt(sys, p, hJ, 0, { oneSided: true });
+  const nd = newtonDirection(J, F);
+  return stalled(J, nd !== null && !nd.lm ? nd.dir : null, true);
 }
 
 /** Largest number of sign changes along any row or any column of an n x n table (finite, non-zero values only). */
@@ -397,7 +543,6 @@ function maxSignChanges(values: Float64Array, n: number): number {
 
 export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibriaOptions = {}): EquilibriaResult {
   assertBox(box);
-  const tol = opts.tol ?? 1e-9;
   const maxPoints = opts.maxPoints ?? 30;
   const maxIterations = opts.maxIterations ?? 200;
   const scanGrid = opts.scanGrid ?? SCAN_GRID_DEFAULT;
@@ -414,7 +559,6 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   const gv = new Float64Array(n * n);
   const mag = new Float64Array(n * n);
   const cellCentre = (i: number, j: number): Vec2 => ({ x: box.x.min + ((i + 0.5) * width) / n, y: box.y.min + ((j + 0.5) * height) / n });
-  const finiteMags: number[] = [];
   for (let j = 0; j < n; j++) {
     for (let i = 0; i < n; i++) {
       const F = sys.eval(cellCentre(i, j));
@@ -422,13 +566,8 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
       fv[k] = F.x;
       gv[k] = F.y;
       mag[k] = isFiniteVec(F) ? norm(F) : NaN;
-      if (Number.isFinite(mag[k])) finiteMags.push(mag[k]);
     }
   }
-  // Residual tolerance relative to the typical field strength in the box.
-  finiteMags.sort((u, v) => u - v);
-  const typical = finiteMags.length ? Math.max(finiteMags[Math.floor(finiteMags.length / 2)], 1e-300) : 1;
-  const fTol = tol * Math.max(1, typical);
 
   // Seed density from the field's structure (scale-free): sign changes along the scan lines.
   const signChanges = Math.max(maxSignChanges(fv, n), maxSignChanges(gv, n));
@@ -478,39 +617,107 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   const scanSeeds = (capped ? candidates.slice(0, SCAN_SEED_CAP) : candidates).map((c) => c.at);
   const seeding: SeedingReport = { seedGrid, scanGrid, signChanges, candidates: candidates.length, seeds: scanSeeds.length, capped };
 
+  // Every located root comes with the radius within which it lies (locTol, >= stepTol). Two
+  // converged points are the SAME root when their claimed disks intersect, |p - q| <= locTol_p +
+  // locTol_q, or when they agree to the relative resolution of a location (LOCATION_RELATIVE_TOL
+  // times |p|). Never a fraction of the box (review J item 7): the old 1e-6 × box merged the two
+  // simple roots of x(x - 1e-3) on [-2000, 2000]², so the count depended on the box. A root
+  // exactly on a box edge is legitimate; the located point may overshoot the edge by its locTol.
+  const stepTol = NEWTON_STEP_TOL * scale;
+  const sameRoot = (p: NewtonResult, q: NewtonResult) =>
+    Math.hypot(p.at.x - q.at.x, p.at.y - q.at.y) <= Math.max(p.locTol + q.locTol, LOCATION_RELATIVE_TOL * Math.max(norm(p.at), norm(q.at)));
+  const located: NewtonResult[] = [];
   const found: Vec2[] = [];
-  // Equilibria sitting exactly on a box edge are legitimate; allow the located point to overshoot
-  // the edge by the same amount we use to merge duplicates.
-  const margin = 1e-6 * scale;
-  const dedupe = 1e-6 * scale;
+  const stalls: Vec2[] = [];
   for (const seed of [...seeds, ...scanSeeds]) {
     opts.checkpoint?.();
-    const p = newton(sys, seed, box, scale, fTol, maxIterations, { points: found, radius: dedupe });
-    if (p === null) continue;
+    const r = newton(sys, seed, box, scale, maxIterations, { points: found, radius: ABORT_RADIUS * scale });
+    if (r === null) continue;
+    const p = r.at, margin = r.locTol;
     if (p.x < box.x.min - margin || p.x > box.x.max + margin || p.y < box.y.min - margin || p.y > box.y.max + margin) {
       continue;
     }
-    if (found.some((q) => Math.hypot(q.x - p.x, q.y - p.y) <= dedupe)) continue;
+    if (!r.root) {
+      stalls.push(p);
+      continue;
+    }
+    if (located.some((q) => sameRoot(q, r))) continue;
+    located.push(r);
     found.push(p);
   }
+  // the resolution the roots were located to.
+  const dedupe = located.reduce((m, r) => Math.max(m, r.locTol), stepTol);
 
-  found.sort((u, v) => u.x - v.x || u.y - v.y);
+  // Vanishing test (review J item 8): a converged point is an equilibrium only if the field
+  // tends to its value there from every direction in which it is defined. Along 8 directions
+  // (both sides of the two axes and of the two diagonals) lipschitzProbe fits
+  // |F(p + δ e) - F(p)| / δ ~ δ^-α over δ = VANISHING_DELTA_FACTOR × stepTol × 4^-k, k = 0..7,
+  // i.e. |F(p + δ e) - F(p)| ~ δ^β with β = 1 - α. A defined direction with enough levels and
+  // β <= VANISHING_MIN_EXPONENT (α >= 1 - it) shows a field that does not vanish toward p: p is a
+  // singular point of the field, not an equilibrium. A direction on which the field is undefined
+  // arbitrarily close to p (domain edge) says nothing and is skipped, as is one with too few
+  // resolvable levels: the point then stays, on Newton's evidence alone. A difference below the
+  // rounding floor of the two field values (10 eps of the larger; the probe's own guard only
+  // knows the differences, and F(p) is not small at a non-root stall) is reported as NaN, i.e.
+  // unresolvable at that level: a direction along which F does not change measurably is trivially
+  // continuous, never "unbounded" from rounding noise.
+  const probeScale = (VANISHING_DELTA_FACTOR * stepTol) / LIPSCHITZ_FIRST_FRACTION;
+  const singularPoints: Vec2[] = [];
+  const vanishes = (p: Vec2): boolean => {
+    const F0 = sys.eval(p);
+    const base = isFiniteVec(F0) ? F0 : { x: 0, y: 0 };
+    const baseMag = Math.max(Math.abs(base.x), Math.abs(base.y));
+    const h = (q: Vec2) => {
+      const v = sys.eval(q);
+      const diff = Math.hypot(v.x - base.x, v.y - base.y);
+      const floor = 10 * EPS * Math.max(baseMag, Math.abs(v.x), Math.abs(v.y));
+      return diff <= floor ? NaN : diff;
+    };
+    const s = Math.SQRT1_2;
+    for (const e of [{ x: 1, y: 0 }, { x: 0, y: 1 }, { x: s, y: s }, { x: s, y: -s }]) {
+      opts.checkpoint?.();
+      const r = lipschitzProbe((d) => h({ x: p.x + d * e.x, y: p.y + d * e.y }), probeScale);
+      for (const side of [r.sides.above, r.sides.below]) {
+        if (side.verdict === "undefined" || side.levels < MIN_LEVELS_FOR_GROWTH || !Number.isFinite(side.exponent)) continue;
+        if (1 - side.exponent <= VANISHING_MIN_EXPONENT) return false;
+      }
+    }
+    return true;
+  };
+  for (let i = located.length - 1; i >= 0; i--) {
+    if (vanishes(located[i].at)) continue;
+    singularPoints.push(located[i].at);
+    located.splice(i, 1);
+  }
+  // A run that stalled without a consistent residual ended at a singular point when the field is
+  // discontinuous there (Newton crawls toward it along the directions where |F| tends to 0); a
+  // stall elsewhere (a local minimum of |F| that is not a root) is dropped as before.
+  const stepOnly = (p: Vec2): NewtonResult => ({ at: p, locTol: stepTol, root: false });
+  for (const p of stalls) {
+    if (singularPoints.some((q) => sameRoot(stepOnly(q), stepOnly(p))) || located.some((q) => sameRoot(q, stepOnly(p)))) continue;
+    if (!vanishes(p)) singularPoints.push(p);
+  }
+  singularPoints.sort((u, v) => u.x - v.x || u.y - v.y);
+  located.sort((u, v) => u.at.x - v.at.x || u.at.y - v.at.y);
+  found.length = 0;
+  found.push(...located.map((r) => r.at));
 
   // The Jacobian's local error (finite differences: truncation + rounding) plus the part that
-  // comes from not standing exactly on the root: Newton locates a root to about NEWTON_STEP_TOL
-  // times the box (a multiple root converges only linearly, so the last step IS the remaining
-  // distance; 10x for slower ratios), and the Jacobian moves by its sensitivity times that. With
-  // a 10x safety margin this is the level below which an entry, the determinant or the trace is
-  // zero for this problem. Local to the point, never a box-wide statistic (review C4).
-  const locationError = 10 * NEWTON_STEP_TOL * scale;
-  const equilibria: Equilibrium[] = found.map((at) => {
+  // comes from not standing exactly on the root: the run's claimed radius locTol (at least 10x
+  // NEWTON_STEP_TOL times the box, the geometric tail for a multiple root that converged only
+  // linearly), and the Jacobian moves by its sensitivity times that. With a 10x safety margin
+  // this is the level below which an entry, the determinant or the trace is zero for this
+  // problem. Local to the point, never a box-wide statistic (review C4).
+  const equilibria: Equilibrium[] = located.map(({ at, locTol }) => {
     const { J: jacobian, error, domainEdge } = jacobianWithError(sys, at);
     if (domainEdge) return { at, jacobian, ...classify(jacobian), caveat: "domainEdge" };
+    const locationError = Math.max(10 * stepTol, locTol);
     const zeroFloor = Number.isFinite(error) ? 10 * (error + jacobianSensitivity(sys, at, jacobian) * locationError) : Infinity;
     return { at, jacobian, ...classify(jacobian, undefined, { zeroFloor }) };
   });
 
-  if (equilibria.length === 0) return { points: [], warning: "none_found", seeding };
+  const singular = singularPoints.length ? { singularPoints } : {};
+  if (equilibria.length === 0) return { points: [], warning: "none_found", seeding, ...singular };
 
   // A continuum of equilibria needs a counting signal (many non-hyperbolic points), connectedness
   // (the field vanishes between neighbours) and a geometric one (a line or a curve) per connected
@@ -522,7 +729,7 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
   let continuum = false;
   if (manyNonHyperbolic) {
     const pts = nonHyperbolic.map((e) => e.at);
-    const cc = connectedComponents(sys, pts, found, dedupe, box, scale, fTol, maxIterations, opts.checkpoint);
+    const cc = connectedComponents(sys, pts, found, dedupe, box, scale, maxIterations, opts.checkpoint);
     const members: Vec2[][] = Array.from({ length: cc.count }, () => []);
     pts.forEach((p, i) => members[cc.component[i]].push(p));
     const continuumComponents = members.filter(componentIsCurve).length;
@@ -538,5 +745,6 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
     ...(truncated ? { truncated: true } : {}),
     ...(geometry ? { geometry } : {}),
     seeding,
+    ...singular,
   };
 }

@@ -435,3 +435,145 @@ describe("ill-scaled linear systems through findEquilibria (J.5c)", () => {
     for (const p of r.points) expect(p.classification).toBe("non_hyperbolic");
   });
 });
+
+describe("local acceptance, ill-scaled solve, resolution dedupe, vanishing test (review J items 1, 3, 7, 8)", () => {
+  const offsetBox = { x: { min: -1, max: 3 }, y: { min: -2, max: 2 } };
+
+  it("J.1: a field that never vanishes has no equilibria on any box or scale: x' = y, y' = x⁸ + 1", () => {
+    // x⁸ + 1 >= 1 everywhere, so F has no zero. The old residual tolerance tol × median|F| over
+    // the box grew like 100⁸ and accepted |F| = 1 as zero on [-100, 100]² (14 "equilibria").
+    for (const b of [box(-10, 10), box(-100, 100), box(-1000, 1000), offsetBox]) {
+      for (const s of ["1", "1e-6", "1e6"]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*y`, g: `${s}*(x^8 + 1)` }), b);
+        expect(r.points, `${s} ${JSON.stringify(b)}`).toEqual([]);
+        expect(r.warning).toBe("none_found");
+        expect(r.singularPoints).toBeUndefined();
+      }
+    }
+    // f >= 1 everywhere: same, and no hit_limit from 30 false points.
+    const r = findEquilibria(compileSystem({ f: "x^2 + y^2 + 1", g: "x^8" }), box(-100, 100));
+    expect(r.points).toEqual([]);
+    expect(r.warning).toBe("none_found");
+  });
+
+  it("J.3: an ill-scaled but invertible linear system has its one equilibrium: x' = 1e8 x + y, y' = -x + 1e-8 y", () => {
+    // det J = 1e8 · 1e-8 + 1 = 2 ≠ 0: the origin is the unique zero. The old singularity test
+    // |det| > 1e-10 ||J||² (= 1e6) sent every seed to the LM branch, whose normal equations lose
+    // the 1 in JᵀJ = 1e16 + 1 and produce a garbage step. Same on every box and scale.
+    for (const b of [box(-1, 1), box(-1000, 1000), offsetBox]) {
+      for (const s of ["1", "1e-6", "1e6"]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*(1e8*x + y)`, g: `${s}*(-x + 1e-8*y)` }), b);
+        expect(r.points, `${s} ${JSON.stringify(b)}`).toHaveLength(1);
+        expect(near(r.points[0].at, 0, 0, 1e-9)).toBe(true);
+      }
+    }
+    // 1e6 variant: tr = 1e6 + 1e-6, det = 2, disc = tr² - 8 > 0: real eigenvalues ~1e6 and ~2e-6,
+    // both positive -> unstable node; the entry error (~2e-9 from the 1e6 entry) times the entry
+    // sum (~1e6) is ~2e-3 < det = 2, so the determinant is resolved.
+    const r6 = findEquilibria(compileSystem({ f: "1e6*x + y", g: "-x + 1e-6*y" }), box(-1, 1));
+    expect(r6.points).toHaveLength(1);
+    expect(r6.points[0].classification).toBe("unstable_node");
+    expect(r6.points[0].determinant).toBeCloseTo(2, 3);
+  });
+
+  it.fails("J.3/J.6: the 1e8 variant is an unstable node (needs per-entry Jacobian errors, review J item 6)", () => {
+    // tr = 1e8 + 1e-8, det = 2: eigenvalues ~1e8 and ~2e-8, both positive -> unstable node. With a
+    // single error for all entries (~4e-5 from the 1e8 entry) the determinant 2 is below the
+    // propagated error e (|a| + |b| + |c| + |d|) ~ 4e3 and is called zero: non_hyperbolic today.
+    const r = findEquilibria(compileSystem({ f: "1e8*x + y", g: "-x + 1e-8*y" }), box(-1, 1));
+    expect(r.points).toHaveLength(1);
+    expect(r.points[0].classification).toBe("unstable_node");
+  });
+
+  it("J.3: the saddles of x' = y, y' = -x - y + x⁷ survive a huge box (det J ~ 1e14 at the scan seeds)", () => {
+    // At (±1, 0): J = [[0, 1], [6, -1]], det -6 -> saddle. At a scan seed x ~ 156, det J = 7x⁶ - 1
+    // ~ 1e14 < 1e-10 (1e14)², which the old test called singular; the row-scaled test does not.
+    for (const b of [box(-1e4, 1e4), box(-1e6, 1e6)]) {
+      const r = findEquilibria(compileSystem({ f: "y", g: "-x - y + x^7" }), b);
+      for (const s of [-1, 1]) {
+        const saddle = r.points.find((p) => near(p.at, s, 0, 1e-6));
+        expect(saddle, `${s} ${JSON.stringify(b)}`).toBeTruthy();
+        expect(saddle!.classification).toBe("saddle");
+        expect(saddle!.determinant).toBeCloseTo(-6, 4);
+      }
+    }
+  });
+
+  it("J.7: two simple roots 1e-3 apart are two equilibria on every box and scale: x' = x(x - 1e-3), y' = y", () => {
+    // Zeros (0, 0) and (1e-3, 0); J = diag(2x - 1e-3, 1): eigenvalues -1e-3, 1 (saddle) and
+    // 1e-3, 1 (unstable node). Newton locates each to ~1e-13 × box; the old merge radius
+    // 1e-6 × box folded them into one on [-2000, 2000]² (radius 4e-3 > 1e-3).
+    for (const b of [box(-2, 2), box(-200, 200), box(-2000, 2000), offsetBox]) {
+      for (const s of ["1", "1e-6", "1e6"]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*x*(x - 1e-3)`, g: `${s}*y` }), b);
+        expect(r.points, `${s} ${JSON.stringify(b)}`).toHaveLength(2);
+        expect(near(r.points[0].at, 0, 0, 1e-9)).toBe(true);
+        expect(r.points[0].classification).toBe("saddle");
+        expect(near(r.points[1].at, 1e-3, 0, 1e-9)).toBe(true);
+        expect(r.points[1].classification).toBe("unstable_node");
+        expect(r.warning).toBeUndefined();
+      }
+    }
+    const r4 = findEquilibria(compileSystem({ f: "x*(x - 1e-4)", g: "y" }), box(-100, 100));
+    expect(r4.points).toHaveLength(2);
+    expect(near(r4.points[1].at, 1e-4, 0, 1e-9)).toBe(true);
+  });
+
+  it("J.7: one root reached from many seeds is still listed once (simple and multiple)", () => {
+    // Every seed of the harmonic oscillator converges to the origin in one Newton step.
+    for (const b of [box(-2, 2), box(-2000, 2000), offsetBox]) {
+      expect(findEquilibria(compileSystem({ f: "y", g: "-x" }), b).points).toHaveLength(1);
+      // x⁸: a multiple root approached only linearly (ratio 7/8); each run's claimed radius is its
+      // geometric tail, and the runs from both sides overlap.
+      expect(findEquilibria(compileSystem({ f: "x^8", g: "-y" }), b).points).toHaveLength(1);
+    }
+  });
+
+  it("J.8: a direction-dependent singularity is not an equilibrium: x' = xy / (x² + y²), y' = y - x", () => {
+    // F has no zero (f = 0 needs an axis, g = 0 needs y = x) and is undefined at the origin, where
+    // its limit depends on the direction: 0 along the axes, f = 1/2 along the diagonals. Newton
+    // crawls to the origin along the x-axis (|F| -> 0 there) and used to report it as an
+    // equilibrium. The vanishing test finds |F(p + δe) - F(p)| ~ δ⁰ along the diagonals.
+    for (const s of ["1", "1e-6", "1e6"]) {
+      for (const b of [box(-2, 2), box(-1, 1)]) {
+        const r = findEquilibria(compileSystem({ f: `${s}*x*y/(x^2 + y^2)`, g: `${s}*(y - x)` }), b);
+        expect(r.points, `${s} ${JSON.stringify(b)}`).toEqual([]);
+        expect(r.warning).toBe("none_found");
+        expect(r.singularPoints).toHaveLength(1);
+        expect(Math.hypot(r.singularPoints![0].x, r.singularPoints![0].y)).toBeLessThan(1e-9);
+      }
+    }
+    // The same singularity moved to (1, 1) on an offset box.
+    const moved = findEquilibria(compileSystem({ f: "(x - 1)*(y - 1)/((x - 1)^2 + (y - 1)^2)", g: "y - x" }), { x: { min: 0, max: 3 }, y: { min: -1, max: 2 } });
+    expect(moved.points).toEqual([]);
+    expect(moved.singularPoints).toHaveLength(1);
+    expect(near(moved.singularPoints![0], 1, 1, 1e-9)).toBe(true);
+    // On a big box no equilibrium either (the verdict never depends on the box).
+    const big = findEquilibria(compileSystem({ f: "x*y/(x^2 + y^2)", g: "y - x" }), box(-1000, 1000));
+    expect(big.points).toEqual([]);
+    expect(big.warning).toBe("none_found");
+  });
+
+  it.fails("J.8: the singular point is also reported on a big box (needs the sign-change seeding of review J item 4)", () => {
+    // On [-1000, 1000]² no seed crawls to the origin: every run stalls on the diagonal y = x, where
+    // |F| = 1/2 is a local minimum, so there is nothing to submit to the vanishing test.
+    const big = findEquilibria(compileSystem({ f: "x*y/(x^2 + y^2)", g: "y - x" }), box(-1000, 1000));
+    expect(big.singularPoints).toHaveLength(1);
+  });
+
+  it("J.8: a genuine root next to a pole stays an equilibrium: x' = x(x - 1)/(x - 0.01), y' = y", () => {
+    // Zeros x = 0 and x = 1, a pole at x = 0.01. f'(0) = (-1)(-0.01) / 0.01² = 100 and f'(1) =
+    // 0.99 / 0.99² = 1/0.99: J = diag(100, 1) and diag(1.0101, 1), both unstable nodes with
+    // distinct eigenvalues. F is continuous at both roots, so the vanishing test keeps them.
+    for (const s of ["1", "1e-6", "1e6"]) {
+      const r = findEquilibria(compileSystem({ f: `${s}*x*(x - 1)/(x - 0.01)`, g: `${s}*y` }), box(-2, 2));
+      expect(r.points, s).toHaveLength(2);
+      expect(near(r.points[0].at, 0, 0, 1e-9)).toBe(true);
+      expect(r.points[0].classification).toBe("unstable_node");
+      expect(r.points[0].jacobian[0][0] / Number(s)).toBeCloseTo(100, 3);
+      expect(near(r.points[1].at, 1, 0, 1e-9)).toBe(true);
+      expect(r.points[1].classification).toBe("unstable_node");
+      expect(r.singularPoints).toBeUndefined();
+    }
+  });
+});
