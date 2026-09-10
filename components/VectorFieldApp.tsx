@@ -329,12 +329,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     locale,
     kind: form.mode === "system" || form.mode === "second" ? "analyze_system" : "analyze_first_order",
     fieldStyle: form.mode === "differential" ? "segments" : "arrows",
-    // The snapshot time is part of the key: curves traced at another instant belong to another picture.
-    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${form.second}|${snapshotT}`,
+    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${form.second}`,
     withFeatures: true,
     equalScale,
     snapshotT,
     initialTrajectoryStarts: trajectorySeeds,
+    // Another snapshot time re-traces the SAME initial points at that instant (the link keeps its
+    // traj); it never resets to the seeds, so a cleared curve does not come back.
+    retraceKey: String(snapshotT),
   });
   const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, clearTrajectories, handlers } = interactive;
 

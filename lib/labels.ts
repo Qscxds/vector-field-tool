@@ -89,7 +89,8 @@ export type LabelTable = {
     | "presetCustom"
     | "secondOrderImplicitProduct"
     | "downloadPng" | "downloadFailed" | "exportRange" | "exportSnapshot" | "interactionHintTouch"
-    | "exportEntered" | "exportShown",
+    | "exportEntered" | "exportShown"
+    | "clickToRemove" | "holdToRemove" | "undo",
     string
   >;
 };
@@ -350,6 +351,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       exportEntered: "输入范围 {range}",
       exportShown: "显示范围 {range}",
       interactionHintTouch: "轻点预览解曲线 · 长按固定 · 双指缩放 · 拖动平移 · 双击复位",
+      clickToRemove: "点击删除这条轨线",
+      holdToRemove: "长按删除这条轨线",
+      undo: "撤销",
     },
   },
   en: {
@@ -607,6 +611,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       exportEntered: "entered {range}",
       exportShown: "shown {range}",
       interactionHintTouch: "Tap to preview a solution · hold to keep it · pinch to zoom · drag to pan · double-tap to reset",
+      clickToRemove: "Click to remove this trajectory",
+      holdToRemove: "Hold to remove this trajectory",
+      undo: "Undo",
     },
   },
 };
