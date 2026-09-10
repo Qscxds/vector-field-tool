@@ -482,9 +482,9 @@ export function siteText(locale: Locale): SiteText {
   return SITE_TEXT[locale] ?? SITE_TEXT.en;
 }
 
-/** "中文 / English" one-liners for metadata, where a single string must serve both languages. */
+/** "English / 中文" one-liners for metadata, where a single string must serve both languages (English first: the site's default). */
 export function bilingual(key: keyof SiteText["meta"]): string {
-  return `${SITE_TEXT.zh.meta[key]} / ${SITE_TEXT.en.meta[key]}`;
+  return `${SITE_TEXT.en.meta[key]} / ${SITE_TEXT.zh.meta[key]}`;
 }
 
-export const SITE_NAME_BILINGUAL = `${SITE_TEXT.zh.site.name} / ${SITE_TEXT.en.site.name}`;
+export const SITE_NAME_BILINGUAL = `${SITE_TEXT.en.site.name} / ${SITE_TEXT.zh.site.name}`;

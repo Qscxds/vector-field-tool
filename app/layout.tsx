@@ -10,7 +10,7 @@ export const metadata: Metadata = {
   title: { template: `%s · ${SITE_NAME_BILINGUAL}`, default: SITE_NAME_BILINGUAL },
   description: bilingual("homeDescription"),
   applicationName: SITE_NAME_BILINGUAL,
-  openGraph: { type: "website", siteName: SITE_NAME_BILINGUAL, locale: "zh_CN", alternateLocale: ["en_US"] },
+  openGraph: { type: "website", siteName: SITE_NAME_BILINGUAL, locale: "en_US", alternateLocale: ["zh_CN"] },
   twitter: { card: "summary_large_image" },
 };
 

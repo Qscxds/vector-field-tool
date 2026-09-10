@@ -49,7 +49,7 @@ export const PRESET_GROUPS: PresetGroup[] = [
 const sq = (r: number): AppBox => ({ xMin: -r, xMax: r, yMin: -r, yMax: r });
 
 export const PRESETS: Preset[] = [
-  // ---- 一阶·可分离 ----
+  // ---- First order: separable ----
   {
     id: "logistic", group: "separable", mode: "first", name: { zh: "Logistic dy/dt = y(1−y)", en: "Logistic dy/dt = y(1−y)" },
     expressions: { g: "y*(1 - y)" }, box: { xMin: 0, xMax: 6, yMin: -0.5, yMax: 2 }, starts: [{ x: 0, y: 0.1 }, { x: 0, y: 1.8 }],
@@ -66,7 +66,7 @@ export const PRESETS: Preset[] = [
       en: "dy/dt = −2ty: separable, the solutions y = C·e^(−t²) are bell curves; the constant solution y = 0 is left by the solutions for t < 0 and approached for t > 0, so its stability varies with t.",
     },
   },
-  // ---- 一阶·线性 ----
+  // ---- First order: linear ----
   {
     id: "forced", group: "linear", mode: "first", name: { zh: "受迫响应 dy/dt = −y + sin t", en: "Forced response dy/dt = −y + sin t" },
     expressions: { g: "-y + sin(t)" }, box: { xMin: 0, xMax: 12, yMin: -2, yMax: 2 }, starts: [{ x: 0, y: 1.5 }, { x: 0, y: -1.5 }],
@@ -83,7 +83,7 @@ export const PRESETS: Preset[] = [
       en: "dy/dt = −y + t: linear, y = t − 1 + C·e^(−t); every solution approaches the line y = t − 1 (not a constant solution but an oblique asymptote).",
     },
   },
-  // ---- 一阶·恰当 ----
+  // ---- First order: exact ----
   {
     id: "exact", group: "exact", mode: "diff", name: { zh: "2ty dt + (t²+y²) dy = 0", en: "2ty dt + (t²+y²) dy = 0" },
     expressions: { M: "2*t*y", N: "t^2 + y^2" }, box: sq(2),
@@ -100,7 +100,7 @@ export const PRESETS: Preset[] = [
       en: "Exact; the solutions are the circles t² + y² = C. The vertical tangents at y = 0 are not singular points in differential form.",
     },
   },
-  // ---- 一阶·Bernoulli ----
+  // ---- First order: Bernoulli ----
   {
     id: "bernoulli", group: "bernoulli", mode: "first", name: { zh: "Bernoulli dy/dt = y + t√y", en: "Bernoulli dy/dt = y + t√y" },
     expressions: { g: "y + t*sqrt(y)" }, box: { xMin: -2, xMax: 3, yMin: -0.5, yMax: 4 }, starts: [{ x: 0, y: 1 }, { x: 0, y: 0.1 }],
@@ -109,7 +109,7 @@ export const PRESETS: Preset[] = [
       en: "dy/dt = y + t√y: a Bernoulli equation (n = 1/2); v = √y turns it into the linear equation v' = v/2 + t/2, so y = (C·e^(t/2) − t − 2)²; defined only for y ≥ 0, with y = 0 a constant solution on the edge of the domain.",
     },
   },
-  // ---- 一阶·齐次 ----
+  // ---- First order: homogeneous ----
   {
     id: "homogeneous", group: "homogeneous", mode: "first", name: { zh: "齐次 dy/dt = (t+y)/t", en: "Homogeneous dy/dt = (t+y)/t" },
     expressions: { g: "(t + y)/t" }, box: { xMin: 0.2, xMax: 4, yMin: -4, yMax: 4 }, starts: [{ x: 1, y: 0 }, { x: 1, y: 1 }],
@@ -118,7 +118,7 @@ export const PRESETS: Preset[] = [
       en: "dy/dt = (t+y)/t: homogeneous (the right-hand side depends on y/t only); v = y/t gives t·v' = 1, so y = t(ln t + C); the equation is undefined at t = 0, hence the range starts at t = 0.2.",
     },
   },
-  // ---- 一阶·解不出来的 ----
+  // ---- First order: no closed form ----
   {
     id: "riccati", group: "noClosedForm", mode: "first", name: { zh: "Riccati dy/dt = t² + y²", en: "Riccati dy/dt = t² + y²" },
     expressions: { g: "t^2 + y^2" }, box: sq(2), starts: [{ x: 0, y: 0 }],
@@ -135,7 +135,7 @@ export const PRESETS: Preset[] = [
       en: "dy/dt = sin(ty): no elementary closed form; y = 0 is the only constant solution, approached for t < 0 and left for t > 0 (its stability varies with t); the pattern repeats along the hyperbolas ty = const.",
     },
   },
-  // ---- 一阶·唯一性失效 ----
+  // ---- First order: uniqueness fails ----
   {
     id: "sqrt", group: "uniqueness", mode: "first", name: { zh: "dy/dt = √y", en: "dy/dt = √y" },
     expressions: { g: "sqrt(y)" }, box: { xMin: -2, xMax: 4, yMin: -0.3, yMax: 1.5 }, starts: [{ x: 0, y: 0.25 }],
@@ -144,7 +144,7 @@ export const PRESETS: Preset[] = [
       en: "dy/dt = √y: y = 0 is a constant solution, but ∂g/∂y = 1/(2√y) is unbounded there and the uniqueness theorem does not apply: infinitely many solutions pass through (t₀, 0) (stay on y = 0 for a while, then rise along y = (t − C)²/4).",
     },
   },
-  // ---- 二阶/系统 ----
+  // ---- Second order / systems ----
   {
     id: "harmonic", group: "systems", mode: "system", name: { zh: "简谐振子", en: "Harmonic oscillator" },
     expressions: { f: "y", g: "-x" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
@@ -209,7 +209,7 @@ export const PRESETS: Preset[] = [
       en: "x' = x, y' = y: the eigenvalue 1 is repeated with two independent eigenvectors: an unstable star node, and every ray from the origin is an orbit.",
     },
   },
-  // ---- 非自治 ----
+  // ---- Non-autonomous ----
   {
     id: "resonance", group: "nonAutonomous", mode: "system", name: { zh: "受迫振子 x' = y, y' = −x + sin t", en: "Forced oscillator x' = y, y' = −x + sin t" },
     expressions: { f: "y", g: "-x + sin(t)" }, box: sq(3), starts: [{ x: 0, y: 0 }],

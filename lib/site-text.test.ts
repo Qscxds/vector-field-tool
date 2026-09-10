@@ -127,8 +127,8 @@ describe("link helpers", () => {
     expect(withLocale("/vector-field?m=first", "en")).toBe("/vector-field?m=first&loc=en");
   });
 
-  it("bilingual joins the zh and en metadata strings", () => {
-    expect(bilingual("homeTitle")).toBe(`${SITE_TEXT.zh.meta.homeTitle} / ${SITE_TEXT.en.meta.homeTitle}`);
+  it("bilingual joins the en and zh metadata strings, English first (the site's default language)", () => {
+    expect(bilingual("homeTitle")).toBe(`${SITE_TEXT.en.meta.homeTitle} / ${SITE_TEXT.zh.meta.homeTitle}`);
   });
 });
 

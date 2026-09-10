@@ -6,7 +6,8 @@
 import { ImageResponse } from "next/og";
 import { SITE_TEXT } from "@/lib/site-text";
 
-export const alt = `${SITE_TEXT.zh.meta.ogAlt} / ${SITE_TEXT.en.meta.ogAlt}`;
+// English first (the site's default language); the Chinese name and tagline are the second lines.
+export const alt = `${SITE_TEXT.en.meta.ogAlt} / ${SITE_TEXT.zh.meta.ogAlt}`;
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -68,10 +69,10 @@ export default function OpenGraphImage() {
             color: "#1f2933",
           }}
         >
-          <div style={{ fontSize: 64, fontWeight: 700, display: "flex" }}>{SITE_TEXT.zh.site.name}</div>
-          <div style={{ fontSize: 44, fontWeight: 700, display: "flex", color: "#1d4ed8" }}>{SITE_TEXT.en.site.name}</div>
-          <div style={{ fontSize: 26, marginTop: 18, display: "flex", color: "#52606d" }}>{SITE_TEXT.zh.site.tagline}</div>
-          <div style={{ fontSize: 24, display: "flex", color: "#52606d" }}>{SITE_TEXT.en.site.tagline}</div>
+          <div style={{ fontSize: 64, fontWeight: 700, display: "flex" }}>{SITE_TEXT.en.site.name}</div>
+          <div style={{ fontSize: 44, fontWeight: 700, display: "flex", color: "#1d4ed8" }}>{SITE_TEXT.zh.site.name}</div>
+          <div style={{ fontSize: 26, marginTop: 18, display: "flex", color: "#52606d" }}>{SITE_TEXT.en.site.tagline}</div>
+          <div style={{ fontSize: 24, display: "flex", color: "#52606d" }}>{SITE_TEXT.zh.site.tagline}</div>
           <div style={{ fontSize: 22, marginTop: 18, display: "flex", color: "#1f2933" }}>dy/dt = y(1 − y)</div>
         </div>
       </div>

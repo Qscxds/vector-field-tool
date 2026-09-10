@@ -22,6 +22,7 @@ import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equ
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
+import { siteText } from "@/lib/site-text";
 import { buildShareUrl, encodeState, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
 import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } from "@/app/vector-field/presets";
 
@@ -448,8 +449,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     <label style={{ display: "flex", gap: 6, alignItems: "center", color: "#52606d" }}>
       <span>{L.ui.language}</span>
       <select value={locale} onChange={(e) => chooseLocale(e.target.value as Locale)} style={inputStyle} name="locale">
-        <option value="zh">中文</option>
-        <option value="en">English</option>
+        <option value="zh">{siteText(locale).site.langZh}</option>
+        <option value="en">{siteText(locale).site.langEn}</option>
       </select>
     </label>
   );
