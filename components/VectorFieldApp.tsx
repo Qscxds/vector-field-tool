@@ -23,8 +23,9 @@ import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
 import { siteText } from "@/lib/site-text";
+import { initialValueNames, parseInitialValue, type InitialValueReason } from "@/lib/initial-value";
 import { isUndoKey } from "@/lib/undo-key";
-import { buildShareUrl, encodeState, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
+import { buildShareUrl, encodeState, MAX_ABS_VALUE, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
 import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } from "@/app/vector-field/presets";
 
 export type VectorFieldAppProps = {
@@ -339,7 +340,21 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     // traj); it never resets to the seeds, so a cleared curve does not come back.
     retraceKey: String(snapshotT),
   });
-  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, clearTrajectories, undo, canUndo, handlers } = interactive;
+  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers } = interactive;
+
+  // "Initial value" row: two typed numbers kept exactly like a click (same addTrajectory, same
+  // undo entry, same traj encoding). Text state so "-" or "1." can be typed; validated on Add.
+  const [initialValue, setInitialValue] = useState({ first: "", second: "" });
+  const [initialValueError, setInitialValueError] = useState<{ reason: InitialValueReason; field: "first" | "second" } | null>(null);
+  const addInitialValue = () => {
+    const r = parseInitialValue(initialValue.first, initialValue.second);
+    if (!r.ok) {
+      setInitialValueError({ reason: r.reason, field: r.field });
+      return;
+    }
+    setInitialValueError(null);
+    addTrajectory(r.point);
+  };
 
   // Ctrl+Z / Cmd+Z undoes the last trajectory action, unless the student is typing in a field.
   const undoRef = useRef(undo);
@@ -460,6 +475,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const groups = groupTrajectories(trajectories);
   const lastGroup = groups.length ? groups[groups.length - 1] : null;
   const hv = horizontalName(form.mode);
+  const ivNames = initialValueNames(hv === "t" ? "ty" : "xy");
+  const addOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    addInitialValue();
+  };
 
   const languageSelect = (
     <label style={{ display: "flex", gap: 6, alignItems: "center", color: "#52606d" }}>
@@ -639,6 +660,28 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {fill(L.ui.equalScaleDetail, { hv })}
             </Info>
           </div>
+          {/* Initial value: (t0, y0) on a first-order picture, (x0, y0) on a planar one; Enter in either field adds too. */}
+          <fieldset style={{ display: "grid", gap: 6, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-initial-value>
+            <legend style={{ padding: "0 4px" }}>{L.ui.initialValue}</legend>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "end" }}>
+              <label style={labelStyle}>
+                <span>{ivNames.first}</span>
+                <input value={initialValue.first} onChange={(e) => setInitialValue((prev) => ({ ...prev, first: e.target.value }))} onKeyDown={addOnEnter} style={inputStyle} inputMode="decimal" name="initialFirst" />
+              </label>
+              <label style={labelStyle}>
+                <span>{ivNames.second}</span>
+                <input value={initialValue.second} onChange={(e) => setInitialValue((prev) => ({ ...prev, second: e.target.value }))} onKeyDown={addOnEnter} style={inputStyle} inputMode="decimal" name="initialSecond" />
+              </label>
+              <button type="button" onClick={addInitialValue} style={buttonStyle} disabled={compiled.error !== null} data-add-solution>
+                {L.ui.addSolution}
+              </button>
+            </div>
+            {initialValueError ? (
+              <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-initial-value-error>
+                {fill(L.ui[INITIAL_VALUE_ERROR[initialValueError.reason]], { name: ivNames[initialValueError.field], max: String(MAX_ABS_VALUE) })}
+              </p>
+            ) : null}
+          </fieldset>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={clearTrajectories} style={{ ...buttonStyle, flex: "1 1 auto" }} disabled={trajectories.length === 0}>
               {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
@@ -895,5 +938,6 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
 }
 
 const labelStyle = { display: "grid", gap: 4, color: "#1f2933" } as const;
+const INITIAL_VALUE_ERROR = { empty: "initialValueEmpty", notANumber: "initialValueNotANumber", outOfRange: "initialValueOutOfRange" } as const satisfies Record<InitialValueReason, string>;
 const inputStyle = { padding: "6px 8px", border: "1px solid #d1d5db", borderRadius: 6, font: "inherit" } as const;
 const buttonStyle = { padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 6, background: "#f9fafb", cursor: "pointer", font: "inherit" } as const;

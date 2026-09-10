@@ -90,7 +90,8 @@ export type LabelTable = {
     | "secondOrderImplicitProduct"
     | "downloadPng" | "downloadFailed" | "exportRange" | "exportSnapshot" | "interactionHintTouch"
     | "exportEntered" | "exportShown"
-    | "clickToRemove" | "holdToRemove" | "undo",
+    | "clickToRemove" | "holdToRemove" | "undo"
+    | "initialValue" | "addSolution" | "initialValueEmpty" | "initialValueNotANumber" | "initialValueOutOfRange",
     string
   >;
 };
@@ -354,6 +355,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       clickToRemove: "点击删除这条轨线",
       holdToRemove: "长按删除这条轨线",
       undo: "撤销",
+      initialValue: "初值",
+      addSolution: "添加解曲线",
+      initialValueEmpty: "请填写 {name}。",
+      initialValueNotANumber: "{name} 必须是一个数（例如 -1、0.5、1e-3）。",
+      initialValueOutOfRange: "{name} 的绝对值不能超过 {max}。",
     },
   },
   en: {
@@ -614,6 +620,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       clickToRemove: "Click to remove this trajectory",
       holdToRemove: "Hold to remove this trajectory",
       undo: "Undo",
+      initialValue: "Initial value",
+      addSolution: "Add solution",
+      initialValueEmpty: "Enter {name}.",
+      initialValueNotANumber: "{name} must be a number (e.g. -1, 0.5, 1e-3).",
+      initialValueOutOfRange: "|{name}| must not exceed {max}.",
     },
   },
 };
