@@ -18,7 +18,7 @@ import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSyste
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, timeDependentFolded, type LabelTable, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, timeDependentFolded, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
@@ -285,13 +285,11 @@ function matchPresetId(form: Form): string | null {
 }
 
 export function VectorFieldApp({ initial, embed = false, controls = true, urlProblems }: VectorFieldAppProps) {
-  // The language actually shown, and the one the link carries: null until the visitor picks one
-  // (the link then leaves the choice to the reader's browser), else the picked / linked language.
+  // The language actually shown, and the one the link carries: English unless the link says
+  // `loc=zh` or the visitor picks Chinese (never navigator.language); null = not chosen, so the
+  // link carries no loc and a reader gets English.
   const [locale, setLocale] = useState<Locale>(initial.locale ?? "en");
   const [chosenLocale, setChosenLocale] = useState<Locale | null>(initial.locale);
-  useEffect(() => {
-    if (initial.locale === null) setLocale(localeFromLanguageTag(typeof navigator !== "undefined" ? navigator.language : undefined));
-  }, [initial.locale]);
   const chooseLocale = (next: Locale) => {
     setLocale(next);
     setChosenLocale(next);

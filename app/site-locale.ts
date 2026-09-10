@@ -1,4 +1,4 @@
-/** The `?loc=` parameter of the site pages: zh or en, else null (follow the browser). */
+/** The `?loc=` parameter of the site pages: zh or en, else null (the page is English). */
 import type { Locale } from "@/lib/labels";
 
 export type SearchParams = Promise<Record<string, string | string[] | undefined>>;

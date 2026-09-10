@@ -1,20 +1,17 @@
 "use client";
 /**
  * Shared shell of the site pages (home, help): the language choice, the header with the toggle,
- * the footer and the copy button. The language comes from the link (`?loc=`) or, when the link
- * says nothing, from navigator.language; the choice lives in component state only (no cookie,
- * no localStorage: the site does no tracking and stores nothing).
+ * the footer and the copy button. The language comes from the link (`?loc=`); when the link says
+ * nothing the page is English (never navigator.language); the choice lives in component state
+ * only (no cookie, no localStorage: the site does no tracking and stores nothing).
  */
 import Link from "next/link";
 import { type ReactNode, useEffect, useRef, useState } from "react";
-import { localeFromLanguageTag, type Locale } from "@/lib/labels";
+import type { Locale } from "@/lib/labels";
 import { GITHUB_URL, siteText, withLocale } from "@/lib/site-text";
 
 export function useSiteLocale(initial: Locale | null): [Locale, (next: Locale) => void] {
   const [locale, setLocale] = useState<Locale>(initial ?? "en");
-  useEffect(() => {
-    if (initial === null) setLocale(localeFromLanguageTag(typeof navigator !== "undefined" ? navigator.language : undefined));
-  }, [initial]);
   return [locale, setLocale];
 }
 

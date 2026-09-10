@@ -18,7 +18,7 @@
  *   tmin, tmax   horizontal range of a first-order picture (first, diff): the t range
  *   xmin, xmax   horizontal range of a planar picture (system, second)
  *   ymin, ymax   vertical range
- *   loc    zh | en (omitted: the client follows the browser language)
+ *   loc    zh | en (omitted: English)
  *   eqs    0 = equal scale off (omitted when on)
  *   d      grid density 5..40 (omitted at 20)
  *   arrows scaled (omitted for unit arrows)
@@ -48,7 +48,7 @@ export type AppState = {
   /** Second-order equation text in mode second. */
   eq: string;
   box: AppBox;
-  /** null = not chosen: the client follows the browser language and the link carries no loc. */
+  /** null = not chosen: the page is English and the link carries no loc (never the browser language). */
   locale: Locale | null;
   equalScale: boolean;
   density: number;

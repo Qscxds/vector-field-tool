@@ -19,7 +19,7 @@ import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useCoarsePointer } from "@/components/useCoarsePointer";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
-import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
@@ -76,17 +76,12 @@ export default function WidgetPage() {
   const [scene, setScene] = useState<Scene | null>(null);
   const [fallbackText, setFallbackText] = useState<string>("");
   const [isError, setIsError] = useState(false);
-  const [browserLocale, setBrowserLocale] = useState<Locale>("en");
   const coarsePointer = useCoarsePointer();
   // Counts tool results so a new result with the same equation still resets trajectories and previews.
   const [resultSeq, setResultSeq] = useState(0);
   // Same pixels per unit on both axes (the web shell's toggle); off fills the canvas with the tool's box.
   const [equalScale, setEqualScale] = useState(true);
   const { ref, width } = useContainerWidth<HTMLDivElement>(640);
-
-  useEffect(() => {
-    setBrowserLocale(localeFromLanguageTag(typeof navigator !== "undefined" ? navigator.language : undefined));
-  }, []);
 
   const { isConnected, error } = useApp({
     appInfo: { name: "vector-field-tool-widget", version: "0.3.0" },
@@ -107,7 +102,8 @@ export default function WidgetPage() {
     },
   });
 
-  const locale = scene?.locale ?? browserLocale;
+  // The tool's locale wins; before the first result (and for a Scene without one) English.
+  const locale: Locale = scene?.locale ?? "en";
   const L = labels(locale);
   const canvasHeight = Math.round(width * 0.68);
   const local = useLocalSystem(scene);

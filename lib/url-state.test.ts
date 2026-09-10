@@ -47,6 +47,18 @@ describe("encodeState", () => {
     expect(encodeState(withDefaults({ locale: "zh" }))).toBe("loc=zh");
   });
 
+  it("the language comes only from the link: no loc means locale null (the page shows English), and only an explicit loc changes it", () => {
+    // Derived from the rules: DEFAULT_STATE.locale is null and defaults are omitted, so a link
+    // without loc decodes to null and a null locale encodes to no loc; the shells render null as en.
+    expect(D.locale).toBeNull();
+    expect(encodeState(withDefaults({ locale: null }))).toBe("");
+    expect(decodeState("", D).state.locale).toBeNull();
+    expect(decodeState("m=first&g=y*(1-y)", D).state.locale).toBeNull();
+    expect(decodeState("loc=zh", D).state.locale).toBe("zh");
+    expect(decodeState("loc=en", D).state.locale).toBe("en");
+    expect(encodeState(decodeState("loc=zh", D).state)).toBe("loc=zh");
+  });
+
   it("trajectory starts are rounded to 6 significant digits; -0 becomes 0", () => {
     expect(encodeState(withDefaults({ trajectoryStarts: [{ x: 1.23456789, y: -0 }] }))).toBe("traj=1.23457,0");
   });
