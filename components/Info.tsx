@@ -23,6 +23,8 @@ const TOGGLE_STYLE: React.CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
+  width: "auto",
+  flex: "0 0 auto",
   minWidth: 44,
   minHeight: 44,
   margin: "-14px -10px -14px -6px",

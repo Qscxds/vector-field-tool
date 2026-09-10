@@ -128,7 +128,8 @@ const VF_STYLE = `
 /* The column fits its content in both languages: text wraps, controls fill the column, nothing is clipped. */
 .vf-form > * { min-width: 0; }
 .vf-form label, .vf-form span, .vf-form p { overflow-wrap: anywhere; white-space: normal; }
-.vf-form button, .vf-form select, .vf-form input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; min-width: 0; text-align: left; }
+.vf-form button:not([data-info-toggle]), .vf-form select, .vf-form input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; min-width: 0; text-align: left; }
+.vf-form input[type="range"] { margin: 0; }
 .vf-canvas { flex: 1 1 0; min-width: 0; }
 @media (max-width: 800px) {
   .vf-columns { flex-direction: column; gap: 14px; }
@@ -481,7 +482,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       )}
 
       {controls ? (
-        <section style={{ display: "grid", gap: 4, marginBottom: 14 }}>
+        <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 4, marginBottom: 14 }}>
           <label style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", color: "#52606d" }}>
             <span>{L.ui.presets}</span>
             <select
@@ -507,7 +508,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             </select>
           </label>
           {preset ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#52606d", flexWrap: "wrap" }} data-preset-note>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#52606d", flexWrap: "wrap", minWidth: 0 }} data-preset-note>
               <span style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={preset.note[locale]}>
                 {preset.note[locale]}
               </span>
