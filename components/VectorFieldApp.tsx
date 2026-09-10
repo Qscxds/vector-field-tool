@@ -504,7 +504,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     if (!scene || !viewport) return;
     setDownloadFailed(false);
     try {
-      const footer = exportFooterText(scene, viewport, locale, window.location.origin);
+      // The entered box as the 5th argument: after a zoom or pan the footer prints both the
+      // entered range and the shown one (lib/export-footer).
+      const footer = exportFooterText(scene, viewport, locale, window.location.origin, compiled.box ?? undefined);
       const blob = await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer, scale: 2 });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");

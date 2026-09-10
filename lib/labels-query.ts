@@ -5,7 +5,7 @@
  * horizontal coordinate x IS the student's t, so the line shows t = x and y; on a planar picture
  * it shows the time t and the point (x, y).
  */
-import type { QueryNote } from "./core/query";
+import { timeUncertainty, type QueryNote } from "./core/query";
 import { fill, formatNumber, type LabelTable } from "./labels";
 import type { QueryView, Scene } from "./scene";
 
@@ -22,7 +22,9 @@ export function queryLines(scene: Pick<Scene, "system" | "query">, L: LabelTable
   const firstOrder = scene.system?.variables === "ty";
   const lines: string[] = query.hits.map((hit) => {
     const error = formatNumber(hit.error.position, 2);
-    const tError = formatNumber(hit.error.t, 2);
+    // The displayed time uncertainty: at least the position error over the speed (never the bare
+    // Brent bracket); 0 for a prescribed time.
+    const tError = formatNumber(timeUncertainty(hit), 2);
     return firstOrder
       ? fill(L.tool.queryHitFirst, { t: formatNumber(hit.x, 6), tError, y: formatNumber(hit.y, 6), error })
       : fill(L.tool.queryHitSystem, { t: formatNumber(hit.t, 6), tError, x: formatNumber(hit.x, 6), y: formatNumber(hit.y, 6), error });

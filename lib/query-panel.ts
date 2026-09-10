@@ -10,7 +10,7 @@
  * "x" and there is no time kind at all ("x =" is not offered and rejected here); on a planar
  * picture "t =" is the kernel's absolute time and "x =", "y =" are the coordinates.
  */
-import type { QueryHit, QueryKind } from "./core/query";
+import { timeUncertainty, type QueryHit, type QueryKind } from "./core/query";
 import type { Vec2 } from "./core/types";
 import { parseDecimal, type InitialValueReason } from "./initial-value";
 import { fill, formatNumber, type LabelTable } from "./labels";
@@ -74,15 +74,17 @@ export function roundToError(value: number, error: number): string {
  * hit's horizontal coordinate IS t); planar: "t = <t>, x = <x>, y = <y> (±<position>)". The time
  * carries its own bracket " (±<t error>)" when it is not exact (a coordinate crossing); a time
  * target lands on t exactly and shows none. Coordinates are rounded to the position error, the
- * time to its own error.
+ * time to its DISPLAYED uncertainty (lib/core/query timeUncertainty: at least the position error
+ * over the speed, never the bare Brent bracket).
  */
 export function queryHitText(hit: QueryHit, variables: PanelVariables, L: LabelTable): string {
   const position = errorDigits(hit.error.position);
   const x = roundToError(hit.x, hit.error.position);
   const y = roundToError(hit.y, hit.error.position);
   if (variables === "ty") return fill(L.ui.queryHitFirst, { t: x, y, error: position.text });
-  const tError = errorDigits(hit.error.t);
-  const t = hit.error.t > 0 ? `${roundToError(hit.t, hit.error.t)}${fill(L.ui.queryTimeError, { error: tError.text })}` : roundToError(hit.t, hit.error.position);
+  const tUncertainty = timeUncertainty(hit);
+  const tError = errorDigits(tUncertainty);
+  const t = tUncertainty > 0 ? `${roundToError(hit.t, tUncertainty)}${fill(L.ui.queryTimeError, { error: tError.text })}` : roundToError(hit.t, hit.error.position);
   return fill(L.ui.queryHitSystem, { t, x, y, error: position.text });
 }
 

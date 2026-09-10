@@ -65,12 +65,27 @@ describe("errorDigits / roundToError (2 significant digits of the error; the val
 });
 
 describe("queryHitText", () => {
-  const hit = (t: number, x: number, y: number, tError: number, position: number): QueryHit => ({ t, x, y, error: { t: tError, position } });
+  const hit = (t: number, x: number, y: number, tError: number, position: number, speed = 1): QueryHit => ({ t, x, y, error: { t: tError, position }, speed });
 
   it("planar, coordinate crossing: the time with its own bracket, the point rounded to the position error", () => {
-    // Position error 3.4e-5: 6 decimals; time error 1.2e-9: 10 decimals. -4e-7 rounds to 0.000000 (no minus sign).
+    // Position error 3.4e-5: 6 decimals. The time's DISPLAYED uncertainty is at least the position
+    // error over the speed (1 here): 3.4e-5 -> 6 decimals too, never the bare Brent bracket 1.2e-9
+    // (10 decimals). -4e-7 rounds to 0.000000 (no minus sign).
     const text = queryHitText(hit(1.5707963, -0.0000004, -1.0000003, 1.2e-9, 3.4e-5), "xy", labels("en"));
-    expect(text).toBe("t = 1.5707963000 (±1.2e-9), x = 0.000000, y = -1.000000 (±3.4e-5)");
+    expect(text).toBe("t = 1.570796 (±3.4e-5), x = 0.000000, y = -1.000000 (±3.4e-5)");
+    // At speed 1e6 the position error fixes the time to 3.4e-11 < the bracket: the bracket wins, 10 decimals.
+    const fast = queryHitText(hit(1.5707963, -0.0000004, -1.0000003, 1.2e-9, 3.4e-5, 1e6), "xy", labels("en"));
+    expect(fast).toBe("t = 1.5707963000 (±1.2e-9), x = 0.000000, y = -1.000000 (±3.4e-5)");
+  });
+
+  it("harmonic crossing at t = pi/2 (Phase O.0c): position error 1e-5 at speed 1 prints the time to 6 decimals, not 12", () => {
+    // x' = y, y' = -x from (1, 0) crosses x = 0 at t = pi/2 at (0, -1) with speed |(-1, 0)| = 1.
+    // The Brent bracket is ~1e-11 (12 decimals), but the point is only known to 1e-5, so the time
+    // is only known to 1e-5 / 1 = 1e-5: 2 significant digits "1.0e-5", last digit at 1e-6 -> 6
+    // decimals (the same rule as the coordinates), never 12.
+    const text = queryHitText(hit(Math.PI / 2, 0, -1, 1e-11, 1e-5, 1), "xy", labels("en"));
+    expect(text).toBe("t = 1.570796 (±1.0e-5), x = 0.000000, y = -1.000000 (±1.0e-5)");
+    expect(text).not.toMatch(/1\.5707963267/);
   });
 
   it("planar, time target (time error 0): the time is exact and gets no bracket, rounded like the coordinates", () => {

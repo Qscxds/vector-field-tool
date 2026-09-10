@@ -233,6 +233,9 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       equilibria: features.equilibria,
       warning: features.warning,
       truncated: features.truncated,
+      // The sign-change quadtree's cap (lib/interactive computeFeatures): the shells print the
+      // same notice as the tool (equilibriaNotices).
+      refineCapped: features.refineCapped,
       // Also for scenes without features (sample_field, trace_trajectory): the canvas labels the
       // snapshot time whenever the field changes with t.
       timeDependent,

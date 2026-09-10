@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { compileSystem } from "./parse";
-import { querySolution, TOLERANCE_SAFETY } from "./query";
+import { querySolution, timeUncertainty, TOLERANCE_SAFETY } from "./query";
 import type { Box } from "./types";
 
 /** The shells' stop box for a [-3, 3]² problem: 20 times the entered range (lib/interactive fixedStopBox). */
@@ -117,6 +117,11 @@ describe("querySolution: a planar system", () => {
       expect(h.y, `hit ${i} y`).toBeCloseTo(i % 2 === 0 ? 1 : -1, 5);
       expect(h.error.t).toBeLessThanOrEqual(1e-11);
       expect(h.error.position).toBeGreaterThan(0);
+      // The speed on the unit circle is |(y, -x)| = 1 (Phase O.0c: `speed` is |F| at the hit).
+      expect(h.speed, `hit ${i} speed`).toBeCloseTo(1, 5);
+      // So the time is displayed to the position uncertainty (~1e-5), not the Brent bracket.
+      expect(timeUncertainty(h)).toBeGreaterThanOrEqual(h.error.position / h.speed);
+      expect(timeUncertainty(h)).toBeGreaterThan(1e-7);
     });
     for (let i = 1; i < 3; i++) expect(Math.abs(r.hits[3 + i].t - r.hits[3 + i - 1].t - Math.PI)).toBeLessThan(1e-6);
   });
@@ -147,6 +152,9 @@ describe("querySolution: a planar system", () => {
     expect(Math.abs(r.hits[0].y)).toBeLessThan(1e-6);
     expect(r.hits[0].error.t).toBe(0);
     expect(r.hits[0].error.position).toBeCloseTo(TOLERANCE_SAFETY * (1e-9 + 1e-6 * Math.hypot(r.hits[0].x, r.hits[0].y)), 12);
+    // A prescribed time carries no time uncertainty at all, whatever the speed (1 at (-1, 0)).
+    expect(r.hits[0].speed).toBeCloseTo(1, 5);
+    expect(timeUncertainty(r.hits[0])).toBe(0);
     // t* = 15 with tSpan 10: the forward run completed at exactly t = 10 and never got there.
     const far = querySolution(harmonic, { x: 1, y: 0 }, { kind: "time", value: 15 }, { tSpan: 10, stopBox: STOP });
     expect(far.note).toBe("stopped_before_target");
@@ -174,5 +182,25 @@ describe("querySolution: a planar system", () => {
   it("rejects a non-finite target value and a bad span", () => {
     expect(() => querySolution(harmonic, { x: 1, y: 0 }, { kind: "x", value: NaN }, { tSpan: 1, stopBox: STOP })).toThrow(RangeError);
     expect(() => querySolution(harmonic, { x: 1, y: 0 }, { kind: "x", value: 0 }, { tSpan: 0, stopBox: STOP })).toThrow(RangeError);
+  });
+});
+
+describe("timeUncertainty (Phase O.0c: the time a student may trust)", () => {
+  const hit = (t: number, position: number, speed: number) => ({ error: { t, position }, speed });
+
+  it("a solved crossing: max(bracket, position error / speed); the bracket alone would overstate the digits", () => {
+    // Position ±1e-5 along a curve traversed at speed 1 fixes the time to ±1e-5, not to the 1e-11 bracket.
+    expect(timeUncertainty(hit(1e-11, 1e-5, 1))).toBe(1e-5);
+    // At speed 2 the same position error is ±5e-6 in time.
+    expect(timeUncertainty(hit(1e-11, 1e-5, 2))).toBe(5e-6);
+    // A bracket wider than the quotient (speed 1e6: 1e-11 in time) stays the bracket.
+    expect(timeUncertainty(hit(1e-9, 1e-5, 1e6))).toBe(1e-9);
+  });
+
+  it("a prescribed time (error.t 0) has none; a zero or non-finite speed keeps the bracket", () => {
+    expect(timeUncertainty(hit(0, 1e-5, 1))).toBe(0);
+    expect(timeUncertainty(hit(1e-11, 1e-5, 0))).toBe(1e-11);
+    expect(timeUncertainty(hit(1e-11, 1e-5, Number.NaN))).toBe(1e-11);
+    expect(timeUncertainty(hit(1e-11, 1e-5, Number.POSITIVE_INFINITY))).toBe(1e-11);
   });
 });

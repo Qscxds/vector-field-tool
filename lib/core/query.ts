@@ -57,7 +57,28 @@ export type QueryHit = {
   y: number;
   /** Estimates (see the header): the final time bracket, and the position uncertainty at the hit. */
   error: { t: number; position: number };
+  /**
+   * |F| at the hit: the speed of the reduced system (for a first-order equation |(1, g)|). The
+   * shells divide the position uncertainty by it to get the time uncertainty a student can trust
+   * (see timeUncertainty): the Brent bracket `error.t` alone (~1e-11) would print a crossing time to
+   * 12 decimals while the position is only known to ~1e-5.
+   */
+  speed: number;
 };
+
+/**
+ * The time uncertainty to DISPLAY for a hit: a prescribed time (error.t === 0, a time target or
+ * a stored point exactly on the target) has none; a solved crossing time is uncertain by at least
+ * the position uncertainty divided by the speed (a point known to ±δ along a curve traversed at
+ * speed v fixes its time only to ±δ / v), so max(error.t, error.position / speed). A hit whose
+ * speed is 0 or not finite keeps error.t (the quotient says nothing there).
+ */
+export function timeUncertainty(hit: Pick<QueryHit, "error" | "speed">): number {
+  if (hit.error.t === 0) return 0;
+  const speed = hit.speed;
+  if (!(speed > 0) || !Number.isFinite(speed)) return hit.error.t;
+  return Math.max(hit.error.t, hit.error.position / speed);
+}
 
 export type QueryNote = "ok" | "not_reached_in_span" | "stopped_before_target" | "possibly_more_beyond_span" | "target_is_start";
 
@@ -135,10 +156,15 @@ function positionTolerance(p: Vec2, o: Resolved): number {
   return TOLERANCE_SAFETY * (o.atol + o.rtol * Math.hypot(p.x, p.y));
 }
 
-function hitAt(sys: CompiledSystem, t: number, p: Vec2, tError: number, o: Resolved): QueryHit {
+/** |F| at (p, t); 0 where the field is not finite. */
+function speedAt(sys: CompiledSystem, t: number, p: Vec2): number {
   const v = sys.eval(p, t);
-  const speed = Number.isFinite(v.x) && Number.isFinite(v.y) ? Math.hypot(v.x, v.y) : 0;
-  return { t, x: p.x, y: p.y, error: { t: tError, position: positionTolerance(p, o) + speed * tError } };
+  return Number.isFinite(v.x) && Number.isFinite(v.y) ? Math.hypot(v.x, v.y) : 0;
+}
+
+function hitAt(sys: CompiledSystem, t: number, p: Vec2, tError: number, o: Resolved): QueryHit {
+  const speed = speedAt(sys, t, p);
+  return { t, x: p.x, y: p.y, error: { t: tError, position: positionTolerance(p, o) + speed * tError }, speed };
 }
 
 /**
@@ -255,7 +281,7 @@ export function querySolution(sys: CompiledSystem, start: Vec2, target: QueryTar
     const again = run(sys, start, o.t0, direction, need, o);
     if (again.status !== "completed") return result([], "stopped_before_target");
     const end = again.points[again.points.length - 1];
-    return result([{ t: tStar, x: end.x, y: end.y, error: { t: 0, position: positionTolerance(end, o) } }], "ok");
+    return result([{ t: tStar, x: end.x, y: end.y, error: { t: 0, position: positionTolerance(end, o) }, speed: speedAt(sys, tStar, end) }], "ok");
   }
 
   const fHits = coordinateHits(sys, fwd, 1, target.kind, target.value, o, true);
