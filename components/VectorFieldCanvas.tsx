@@ -224,12 +224,20 @@ export function VectorFieldCanvas({
     const s = screenOf(event);
     lastPointerWasTouch.current = isTouch(event);
     if (isTouch(event)) {
+      try {
       event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* the pointer may already be gone (pointercancel) or synthetic: capture is a nicety, not a requirement */
+    }
       dispatchTouch({ type: "down", id: event.pointerId, x: s.x, y: s.y, t: performance.now() });
       return;
     }
     drag.current = { x: s.x, y: s.y, moved: false, active: true };
-    event.currentTarget.setPointerCapture(event.pointerId);
+    try {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    } catch {
+      /* the pointer may already be gone (pointercancel) or synthetic: capture is a nicety, not a requirement */
+    }
   };
 
   const handleMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
