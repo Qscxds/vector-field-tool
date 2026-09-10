@@ -59,20 +59,20 @@ export type LabelTable = {
   >;
   /** Web shell and widget interface strings. */
   ui: Record<
-    | "title" | "subtitle" | "presets" | "type" | "typeSystem" | "typeExplicit" | "typeDifferential"
+    | "title" | "tagline" | "help" | "details" | "presets" | "type" | "typeSystem" | "typeExplicit" | "typeDifferential"
     | "fLabel" | "gLabel" | "gExplicitLabel" | "mLabel" | "nLabel" | "xMin" | "xMax" | "yMin" | "yMax"
     | "density" | "arrowLength" | "arrowUnit" | "arrowScaled" | "clearTrajectories" | "syntaxHint"
     | "fixErrorHint" | "singularNote" | "equilibriaHeading" | "constantSolutionsHeading" | "singularHeading"
-    | "formsHeading" | "implicitHeading" | "lastTrajectory" | "toward" | "language" | "shownRange"
+    | "formsHeading" | "implicitHeading" | "lastTrajectory" | "toward" | "language"
     | "interactionHint" | "hoverUndefined" | "connectedWaiting" | "computing" | "connected" | "notConnected"
     | "notRenderedByHost" | "localComputeUnavailable" | "rangeError" | "xRangeError" | "yRangeError" | "exprError"
-    | "featuresBox" | "leftFarBox"
+    | "featuresBox" | "featuresBoxDetail" | "leftFarBox"
     | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression"
-    | "equalScale" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled"
+    | "equalScale" | "equalScaleDetail" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled"
     | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
     | "equilibriaTruncated" | "singularitiesTruncated"
     | "nonUniqueTrajectory"
-    | "timeDependentNote" | "snapshotT"
+    | "timeDependentNote" | "timeDependentShort" | "snapshotT"
     | "typeSecond" | "secondOrderLabel" | "secondOrderReduced" | "syntaxHintSecondOrder"
     | "singularitiesContinuum"
     | "secondOrderNotAffine" | "secondOrderZeroCoefficient" | "secondOrderNoEquation" | "secondOrderDoubleEquals"
@@ -219,7 +219,9 @@ export const LABELS: Record<Locale, LabelTable> = {
     },
     ui: {
       title: "向量场 / 相图",
-      subtitle: "输入 x' = f(x, y)，y' = g(x, y)，或一阶方程 dy/dt = g(t, y) / M dt + N dy = 0。鼠标悬停预览经过该点的解曲线，点击固定它（正向蓝色、逆向橙色）；滚轮缩放，拖动平移，双击复位。",
+      tagline: "斜率场、相图、平衡点。",
+      help: "使用说明",
+      details: "详情",
       presets: "预设：",
       type: "类型",
       typeSystem: "二维系统 x' = f, y' = g",
@@ -235,9 +237,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       yMin: "y 最小",
       yMax: "y 最大",
       density: "网格密度",
-      arrowLength: "箭头长度",
-      arrowUnit: "等长（颜色表示模长）",
-      arrowScaled: "按模长缩放",
+      arrowLength: "箭头",
+      arrowUnit: "等长",
+      arrowScaled: "按模长",
       clearTrajectories: "清除轨线（{count} 条）",
       syntaxHint: "语法：乘号要写出来（x*y，不是 xy），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
       fixErrorHint: "修正上面的错误后会重新绘图",
@@ -250,7 +252,6 @@ export const LABELS: Record<Locale, LabelTable> = {
       lastTrajectory: "最近一条轨线：",
       toward: "到 t = {t}，{status}",
       language: "语言",
-      shownRange: "实际显示范围（等比缩放后）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
       interactionHint: "悬停预览解曲线 · 点击固定 · 滚轮缩放 · 拖动平移 · 双击复位",
       hoverUndefined: "此处靠近方向场奇点，方向无定义",
       connectedWaiting: "已连接，等待工具调用…",
@@ -263,17 +264,19 @@ export const LABELS: Record<Locale, LabelTable> = {
       xRangeError: "{hv} 范围无效：左端 {min} 必须小于右端 {max}。",
       yRangeError: "y 范围无效：下端 {min} 必须小于上端 {max}。",
       exprError: "表达式「{expr}」有问题：{message}",
-      featuresBox: "以下结果按范围 {hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}] 计算（复位时是输入范围，缩放或平移后是可见范围）；结论依赖于所考察的范围。",
+      featuresBox: "以下结果按 {hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}] 计算",
+      featuresBoxDetail: "复位时这是输入范围，缩放或平移后是可见范围。平衡点、常数解和方程类型都只在这个范围内扫描；结论依赖于所考察的范围。",
       leftFarBox: "轨线跑到输入范围的 20 倍以外后停止",
       tMin: "t 最小",
       tMax: "t 最大",
       syntaxHintFirstOrder: "语法：变量只有 t（自变量）和 y，写 x 会被拒绝；只输入方程右端，不要写「dy/dt =」。乘号要写出来（t*y，不是 ty），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
       xInFirstOrder: "一阶方程的自变量是 t（dy/dt = g(t, y)），请把 x 写成 t。",
       lhsInExpression: "只需输入方程的右端，「dy/dt =」这一部分是默认的。",
-      equalScale: "等比（{hv} 与 y 每单位像素相同，斜率可从图上读出）",
+      equalScale: "等比",
+      equalScaleDetail: "{hv} 与 y 每单位像素相同，斜率可以从图上读出；范围会向一个方向扩大以填满画布。取消勾选后输入范围填满画布，两个方向的比例不同，图上的角度不再是真实斜率。",
       equalScaleWarning: "横纵比例不同，图上的角度不代表真实斜率。",
-      shownRangeEqual: "实际显示范围（等比缩放后）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
-      shownRangeFilled: "实际显示范围（填满输入范围）：{hv}∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]",
+      shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}]（等比）",
+      shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}]（填满）",
       lhsInExpressionSystem: "只需输入方程的右端，「x' =」「y' =」这一部分是默认的。",
       towardT: "到 t = {t}，{status}",
       trajectorySides: "一侧：{first}；另一侧：{second}",
@@ -281,6 +284,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       singularitiesTruncated: "方向场奇点数量超过上限 {max}，只列出前 {max} 个（按 t 坐标排序）；是否构成连续奇点集是根据全部找到的点判断的，不只是列出的这些。",
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
       timeDependentNote: "这是非自治系统：右端出现了 t，向量场随 t 变化，图上显示的是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场这里不做这项分析。悬停和点击得到的解曲线从 t = {t} 出发。",
+      timeDependentShort: "非自治系统：t = {t} 时刻的快照，不做平衡点分析",
       snapshotT: "快照时刻 t",
       typeSecond: "二阶方程 x'' = F(x, x')",
       secondOrderLabel: "x'' = F(x, x')，或写成完整方程，例如 x'' + 0.5*x' + x = 0",
@@ -455,7 +459,9 @@ export const LABELS: Record<Locale, LabelTable> = {
     },
     ui: {
       title: "Vector field / phase portrait",
-      subtitle: "Enter x' = f(x, y), y' = g(x, y), or a first-order equation dy/dt = g(t, y) / M dt + N dy = 0. Hover to preview the solution curve through a point and click to keep it (blue forward, orange backward); wheel to zoom, drag to pan, double-click to reset.",
+      tagline: "Slope fields, phase portraits, equilibria.",
+      help: "Help",
+      details: "Details",
       presets: "Presets:",
       type: "Type",
       typeSystem: "Planar system x' = f, y' = g",
@@ -471,9 +477,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       yMin: "y min",
       yMax: "y max",
       density: "Grid density",
-      arrowLength: "Arrow length",
-      arrowUnit: "Uniform (color encodes magnitude)",
-      arrowScaled: "Scaled by magnitude",
+      arrowLength: "Arrows",
+      arrowUnit: "Uniform",
+      arrowScaled: "Scaled",
       clearTrajectories: "Clear trajectories ({count})",
       syntaxHint: "Syntax: write multiplication explicitly (x*y, not xy), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
       fixErrorHint: "Fix the error above to redraw",
@@ -486,7 +492,6 @@ export const LABELS: Record<Locale, LabelTable> = {
       lastTrajectory: "Last trajectory:",
       toward: "to t = {t}, {status}",
       language: "Language",
-      shownRange: "Displayed range (equal scale): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
       interactionHint: "Hover to preview a solution · click to keep it · wheel to zoom · drag to pan · double-click to reset",
       hoverUndefined: "Near a singular point of the direction field: direction undefined",
       connectedWaiting: "Connected, waiting for a tool call…",
@@ -499,17 +504,19 @@ export const LABELS: Record<Locale, LabelTable> = {
       xRangeError: "Invalid {hv} range: the left end {min} must be smaller than the right end {max}.",
       yRangeError: "Invalid y range: the lower end {min} must be smaller than the upper end {max}.",
       exprError: "Problem in the expression “{expr}”: {message}",
-      featuresBox: "The results below are computed for the range {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}] (the entered range at the home view, the visible range after zooming or panning); conclusions depend on the range examined.",
+      featuresBox: "Results for {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
+      featuresBoxDetail: "This is the entered range at the home view and the visible range after zooming or panning. Equilibria, constant solutions and equation types are scanned inside this range only; conclusions depend on the range examined.",
       leftFarBox: "stopped after running 20 times beyond the entered range",
       tMin: "t min",
       tMax: "t max",
       syntaxHintFirstOrder: "Syntax: the only variables are t (independent) and y; x is rejected. Enter only the right-hand side, not “dy/dt =”. Write multiplication explicitly (t*y, not ty), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
       xInFirstOrder: "In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.",
       lhsInExpression: "Enter only the right-hand side of the equation; the “dy/dt =” part is implied.",
-      equalScale: "Equal scale (same pixels per unit for {hv} and y; slopes can be read from the picture)",
+      equalScale: "Equal scale",
+      equalScaleDetail: "The same pixels per unit for {hv} and y, so slopes can be read from the picture; the range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas, the two directions are scaled differently, and angles in the picture are no longer true slopes.",
       equalScaleWarning: "Axes are not to the same scale: angles in the picture do not represent true slopes.",
-      shownRangeEqual: "Displayed range (equal scale): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
-      shownRangeFilled: "Displayed range (filled to the entered range): {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
+      shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}] (equal scale)",
+      shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}] (filled)",
       lhsInExpressionSystem: "Enter only the right-hand side of each equation; the “x' =” / “y' =” part is implied.",
       towardT: "to t = {t}, {status}",
       trajectorySides: "one side: {first}; other side: {second}",
@@ -517,6 +524,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       singularitiesTruncated: "More than {max} singular points of the direction field were found; only the first {max} are listed (sorted by t). Whether they form a continuum was judged from all the points found, not only from the listed ones.",
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
       timeDependentNote: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t, and the picture shows the snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; they are not attempted for a time-dependent field. The solution curves you get by hovering and clicking start at t = {t}.",
+      timeDependentShort: "Non-autonomous: snapshot at t = {t}, no equilibrium analysis",
       snapshotT: "Snapshot time t",
       typeSecond: "Second-order equation x'' = F(x, x')",
       secondOrderLabel: "x'' = F(x, x'), or a full equation such as x'' + 0.5*x' + x = 0",

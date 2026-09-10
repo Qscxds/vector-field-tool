@@ -5,10 +5,11 @@
  * a form instead of by Claude. Independent route; /mcp and /widget are untouched.
  * The interaction model (zoom / pan / hover / click-to-keep) lives in useInteractiveScene.
  */
+import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Info } from "@/components/Info";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
-import { useCoarsePointer } from "@/components/useCoarsePointer";
 import { useDocumentLang } from "@/components/useDocumentLang";
 import { exportScenePng } from "@/components/exportScenePng";
 import { exportFileName, exportFooterText } from "@/lib/export-footer";
@@ -393,7 +394,6 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
 
   const [copied, setCopied] = useState(false);
   const [fallbackUrl, setFallbackUrl] = useState<string | null>(null);
-  const coarsePointer = useCoarsePointer();
   // PNG export: the picture on screen (same drawScene) at 2x with a one-line footer, saved through
   // a temporary link whose object URL is revoked once the click has been dispatched.
   const [downloadFailed, setDownloadFailed] = useState(false);
@@ -471,7 +471,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             <h1 style={{ fontSize: 22, margin: "0 0 4px" }}>{L.ui.title}</h1>
             {languageSelect}
           </div>
-          <p style={{ margin: "0 0 16px", color: "#52606d" }}>{L.ui.subtitle}</p>
+          <p style={{ margin: "0 0 16px", color: "#52606d" }} data-tagline>
+            {L.ui.tagline}{" "}
+            <Link href={`/help?loc=${locale}`} data-help-link>
+              {L.ui.help}
+            </Link>
+          </p>
         </>
       )}
 
@@ -502,9 +507,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             </select>
           </label>
           {preset ? (
-            <p style={{ margin: 0, color: "#52606d" }} data-preset-note>
-              {preset.note[locale]}
-            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, color: "#52606d", flexWrap: "wrap" }} data-preset-note>
+              <span style={{ flex: "1 1 0", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={preset.note[locale]}>
+                {preset.note[locale]}
+              </span>
+              <Info label={L.ui.details} data-info="preset-note">
+                {preset.note[locale]}
+              </Info>
+            </div>
           ) : null}
         </section>
       ) : null}
@@ -604,10 +614,15 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <option value="scaled">{L.ui.arrowScaled}</option>
             </select>
           </label>
-          <label style={{ display: "flex", gap: 6, alignItems: "flex-start", color: "#1f2933" }}>
-            <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" style={{ marginTop: 3 }} />
-            <span>{fill(L.ui.equalScale, { hv })}</span>
-          </label>
+          <div style={{ color: "#1f2933" }}>
+            <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" />
+              <span>{L.ui.equalScale}</span>
+            </label>{" "}
+            <Info label={L.ui.details} data-info="equal-scale">
+              {fill(L.ui.equalScaleDetail, { hv })}
+            </Info>
+          </div>
           <button type="button" onClick={clearTrajectories} style={buttonStyle} disabled={trajectories.length === 0}>
             {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
           </button>
@@ -633,9 +648,6 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {fill(L.ui.secondOrderReduced, { g: compiled.secondOrder.reduced.g })}
             </p>
           ) : null}
-          <p style={{ margin: 0, color: "#52606d", fontSize: 12 }}>
-            {form.mode === "system" ? L.ui.syntaxHint : form.mode === "second" ? L.ui.syntaxHintSecondOrder : L.ui.syntaxHintFirstOrder}
-          </p>
         </form>
         )}
 
@@ -643,6 +655,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           {compiled.error ? (
             <div role="alert" style={{ padding: "10px 12px", marginBottom: 10, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6 }}>
               {compiled.error}
+              {/* The syntax rules of the current mode are shown only here, when an expression failed to parse. */}
+              <p style={{ margin: "8px 0 0", color: "#7f1d1d", fontSize: 12 }} data-syntax-hint>
+                {form.mode === "system" ? L.ui.syntaxHint : form.mode === "second" ? L.ui.syntaxHintSecondOrder : L.ui.syntaxHintFirstOrder}
+              </p>
             </div>
           ) : null}
           {scene && viewport ? (
@@ -676,8 +692,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                   xMax: formatNumber(viewport.box.x.max, 3),
                   yMin: formatNumber(viewport.box.y.min, 3),
                   yMax: formatNumber(viewport.box.y.max, 3),
-                })}{" "}
-                · {coarsePointer ? L.ui.interactionHintTouch : L.ui.interactionHint}
+                })}
               </p>
             </>
           ) : (
@@ -704,7 +719,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                 xMax: formatNumber((scene.featuresBox ?? scene.box).x.max, 3),
                 yMin: formatNumber((scene.featuresBox ?? scene.box).y.min, 3),
                 yMax: formatNumber((scene.featuresBox ?? scene.box).y.max, 3),
-              })}
+              })}{" "}
+              <Info label={L.ui.details} data-info="features-box">
+                {L.ui.featuresBoxDetail}
+              </Info>
             </p>
           ) : null}
           {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} /> : null}

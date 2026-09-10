@@ -77,13 +77,43 @@ describe("label tables", () => {
     for (const locale of LOCALES) expect(LABELS[locale].ui.lhsInExpression, locale).toMatch(/dy\/dt/);
   });
 
-  it("the features-box sentence names both the entered range (home view) and the visible range (after zoom/pan)", () => {
-    expect(LABELS.zh.ui.featuresBox).toMatch(/输入范围/);
-    expect(LABELS.zh.ui.featuresBox).toMatch(/可见范围/);
-    expect(LABELS.zh.ui.featuresBox).not.toMatch(/当前可见范围/);
-    expect(LABELS.en.ui.featuresBox).toMatch(/entered range at the home view/);
-    expect(LABELS.en.ui.featuresBox).toMatch(/visible range after zooming or panning/);
-    expect(LABELS.en.ui.featuresBox).not.toMatch(/computed for the visible range/);
+  it("the features-box line is the range only; its detail (behind the info toggle) names both the entered range (home view) and the visible range (after zoom/pan) [M]", () => {
+    for (const locale of LOCALES) {
+      const L = LABELS[locale];
+      // the visible line: the four bounds and the horizontal name, no explanation
+      for (const ph of ["{hv}", "{xMin}", "{xMax}", "{yMin}", "{yMax}"]) expect(L.ui.featuresBox, locale).toContain(ph);
+      expect(L.ui.featuresBox.length, locale).toBeLessThan(80);
+      expect(L.ui.featuresBoxDetail, locale).not.toMatch(/\{\w+\}/);
+    }
+    expect(LABELS.zh.ui.featuresBoxDetail).toMatch(/输入范围/);
+    expect(LABELS.zh.ui.featuresBoxDetail).toMatch(/可见范围/);
+    expect(LABELS.zh.ui.featuresBoxDetail).not.toMatch(/当前可见范围/);
+    expect(LABELS.en.ui.featuresBoxDetail).toMatch(/entered range at the home view/);
+    expect(LABELS.en.ui.featuresBoxDetail).toMatch(/visible range after zooming or panning/);
+    expect(LABELS.en.ui.featuresBoxDetail).not.toMatch(/computed for the visible range/);
+  });
+
+  it("[M] controls keep labels only: the arrow and equal-scale labels are short, their explanations live in the detail / help texts", () => {
+    for (const locale of LOCALES) {
+      const L = LABELS[locale];
+      for (const key of ["arrowLength", "arrowUnit", "arrowScaled", "equalScale", "help", "details"] as const) {
+        expect(L.ui[key].length, `${locale}.${key}`).toBeLessThanOrEqual(12);
+        expect(L.ui[key], `${locale}.${key}`).not.toMatch(/[（(]/);
+      }
+      expect(L.ui.equalScaleDetail).toContain("{hv}");
+      expect(L.ui.equalScaleDetail).toMatch(/[。.]$/);
+      // the tagline is one short line; the long subtitle is gone
+      expect(L.ui.tagline.length).toBeLessThan(50);
+      expect(Object.keys(L.ui)).not.toContain("subtitle");
+      expect(Object.keys(L.ui)).not.toContain("shownRange");
+      // the displayed-range lines are the range plus a short qualifier
+      for (const key of ["shownRangeEqual", "shownRangeFilled"] as const) {
+        expect(L.ui[key], `${locale}.${key}`).toMatch(/^\{hv\} ∈ \[\{xMin\}, \{xMax\}\]/);
+        expect(L.ui[key].length, `${locale}.${key}`).toBeLessThan(70);
+      }
+      expect(L.ui.timeDependentShort).toContain("{t}");
+      expect(L.ui.timeDependentShort.length).toBeLessThan(L.ui.timeDependentNote.length);
+    }
   });
 
   it("uniqueness and domain-edge texts are full sentences that name the Lipschitz condition, with no sentence for a bounded result (J.2)", () => {

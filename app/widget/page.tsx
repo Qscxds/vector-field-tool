@@ -13,6 +13,7 @@
  */
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Info } from "@/components/Info";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useCoarsePointer } from "@/components/useCoarsePointer";
@@ -185,10 +186,15 @@ export default function WidgetPage() {
             })}{" "}
             · {coarsePointer ? L.ui.interactionHintTouch : L.ui.interactionHint}
           </p>
-          <label style={{ display: "flex", gap: 6, alignItems: "flex-start", margin: "4px 0 0", color: "#52606d", fontSize: 11, cursor: "pointer" }}>
-            <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" style={{ marginTop: 1 }} />
-            <span>{fill(L.ui.equalScale, { hv: horizontalName(live.scene) })}</span>
-          </label>
+          <div style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }}>
+            <label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
+              <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" />
+              <span>{L.ui.equalScale}</span>
+            </label>{" "}
+            <Info label={L.ui.details} data-info="equal-scale">
+              {fill(L.ui.equalScaleDetail, { hv: horizontalName(live.scene) })}
+            </Info>
+          </div>
           {live.overlay.some((t) => t.nonUnique) ? (
             <p role="status" data-non-unique-preview style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
               {L.ui.nonUniqueTrajectory}
@@ -219,18 +225,10 @@ function SceneSummary({ scene }: { scene: Scene }) {
   const items: string[] = [];
   // Non-autonomous: the snapshot note replaces the features-box line (nothing was computed for a range).
   if (scene.timeDependent) items.push(fill(L.ui.timeDependentNote, { t: formatNumber(scene.timeDependent.snapshotT, 4) }));
-  if (scene.box && !scene.timeDependent && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order")) {
-    const fb = scene.featuresBox ?? scene.box;
-    items.push(
-      fill(L.ui.featuresBox, {
-        hv: horizontalName(scene),
-        xMin: formatNumber(fb.x.min, 3),
-        xMax: formatNumber(fb.x.max, 3),
-        yMin: formatNumber(fb.y.min, 3),
-        yMax: formatNumber(fb.y.max, 3),
-      }),
-    );
-  }
+  const fb = scene.box && !scene.timeDependent && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order") ? scene.featuresBox ?? scene.box : null;
+  const featuresBoxLine = fb
+    ? fill(L.ui.featuresBox, { hv: horizontalName(scene), xMin: formatNumber(fb.x.min, 3), xMax: formatNumber(fb.x.max, 3), yMin: formatNumber(fb.y.min, 3), yMax: formatNumber(fb.y.max, 3) })
+    : null;
   // A second-order scene shows the reduction step (the equation the student gave, then x' = y, y' = g).
   if (scene.secondOrder) items.push(fill(L.tool.secondOrderReduced, { equation: scene.secondOrder.equation, g: scene.secondOrder.reduced.g }));
   if (scene.system) {
@@ -284,6 +282,14 @@ function SceneSummary({ scene }: { scene: Scene }) {
 
   return (
     <div style={{ marginTop: 6 }}>
+      {featuresBoxLine ? (
+        <p style={{ margin: "2px 0", color: "#52606d" }} data-features-box>
+          {featuresBoxLine}{" "}
+          <Info label={L.ui.details} data-info="features-box">
+            {L.ui.featuresBoxDetail}
+          </Info>
+        </p>
+      ) : null}
       {items.map((line, i) => (
         <p key={i} style={{ margin: "2px 0", color: "#52606d" }}>
           {line}
