@@ -94,6 +94,8 @@
         exact_form: ["analyze_first_order", { M: "2*t*y", N: "t^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" }],
         lotka_volterra: ["analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "en" }],
         trajectory: ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 6.283185307179586, locale: "en" }],
+        // Phase O: a planar crossing query, markers at every hit plus the "possibly more beyond the span" note.
+        query_solution: ["query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, target: { kind: "x", value: 0 }, tSpan: 10, locale: "en" }],
         ping: ["ping", { message: "hello widget" }],
       };
       const select = document.getElementById("scenario");

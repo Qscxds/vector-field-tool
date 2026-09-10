@@ -119,7 +119,7 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
   every user must **disconnect and reconnect the connector** in Claude (it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `l-1`.
+  the old resource URI; the widget silently goes blank otherwise). The current version is `o-1`.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "use ping
   with hello" tests the transport alone.
 

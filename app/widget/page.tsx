@@ -23,6 +23,7 @@ import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equ
 import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
+import { isUndoKey } from "@/lib/undo-key";
 
 const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order", "query_solution"]);
 
@@ -133,6 +134,20 @@ export default function WidgetPage() {
 
   const live = interactive.scene && interactive.viewport ? interactive : null;
 
+  // Ctrl+Z / Cmd+Z undoes the last trajectory action (the web shell's rule, lib/undo-key), unless
+  // the focus is in a field. The iframe only sees the keys while it has focus.
+  const undoRef = useRef(interactive.undo);
+  undoRef.current = interactive.undo;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isUndoKey(event)) return;
+      event.preventDefault();
+      undoRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   return (
     <main style={{ padding: "8px 10px 10px", fontSize: 13, lineHeight: 1.45, color: "#1f2933", background: "#fff" }}>
       {/* The host sizes the iframe from our size-changed notifications; scrollbars inside the widget
@@ -167,6 +182,9 @@ export default function WidgetPage() {
             height={canvasHeight}
             overlay={live.overlay}
             overlayHint={live.hint}
+            // Hover feedback on a kept curve (Phase N): the highlighted pair and the pointer cursor.
+            highlight={live.highlight}
+            cursor={live.cursor}
             {...live.handlers}
           />
           {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
@@ -193,6 +211,12 @@ export default function WidgetPage() {
             <Info label={L.ui.details} data-info="equal-scale">
               {fill(L.ui.equalScaleDetail, { hv: horizontalName(live.scene) })}
             </Info>
+          </div>
+          {/* Undo the last trajectory action (a click that kept or removed a curve), as in the web shell. */}
+          <div style={{ margin: "4px 0 0" }}>
+            <button type="button" onClick={live.undo} disabled={!live.canUndo} data-undo title="Ctrl+Z" style={buttonStyle}>
+              {L.ui.undo}
+            </button>
           </div>
           {live.overlay.some((t) => t.nonUnique) ? (
             <p role="status" data-non-unique-preview style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
@@ -320,6 +344,17 @@ function SceneSummary({ scene }: { scene: Scene }) {
     </div>
   );
 }
+
+const buttonStyle = {
+  font: "inherit",
+  fontSize: 12,
+  padding: "3px 10px",
+  border: "1px solid #c9ced6",
+  borderRadius: 4,
+  background: "#f5f7fa",
+  color: "#1f2933",
+  cursor: "pointer",
+} as const;
 
 const preStyle = {
   margin: 0,
