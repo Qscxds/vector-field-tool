@@ -29,6 +29,7 @@ export const COLORS = {
   uncertain: "#4b5563",
   implicit: "#7c3aed",
   hover: "rgba(14, 116, 144, 0.75)",
+  queryHit: "#be123c",
 };
 
 /**
@@ -194,6 +195,15 @@ function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Sce
     ctx.beginPath();
     ctx.arc(s.x, s.y, 3.5, 0, 2 * Math.PI);
     ctx.fill();
+  }
+  // query_solution: every hit of the numerical solution as a ring on the curve (data from the Scene).
+  for (const hit of scene.query?.hits ?? []) {
+    const s = worldToScreen(v, hit);
+    ctx.strokeStyle = COLORS.queryHit;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 5, 0, 2 * Math.PI);
+    ctx.stroke();
   }
 }
 

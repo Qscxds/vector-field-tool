@@ -49,7 +49,7 @@ check("initialize", init.status === 200 && init.msg?.result?.serverInfo?.name ==
 
 const list = await rpc("tools/list");
 const names = (list.msg?.result?.tools ?? []).map((t) => t.name).sort();
-check("tools/list has 6 tools", JSON.stringify(names) === JSON.stringify(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]), names.join(","));
+check("tools/list has 7 tools", JSON.stringify(names) === JSON.stringify(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "query_solution", "sample_field", "trace_trajectory"]), names.join(","));
 const toolsList = list.msg?.result?.tools ?? [];
 check(
   "every tool carries _meta.ui.resourceUri",
@@ -78,6 +78,12 @@ const calls = [
       r.structuredContent.equilibria?.length === 1 &&
       r.structuredContent.equilibria[0].classification === "stable_spiral" &&
       /^Second-order equation x'' \+ 0\.5\*x' \+ x = 0: with y = x' it becomes the system x' = y, y' = /.test(r.content?.[0]?.text ?? ""),
+  ],
+  // dy/dt = y from (0, 1): y(2) = e^2 = 7.389056 from the numerical solution, one hit, note ok.
+  [
+    "query_solution",
+    { mode: "first", expr: "y", t0: 0, y0: 1, target: { kind: "t", value: 2 } },
+    (r) => r.structuredContent?.kind === "query_solution" && r.structuredContent.query?.hits?.length === 1 && Math.abs(r.structuredContent.query.hits[0].y - 7.38905609893065) < 1e-4 && r.structuredContent.query.note === "ok",
   ],
 ];
 for (const [name, args, verify] of calls) {

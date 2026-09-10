@@ -40,10 +40,10 @@ beforeAll(async () => {
 });
 
 describe("tools/list", () => {
-  it("exposes ping plus the five analysis tools with valid schemas", async () => {
+  it("exposes ping plus the six analysis tools with valid schemas", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "sample_field", "trace_trajectory"]);
+    expect(names).toEqual(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "query_solution", "sample_field", "trace_trajectory"]);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description && t.description.length).toBeGreaterThan(40);
@@ -74,7 +74,7 @@ describe("tools/list", () => {
     // symbolic derivation without calling any. The rule is the first thing the model reads.
     const { tools } = await client.listTools();
     const analysis = tools.filter((t) => t.name !== "ping");
-    expect(analysis).toHaveLength(5);
+    expect(analysis).toHaveLength(6);
     for (const t of analysis) {
       expect(t.description, t.name).toMatch(/^CALL THIS TOOL FIRST /);
       expect(t.description, t.name).toMatch(/Even when /);
@@ -1341,5 +1341,159 @@ describe("Phase J results are exposed in the Scene and the summary, in both loca
       expect(field.scene.timeDependent?.snapshotT, locale).toBe(0.25);
       expect(field.text, locale).toContain("0.25");
     }
+  });
+});
+
+describe("query_solution (round N)", () => {
+  it("its description starts with the call-first rule and names the value-at / time-when questions", async () => {
+    const { tools } = await client.listTools();
+    const q = tools.find((t) => t.name === "query_solution")!;
+    expect(q.description!.startsWith("CALL THIS TOOL FIRST")).toBe(true);
+    expect(q.description).toMatch(/value of the solution at some time/);
+    expect(q.description).toMatch(/when does the solution reach some value/);
+    expect(q.description).toMatch(/never evaluate that closed form mentally/);
+    const props = q.inputSchema.properties as Record<string, unknown>;
+    expect(Object.keys(props)).toEqual(expect.arrayContaining(["mode", "expr", "M", "N", "f", "g", "equation", "t0", "x0", "y0", "target", "tSpan", "xMin", "locale"]));
+  });
+
+  it("dy/dt = y from (0, 1): t = 2 gives y = e^2 and y = 2 gives t = ln 2 (first-order t is the coordinate)", async () => {
+    // y = e^t: y(2) = e^2 = 7.38905609893065; y = 2 at t = ln 2 = 0.6931471805599453.
+    const r = await call("query_solution", { mode: "first", expr: "y", t0: 0, y0: 1, target: { kind: "t", value: 2 } });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.kind).toBe("query_solution");
+    expect(r.scene.system).toEqual({ f: "1", g: "y", variables: "ty" });
+    expect(r.scene.start).toEqual({ x: 0, y: 1 });
+    expect(r.scene.query!.target).toEqual({ kind: "t", value: 2 });
+    expect(r.scene.query!.note).toBe("ok");
+    expect(r.scene.query!.reached).toBe(true);
+    expect(r.scene.query!.hits).toHaveLength(1);
+    expect(Math.abs(r.scene.query!.hits[0].y - 7.38905609893065) / 7.38905609893065).toBeLessThan(1e-5);
+    expect(r.scene.trajectories).toHaveLength(2);
+    expect(r.scene.trajectories![0].stop).toBe("far");
+    expect(r.text).toMatch(/^Solution of dy\/dt = y through \(t, y\) = \(0, 1\), asked for t = 2\./);
+    // 6 decimals: e^2 = 7.389056 rounds to 7.389056, and the numerical value (within 1e-5 relative) to 7.38905 or 7.38906.
+    expect(r.text).toMatch(/\nt = 2 \(±[0-9.e-]+\), y = 7\.3890[56][0-9]* \(±[0-9.e-]+\)\n/);
+    expect(r.text).toContain(labels("en").tool.queryAccuracy);
+    expect(r.text).toMatch(/Forward \(t increasing\): reached t = [0-9.]+, end point \([0-9.]+, 60\), stopped after running 20 times beyond the entered range\./);
+    expect(r.text).toMatch(/Backward \(t decreasing\): reached t = -20, end point \(-20, [0-9.e-]+\), integrated to the requested time\./);
+    const s = await call("query_solution", { mode: "first", expr: "y", t0: 0, y0: 1, target: { kind: "y", value: 2 } });
+    expect(s.scene.query!.hits).toHaveLength(1);
+    expect(Math.abs(s.scene.query!.hits[0].x - 0.6931471805599453)).toBeLessThan(1e-6);
+    expect(s.text).toMatch(/\nt = 0\.693147 \(±/);
+  });
+
+  it("rejects x as a first-order target kind, x0 on a first-order equation, and a missing expression, readably", async () => {
+    const x = await call("query_solution", { mode: "first", expr: "y", t0: 0, y0: 1, target: { kind: "x", value: 2 } });
+    expect(x.isError).toBe(true);
+    expect(x.text).toMatch(/coordinates t and y: use target\.kind 't'/);
+    const x0 = await call("query_solution", { mode: "first", expr: "y", x0: 0, y0: 1, target: { kind: "t", value: 2 } });
+    expect(x0.isError).toBe(true);
+    expect(x0.text).toMatch(/not x0/);
+    const missing = await call("query_solution", { mode: "system", f: "y", x0: 1, y0: 0, target: { kind: "t", value: 1 } });
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toMatch(/mode 'system' needs `g`/);
+    const noStart = await call("query_solution", { mode: "system", f: "y", g: "-x", y0: 0, target: { kind: "t", value: 1 } });
+    expect(noStart.isError).toBe(true);
+    expect(noStart.text).toMatch(/needs `x0`/);
+    const xInFirst = await call("query_solution", { mode: "first", expr: "x*y", t0: 0, y0: 1, target: { kind: "t", value: 1 } });
+    expect(xInFirst.isError).toBe(true);
+    expect(xInFirst.text).toMatch(/write t instead of x/);
+  });
+
+  it("harmonic x' = y, y' = -x from (1, 0): x = 0 three times each way within tSpan 10, possibly more beyond", async () => {
+    // Crossings at pi/2 + k pi: forward pi/2, 3pi/2, 5pi/2; backward -pi/2, -3pi/2, -5pi/2.
+    const r = await call("query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, tSpan: 10, target: { kind: "x", value: 0 } });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.query!.note).toBe("possibly_more_beyond_span");
+    const ts = r.scene.query!.hits.map((h) => h.t);
+    expect(ts).toHaveLength(6);
+    [-5, -3, -1, 1, 3, 5].forEach((k, i) => expect(Math.abs(ts[i] - (k * Math.PI) / 2)).toBeLessThan(1e-6));
+    expect(r.text).toContain(labels("en").tool.queryMoreBeyond);
+    expect(r.text).toMatch(/^Solution of the system x' = y, y' = -x through \(1, 0\) \(at t = 0\), asked for x = 0\./);
+    expect(r.text).toMatch(/\nt = 1\.570796 \(±[0-9.e-]+\): \(x, y\) = \(-?[0-9.e-]+, -1\) \(±/);
+    expect(r.scene.trajectories!.every((t) => t.status === "completed")).toBe(true);
+  });
+
+  it("logistic dy/dt = y(1 - y) from (0, 0.1) reaches y = 0.5 at t = ln 9, in both languages", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("query_solution", { mode: "first", expr: "y*(1 - y)", t0: 0, y0: 0.1, target: { kind: "y", value: 0.5 }, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.locale).toBe(locale);
+      expect(r.scene.query!.hits).toHaveLength(1);
+      expect(Math.abs(r.scene.query!.hits[0].x - 2.1972245773362196), locale).toBeLessThan(1e-6);
+      const L = labels(locale);
+      expect(r.text).toContain(fill(L.tool.queryHeaderFirst, { equation: "dy/dt = y*(1 - y)", t0: "0", y0: "0.1", target: fill(L.tool.queryTargetY, { value: "0.5" }) }));
+      expect(r.text).toContain(L.tool.queryAccuracy);
+      expect(r.text).toContain(L.tool.forward);
+      // ln 9 = 2.1972246 at 6 decimals, the numerical crossing within 1e-6 of it.
+      if (locale === "zh") expect(r.text).toMatch(/t = 2\.19722[45]（±/);
+      else expect(r.text).toMatch(/t = 2\.19722[45] \(±/);
+    }
+  });
+
+  it("dy/dt = y^2 from (0, 1) never reaches t = 2: not reached, the forward run left the far box just below t = 1", async () => {
+    // y = 1/(1 - t) reaches the far box's y = 60 (20 x the [-3, 3] range) at t = 59/60.
+    const r = await call("query_solution", { mode: "first", expr: "y^2", t0: 0, y0: 1, tSpan: 2, target: { kind: "t", value: 2 } });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.query!.note).toBe("not_reached_in_span");
+    expect(r.scene.query!.hits).toEqual([]);
+    expect(r.scene.query!.reached).toBe(false);
+    const forward = r.scene.trajectories![0];
+    expect(forward.status).toBe("left_box");
+    expect(Math.abs(forward.tEnd - 59 / 60)).toBeLessThan(0.01);
+    expect(r.text).toContain(labels("en").tool.queryNotReached);
+    expect(r.text).toMatch(/Forward \(t increasing\): reached t = 0\.98[0-9]*, end point \(0\.98[0-9]*, 60\), stopped after running 20 times beyond the entered range\./);
+  });
+
+  it("dy/dt = -y from (0, 1) never reaches y = -1: not reached, forward completed, backward left the far box", async () => {
+    const r = await call("query_solution", { mode: "first", expr: "-y", t0: 0, y0: 1, target: { kind: "y", value: -1 } });
+    expect(r.scene.query!.note).toBe("not_reached_in_span");
+    expect(r.scene.trajectories![0].status).toBe("completed");
+    expect(r.scene.trajectories![0].tEnd).toBe(20);
+    expect(r.scene.trajectories![1].status).toBe("left_box");
+  });
+
+  it("kind t on a system is the time: the harmonic solution at t = pi is (-1, 0); beyond the span it is stopped_before_target", async () => {
+    const r = await call("query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, tSpan: 10, target: { kind: "t", value: Math.PI } });
+    expect(r.scene.query!.note).toBe("ok");
+    expect(r.scene.query!.hits).toHaveLength(1);
+    expect(Math.abs(r.scene.query!.hits[0].x + 1)).toBeLessThan(1e-6);
+    expect(Math.abs(r.scene.query!.hits[0].y)).toBeLessThan(1e-6);
+    expect(r.text).toMatch(/\nt = 3\.141593 \(±0\): \(x, y\) = \(-1, -?[0-9.e-]+\) \(±/);
+    const far = await call("query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, tSpan: 10, target: { kind: "t", value: 15 } });
+    expect(far.scene.query!.note).toBe("stopped_before_target");
+    expect(far.scene.query!.hits).toEqual([]);
+    expect(far.text).toContain(labels("en").tool.queryStoppedBefore);
+    expect(far.text).toMatch(/Forward \(t increasing\): reached t = 10, /);
+    // The brief's alias: t0 stands for x0 on a planar system when x0 is absent.
+    const alias = await call("query_solution", { mode: "system", f: "y", g: "-x", t0: 1, y0: 0, tSpan: 10, target: { kind: "t", value: Math.PI } });
+    expect(alias.scene.start).toEqual({ x: 1, y: 0 });
+  });
+
+  it("mode second reduces the equation first and mode diff takes M and N", async () => {
+    // x'' + x = 0 from x = 1, x' = 0: x = cos t, so x = 0 first at t = pi/2 (forward).
+    const r = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, y0: 0, tSpan: 2, target: { kind: "x", value: 0 } });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.secondOrder?.reduced.f).toBe("y");
+    expect(r.text).toMatch(/^Second-order equation x'' \+ x = 0: /);
+    expect(r.scene.query!.hits.map((h) => h.t)).toEqual([expect.closeTo(-Math.PI / 2, 6), expect.closeTo(Math.PI / 2, 6)]);
+    // y dt - t dy = 0 is dy/dt = y/t: through (1, 1) the solution is y = t, so y = 2 at t = 2.
+    const d = await call("query_solution", { mode: "diff", M: "y", N: "-t", t0: 1, y0: 1, tSpan: 5, target: { kind: "y", value: 2 } });
+    expect(d.isError).toBeFalsy();
+    expect(d.scene.fieldStyle).toBe("segments");
+    expect(d.scene.query!.hits).toHaveLength(1);
+    expect(Math.abs(d.scene.query!.hits[0].x - 2)).toBeLessThan(1e-6);
+    expect(d.text).toMatch(/^Solution of \(y\) dt \+ \(-t\) dy = 0 through \(t, y\) = \(1, 1\), asked for y = 2\./);
+  });
+
+  it("a non-autonomous system words a stop by low speed neutrally, never as an equilibrium (N.3 b)", async () => {
+    // x' = 0, y' = cos(t) from (0, 0): y = sin t, whose speed |cos t| falls to 0 at t = pi/2; the
+    // integrator may report reached_equilibrium there, which for a time-dependent field is not one.
+    const r = await call("query_solution", { mode: "system", f: "0", g: "cos(t)", x0: 0, y0: 0, tSpan: Math.PI / 2, target: { kind: "t", value: 1 } });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.timeDependent).toBeTruthy();
+    expect(r.text).not.toMatch(/approaching an equilibrium/);
+    expect(r.text).toContain(labels("en").tool.timeDependentTrajectory.slice(0, 30));
+    expect(Math.abs(r.scene.query!.hits[0].y - Math.sin(1))).toBeLessThan(1e-6);
   });
 });

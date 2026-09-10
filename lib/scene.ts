@@ -7,10 +7,23 @@ import type { FormDetection } from "./core/detect-form";
 import type { Equilibrium, EquilibriaResult } from "./core/equilibria";
 import type { FieldGrid } from "./core/field";
 import type { IntegrationStatus } from "./core/integrate";
+import type { QueryHit, QueryNote } from "./core/query";
 import type { EquilibriumSolution, FirstOrderSpec } from "./core/slope-field";
 import type { Box, Locale, SystemSpec, Vec2, Range } from "./core/types";
 
-export type SceneKind = "ping" | "sample_field" | "analyze_system" | "trace_trajectory" | "analyze_first_order";
+export type SceneKind = "ping" | "sample_field" | "analyze_system" | "trace_trajectory" | "analyze_first_order" | "query_solution";
+
+/**
+ * query_solution only: what was asked and what the numerical solution gave (lib/core/query). The
+ * target kind is the STUDENT's: "t" is the horizontal coordinate of a first-order scene and the
+ * time of a planar one. `hits` are drawn as markers by the shells; `note` is a key worded by them.
+ */
+export type QueryView = {
+  target: { kind: "t" | "x" | "y"; value: number };
+  hits: QueryHit[];
+  note: QueryNote;
+  reached: boolean;
+};
 
 export type TrajectoryView = {
   direction: "forward" | "backward";
@@ -127,6 +140,8 @@ export type Scene = {
    * the reduction x' = y, y' = g shown to students; `system` carries the same reduced planar system.
    */
   secondOrder?: { equation: string; reduced: { f: string; g: string } };
+  /** query_solution only (see QueryView). */
+  query?: QueryView;
   /** ping only */
   message?: string;
 };

@@ -20,10 +20,11 @@ import { useCoarsePointer } from "@/components/useCoarsePointer";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
+import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
-const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order"]);
+const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order", "query_solution"]);
 
 function asScene(value: unknown): Scene | null {
   if (!value || typeof value !== "object") return null;
@@ -236,6 +237,8 @@ function SceneSummary({ scene }: { scene: Scene }) {
   items.push(...equilibriaNotices(L, scene));
   // Mode-aware (planar / explicit first order / differential form): see lib/labels-trajectory.
   for (const group of groupTrajectories(scene.trajectories ?? [])) items.push(...trajectoryLines(scene, group, L));
+  // query_solution: the hits and the note (lib/labels-query), after the curve's status lines.
+  items.push(...queryLines(scene, L));
   const fo = scene.firstOrder;
   if (fo) {
     if (fo.solutions.length === 0) items.push(noConstantSentence(L, fo.autonomous, fo.untestableReason, fo.identicallyZero));

@@ -11,6 +11,7 @@ import { findEquilibria } from "@/lib/core/equilibria";
 import { sampleField } from "@/lib/core/field";
 import { integrateAdaptive, integrateRK4, type IntegrateOptions } from "@/lib/core/integrate";
 import { compileSystem, ParseError } from "@/lib/core/parse";
+import { querySolution, type QueryTarget } from "@/lib/core/query";
 import { reduceSecondOrder } from "@/lib/core/second-order";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import { contourSegmentsFromGrid, sampleGrid } from "@/lib/render/contours";
@@ -24,7 +25,9 @@ import {
   type FirstOrderSpec,
 } from "@/lib/core/slope-field";
 import type { Box, SystemSpec } from "@/lib/core/types";
-import { EXACT_PATH_TOL, markNonUnique, withUniqueness } from "@/lib/interactive";
+import { EXACT_PATH_TOL, fixedStopBox, markNonUnique, withUniqueness } from "@/lib/interactive";
+import { queryLines, queryTargetText } from "@/lib/labels-query";
+import { trajectoryStatus } from "@/lib/labels-trajectory";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
@@ -357,7 +360,7 @@ export function analyzePlanar(
 // ---------- tools ----------
 
 /**
- * Registers the six analysis tools. Every tool is linked to the widget resource (`widgetUri`)
+ * Registers the seven analysis tools. Every tool is linked to the widget resource (`widgetUri`)
  * so MCP Apps hosts render its Scene; text-only hosts just read the summary.
  */
 export function registerTools(server: McpServer, widgetUri: string, deps: ToolDeps = {}): void {
@@ -770,6 +773,164 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         } else if (implicitCheck && !implicitCheck.passed) {
           lines.push(fill(L.tool.exactPathCheckFailed, { deviation: formatDeviation(implicitCheck.pathDeviation), tol: implicitCheck.tol.toExponential(0) }));
         }
+        return ok(lines.join("\n"), scene);
+      }),
+  );
+
+  registerAppTool(
+    server,
+    "query_solution",
+    {
+      title: "Evaluate the numerical solution: its value at a time, or when it reaches a value",
+      description:
+        `${CALL_FIRST_PREFIX} whenever the question is 'what is the value of the solution at some time' or 'when does ` +
+        "the solution reach some value' for a concrete equation or system with an initial condition: y(2) for dy/dt = y " +
+        "with y(0) = 1, the time at which a population reaches 500, when a trajectory first crosses x = 0, the position " +
+        "of an oscillator at t = pi. Even when the solution is known in closed form (y = e^t, a logistic curve, cos t), " +
+        "never evaluate that closed form mentally: " + CALL_FIRST_TAIL + " " +
+        "WHAT IT COMPUTES: integrates the NUMERICAL solution through the initial point forward and backward (adaptive " +
+        "Dormand-Prince, tolerance 1e-6) and then either re-integrates to exactly the target time (target.kind 't' for a " +
+        "system) or finds every crossing of the target coordinate along the numerical solution (target.kind 't' or 'y' " +
+        "for a first-order equation, where t is the horizontal coordinate; 'x' or 'y' for a system), each crossing " +
+        "solved in time by re-integration, never by interpolating between points. Returns one line per hit with an " +
+        "error estimate, a note when the target was not reached (with where each direction stopped and why: left the " +
+        "box, blew up, reached an equilibrium, span ended), when the run stopped before the target time, or when a " +
+        "periodic-looking solution may cross again beyond the span. " +
+        "USE THIS for any 'value at' or 'time when' question about a specific solution; use trace_trajectory to see " +
+        "the whole curve, analyze_first_order / analyze_system for equilibria and stability. " +
+        "Inputs: `mode` selects the equation form and which expression parameters are read: 'first' (expr: dy/dt = " +
+        "g(t, y)), 'diff' (M and N: M dt + N dy = 0), 'system' (f and g: x' = f, y' = g), 'second' (equation: x'' = " +
+        "F(x, x') or a full equation, reduced to x' = y, y' = F as analyze_second_order does). The initial point is " +
+        "(t0, y0) for first / diff (t0 is the initial t) and (x0, y0) for system / second (the start time is 0). " +
+        "`target` is { kind, value }: for first / diff kind 't' (a t coordinate) or 'y' (a y value); for system / " +
+        "second kind 't' (a time), 'x' or 'y' (a coordinate value). tSpan (default 20, at most 1000) is integrated in " +
+        "EACH direction; the solution is followed up to 20 times beyond the viewing box. " +
+        EXPRESSION_RULES + " For first / diff the variables are t and y only (x is rejected; write t). " +
+        "For 'second' the unknown is x with derivatives x' and x''. " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+      inputSchema: {
+        mode: z.enum(["first", "diff", "system", "second"]).describe("Which form the equation is given in: first (expr), diff (M, N), system (f, g), second (equation)."),
+        expr: expression.optional().describe("mode first: the right-hand side g(t, y) of dy/dt = g(t, y)."),
+        M: expression.optional().describe("mode diff: M(t, y) in M dt + N dy = 0."),
+        N: expression.optional().describe("mode diff: N(t, y) in M dt + N dy = 0."),
+        f: expression.optional().describe("mode system: the right-hand side of x'."),
+        g: expression.optional().describe("mode system: the right-hand side of y'."),
+        equation: z.string().trim().min(1).max(200).optional().describe("mode second: the second-order equation in x(t), as analyze_second_order takes it."),
+        params: paramsSchema,
+        t0: coordinate.optional().describe("mode first / diff: the t coordinate of the initial point (t0, y0). Not used for system / second (give x0)."),
+        x0: coordinate.optional().describe("mode system / second: the initial x (the start time is 0). Not used for first / diff (give t0)."),
+        y0: coordinate.describe("The initial y."),
+        target: z
+          .object({
+            kind: z.enum(["t", "x", "y"]).describe("first / diff: 't' (a t coordinate) or 'y'; system / second: 't' (a time), 'x' or 'y'."),
+            value: coordinate.describe("The target value."),
+          })
+          .describe("What is asked: the value at a time (kind 't' for a system) or the crossings of a coordinate value."),
+        tSpan: z.number().positive().max(1000).default(20).describe("Time span integrated in each direction (0 < tSpan <= 1000)."),
+        ...boxShape,
+        locale: localeSchema,
+      },
+      annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+      _meta: ui,
+    },
+    (input) =>
+      guarded(d, (checkpoint) => {
+        const L = labels(input.locale);
+        const box = resolveBox(input);
+        const firstOrder = input.mode === "first" || input.mode === "diff";
+        const need = (name: "expr" | "M" | "N" | "f" | "g" | "equation"): string => {
+          const v = input[name];
+          if (typeof v !== "string") throw new ToolInputError(`mode '${input.mode}' needs \`${name}\`.`);
+          return v;
+        };
+        // The equation in the form the mode names, its planar system, and the text of the header.
+        let spec: SystemSpec;
+        let equation: string;
+        let secondOrder: Scene["secondOrder"];
+        let fieldStyle: Scene["fieldStyle"];
+        if (input.mode === "first" || input.mode === "diff") {
+          const fo: FirstOrderSpec =
+            input.mode === "first"
+              ? { kind: "explicit", g: need("expr"), ...(input.params ? { params: input.params } : {}) }
+              : { kind: "differential", M: need("M"), N: need("N"), ...(input.params ? { params: input.params } : {}) };
+          spec = toSystem(fo);
+          compileOrExplainFirstOrder(fo, spec);
+          equation = fo.kind === "explicit" ? `dy/dt = ${fo.g}` : `(${fo.M}) dt + (${fo.N}) dy = 0`;
+          fieldStyle = fo.kind === "differential" ? "segments" : "arrows";
+        } else if (input.mode === "system") {
+          spec = input.params ? { f: need("f"), g: need("g"), params: input.params } : { f: need("f"), g: need("g") };
+          equation = fill(L.ui.equationSystem, { f: spec.f, g: spec.g });
+        } else {
+          const reduced = reduceSecondOrder(need("equation"), input.params, { box });
+          spec = reduced.spec;
+          secondOrder = { equation: reduced.equation, reduced: reduced.reduced };
+          equation = reduced.equation;
+        }
+        const sys = compileOrExplain(spec);
+        // The initial point: (t0, y0) on a first-order picture, (x0, y0) on a planar one (t0 is
+        // accepted there as an alias of x0 when x0 is absent).
+        let h: number;
+        if (firstOrder) {
+          if (typeof input.x0 === "number") throw new ToolInputError("A first-order equation has the coordinates t and y: give the initial point as t0 and y0, not x0.");
+          if (typeof input.t0 !== "number") throw new ToolInputError("mode 'first' / 'diff' needs `t0`, the t coordinate of the initial point.");
+          h = input.t0;
+        } else {
+          if (typeof input.x0 === "number") h = input.x0;
+          else if (typeof input.t0 === "number") h = input.t0;
+          else throw new ToolInputError("mode 'system' / 'second' needs `x0`, the initial x (the start time is 0).");
+        }
+        const start = { x: h, y: input.y0 };
+        // The student's target kind -> the kernel's: on a first-order picture t is the horizontal
+        // coordinate (kernel "x") and there is no separate time; on a planar one t is the time.
+        let target: QueryTarget;
+        if (firstOrder) {
+          if (input.target.kind === "x") throw new ToolInputError("A first-order equation has the coordinates t and y: use target.kind 't' (a t coordinate) or 'y', not 'x'.");
+          target = { kind: input.target.kind === "t" ? "x" : "y", value: input.target.value };
+        } else {
+          target = { kind: input.target.kind === "t" ? "time" : input.target.kind, value: input.target.value };
+        }
+        const result = querySolution(sys, start, target, { tSpan: input.tSpan, stopBox: fixedStopBox(box), t0: 0, checkpoint });
+        const traced: TrajectoryView[] = [result.forward, result.backward].map((leg, i) => ({
+          direction: i === 0 ? "forward" : "backward",
+          points: thin(leg.points, 1000),
+          status: leg.status,
+          steps: leg.steps,
+          tEnd: leg.tEnd,
+          stop: "far",
+        }));
+        const td = firstOrder ? null : detectTimeDependence(sys, box, { checkpoint });
+        const timeDependent = td?.dependsOnT ? { snapshotT: 0, maxRelDeviation: td.maxRelDeviation } : undefined;
+        // A curve through a point where uniqueness fails is one of many (as trace_trajectory does).
+        const trajectories =
+          firstOrder || timeDependent
+            ? traced
+            : markNonUnique(traced, { equilibria: withUniqueness(sys, findEquilibria(sys, box, { checkpoint }).points, box, checkpoint) }, box);
+        const scene: Scene = {
+          kind: "query_solution",
+          locale: input.locale,
+          system: spec,
+          box,
+          start,
+          trajectories,
+          ...(fieldStyle ? { fieldStyle } : {}),
+          ...(secondOrder ? { secondOrder } : {}),
+          ...(timeDependent ? { timeDependent } : {}),
+          query: { target: input.target, hits: result.hits, note: result.note, reached: result.reached },
+        };
+        const targetText = queryTargetText(scene.query!, L);
+        const lines: string[] = [];
+        lines.push(
+          firstOrder
+            ? fill(L.tool.queryHeaderFirst, { equation, t0: fmt(start.x), y0: fmt(start.y), target: targetText })
+            : fill(L.tool.queryHeaderSystem, { f: spec.f, g: spec.g, start: formatPoint(start), t0: "0", target: targetText }),
+        );
+        if (secondOrder) lines.unshift(fill(L.tool.secondOrderReduced, { equation: secondOrder.equation, g: secondOrder.reduced.g }));
+        lines.push(...queryLines(scene, L));
+        for (const t of trajectories) {
+          const end = t.points[t.points.length - 1];
+          lines.push(fill(L.tool.queryLeg, { direction: t.direction === "forward" ? L.tool.forward : L.tool.backward, tEnd: fmt(t.tEnd, 3), end: formatPoint(end), status: trajectoryStatus(t, L, timeDependent) }));
+        }
+        if (trajectories.some((t) => t.nonUnique)) lines.push(L.tool.nonUniqueTrajectory);
+        if (timeDependent && td) lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced: L.tool.tracedBoth }));
         return ok(lines.join("\n"), scene);
       }),
   );

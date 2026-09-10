@@ -54,7 +54,10 @@ export type LabelTable = {
     | "underflowPlateau"
     | "constantSolutionProbes" | "constantSolutionPlateau" | "zeroPlateau" | "scanResolution" | "fractionalPowerHint" | "noConstantAllZero"
     | "formsExcludedLine" | "tracedBoth" | "tracedForward" | "tracedBackward"
-    | "identicallyZero",
+    | "identicallyZero"
+    | "queryHeaderFirst" | "queryHeaderSystem" | "queryTargetT" | "queryTargetX" | "queryTargetY"
+    | "queryHitFirst" | "queryHitSystem" | "queryAccuracy" | "queryNotReached" | "queryStoppedBefore"
+    | "queryMoreBeyond" | "queryTargetIsStart" | "queryLeg" | "stoppedNonAutonomous",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -216,6 +219,20 @@ export const LABELS: Record<Locale, LabelTable> = {
       tracedForward: "轨线从 t = 0 出发并正向积分，因此它是 t > 0 时的解。",
       tracedBackward: "轨线从 t = 0 出发并逆向积分，因此它是 t < 0 时的解。",
       identicallyZero: "右端恒等于 0：每一条水平线 y = c 都是常数解，方向场是平的。",
+      queryHeaderFirst: "方程 {equation} 经过 (t, y) = ({t0}, {y0}) 的解，求 {target}。",
+      queryHeaderSystem: "系统 x' = {f}，y' = {g} 经过 {start}（t = {t0}）的解，求 {target}。",
+      queryTargetT: "t = {value}",
+      queryTargetX: "x = {value}",
+      queryTargetY: "y = {value}",
+      queryHitFirst: "t = {t}（±{tError}），y = {y}（±{error}）",
+      queryHitSystem: "t = {t}（±{tError}）：(x, y) = ({x}, {y})（±{error}）",
+      queryAccuracy: "以上是数值解的取值与穿越点：精度来自积分器的容差（rtol 1e-6），括号里的 ± 是估计值而不是严格上界；越过目标的位置是沿数值解重新积分求出的，不是在折线上线性插值。",
+      queryNotReached: "在积分的时间范围内没有到达目标：两个方向的数值解都没有穿过它。下面列出每个方向积到了哪里、为什么停下。",
+      queryStoppedBefore: "无法把解一直跟到目标时刻：积分在此之前就停止了（见下面的停止原因）。如果停止原因是「积分到指定时间结束」，说明时间范围先用完了，请加大 tSpan。",
+      queryMoreBeyond: "同一方向出现了三次或更多穿越，看起来是周期性的：在积分范围之外可能还有更多穿越点。",
+      queryTargetIsStart: "目标就是出发点本身。",
+      queryLeg: "{direction}：积到 t = {tEnd}，终点 {end}，{status}。",
+      stoppedNonAutonomous: "在该时刻速度降到接近零（低于起始速度的 1e-8）后停止；这是非自治系统，这里不是平衡点：向量场在这一点会随 t 变化",
     },
     ui: {
       title: "向量场 / 相图",
@@ -456,6 +473,20 @@ export const LABELS: Record<Locale, LabelTable> = {
       tracedForward: "Here the trajectory starts at t = 0 and runs forward, so it is the solution for t > 0.",
       tracedBackward: "Here the trajectory starts at t = 0 and runs backward, so it is the solution for t < 0.",
       identicallyZero: "The right-hand side is identically zero: every horizontal line y = c is a constant solution, and the direction field is flat.",
+      queryHeaderFirst: "Solution of {equation} through (t, y) = ({t0}, {y0}), asked for {target}.",
+      queryHeaderSystem: "Solution of the system x' = {f}, y' = {g} through {start} (at t = {t0}), asked for {target}.",
+      queryTargetT: "t = {value}",
+      queryTargetX: "x = {value}",
+      queryTargetY: "y = {value}",
+      queryHitFirst: "t = {t} (±{tError}), y = {y} (±{error})",
+      queryHitSystem: "t = {t} (±{tError}): (x, y) = ({x}, {y}) (±{error})",
+      queryAccuracy: "These are values and crossings of the NUMERICAL solution: their accuracy comes from the integrator tolerance (rtol 1e-6), and the ± figures are estimates, not bounds; each crossing was found by re-integrating along the numerical solution, never by interpolating linearly between its points.",
+      queryNotReached: "The target was not reached within the integrated span: neither direction of the numerical solution crossed it. Where each direction got to, and why it stopped, is listed below.",
+      queryStoppedBefore: "The solution could not be followed to the target time: the integration stopped before it (see the stop below). If the stop says the integration completed, the span ran out first: ask for a larger tSpan.",
+      queryMoreBeyond: "Three or more crossings in one direction look periodic: more crossings may exist beyond the integrated span.",
+      queryTargetIsStart: "The target is the start point itself.",
+      queryLeg: "{direction}: reached t = {tEnd}, end point {end}, {status}.",
+      stoppedNonAutonomous: "stopped after the speed fell close to zero at that time (below 1e-8 of its initial value); for a non-autonomous system this is not an equilibrium: the field at that point changes with t",
     },
     ui: {
       title: "Vector field / phase portrait",

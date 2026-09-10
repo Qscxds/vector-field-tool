@@ -21,9 +21,21 @@ export function trajectoryMode(scene: Pick<Scene, "system" | "fieldStyle">): Tra
   return scene.fieldStyle === "segments" ? "differential" : "explicit";
 }
 
-/** Status sentence of one trajectory, with the far-box wording when it stopped at the far stop box. */
-export function trajectoryStatus(t: TrajectoryView, L: LabelTable): string {
-  return t.status === "left_box" && t.stop === "far" ? L.ui.leftFarBox : L.status[t.status];
+/**
+ * Status sentence of one trajectory, with the far-box wording when it stopped at the far stop box.
+ * Over a non-autonomous system (`timeDependent` set on the scene) the integrator's
+ * 'reached_equilibrium' only means that the speed fell close to zero at that time: the field
+ * there changes with t, so it is worded neutrally instead of as an equilibrium (the status key
+ * itself is unchanged; the integrator is not touched).
+ */
+export function trajectoryStatus(t: TrajectoryView, L: LabelTable, timeDependent?: Scene["timeDependent"]): string {
+  if (t.status === "left_box" && t.stop === "far") return L.ui.leftFarBox;
+  return statusSentence(t.status, L, timeDependent);
+}
+
+/** The wording of an integration status, non-autonomous aware (see trajectoryStatus). */
+export function statusSentence(status: TrajectoryView["status"], L: LabelTable, timeDependent?: Scene["timeDependent"]): string {
+  return status === "reached_equilibrium" && timeDependent ? L.tool.stoppedNonAutonomous : L.status[status];
 }
 
 /**
@@ -52,19 +64,19 @@ export function groupTrajectories(trajectories: readonly TrajectoryView[]): Traj
  * - explicit first order: one line per trajectory, "<direction> to t = <end point's t>, <status>";
  * - differential form: a single line "one side: <status>; other side: <status>".
  */
-export function trajectoryLines(scene: Pick<Scene, "system" | "fieldStyle">, group: readonly TrajectoryView[], L: LabelTable): string[] {
+export function trajectoryLines(scene: Pick<Scene, "system" | "fieldStyle" | "timeDependent">, group: readonly TrajectoryView[], L: LabelTable): string[] {
   const mode = trajectoryMode(scene);
   // A curve through a point where uniqueness fails (TrajectoryView.nonUnique) gets the sentence
   // once per group, after the status lines.
   const nonUnique = group.some((t) => t.nonUnique) ? [L.ui.nonUniqueTrajectory] : [];
   if (mode === "differential") {
-    const sides = group.map((t) => trajectoryStatus(t, L));
+    const sides = group.map((t) => trajectoryStatus(t, L, scene.timeDependent));
     if (sides.length < 2) return [...sides, ...nonUnique];
     return [fill(L.ui.trajectorySides, { first: sides[0], second: sides[1] }), ...nonUnique];
   }
   const lines = group.map((t) => {
     const direction = t.direction === "forward" ? L.tool.forward : L.tool.backward;
-    const status = trajectoryStatus(t, L);
+    const status = trajectoryStatus(t, L, scene.timeDependent);
     if (mode === "explicit") {
       const end = t.points[t.points.length - 1];
       return `${direction} ${fill(L.ui.towardT, { t: formatNumber(end.x, 2), status })}`;
