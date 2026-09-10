@@ -24,7 +24,7 @@ async function connect(deps?: ToolDeps): Promise<Client> {
   return c;
 }
 
-/** Calls a tool; `locale` is required by every math tool, so the helper supplies 'en' unless the test sets it. */
+/** Calls a tool; the helper supplies locale 'en' explicitly unless the test sets it (the schema default is tested separately). */
 async function call(name: string, args: Record<string, unknown>, via: Client = client): Promise<CallToolResult & { scene: Scene; text: string }> {
   const withLocale = name === "ping" || "locale" in args ? args : { ...args, locale: "en" };
   const result = (await via.callTool({ name, arguments: withLocale })) as CallToolResult;
@@ -60,11 +60,12 @@ describe("tools/list", () => {
       expect(t.description).toMatch(t.name === "analyze_first_order" ? /t\*y/ : t.name === "analyze_second_order" ? /x\*x'/ : /x\*y/);
       expect(t.description).toMatch(/caveat/);
       expect(t.description).toMatch(/'zh' when the question is in Chinese/);
-      expect(t.description).toMatch(/REQUIRED/);
+      expect(t.description).toMatch(/defaults to en/);
+      expect(t.description).not.toMatch(/REQUIRED/);
       const props = t.inputSchema.properties as Record<string, { enum?: string[]; default?: string }>;
       expect(props.locale?.enum).toEqual(["zh", "en"]);
-      expect(props.locale?.default).toBeUndefined();
-      expect(t.inputSchema.required).toContain("locale");
+      expect(props.locale?.default).toBe("en");
+      expect(t.inputSchema.required ?? []).not.toContain("locale");
     }
   });
 
@@ -230,7 +231,10 @@ describe("ping", () => {
 });
 
 describe("locale", () => {
-  it("is required: a call without it fails naming the field, for every math tool", async () => {
+  it("is optional and defaults to en: a call without it succeeds with an English summary and an en scene, for every math tool (round M)", async () => {
+    // Round M reversed H2.9: a forgotten locale used to be an isError that reached the student;
+    // now it only costs an English summary. Derived expectation: the schema default 'en' flows
+    // into scene.locale, and the text is from the English table (no CJK characters).
     for (const [name, args] of [
       ["analyze_system", { f: "x", g: "y" }],
       ["trace_trajectory", { f: "x", g: "y", x0: 1, y0: 0 }],
@@ -239,9 +243,11 @@ describe("locale", () => {
       ["analyze_second_order", { equation: "x'' + x = 0" }],
     ] as const) {
       const r = (await client.callTool({ name, arguments: { ...args } })) as CallToolResult;
-      expect(r.isError, name).toBe(true);
+      expect(r.isError, name).toBeFalsy();
+      expect((r.structuredContent as Scene).locale, name).toBe("en");
       const text = r.content.map((c) => (c.type === "text" ? c.text : "")).join("\n");
-      expect(text, name).toMatch(/locale/);
+      expect(text.length, name).toBeGreaterThan(0);
+      expect(text, name).not.toMatch(/[一-鿿]/);
     }
   });
 

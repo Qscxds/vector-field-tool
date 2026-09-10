@@ -81,7 +81,7 @@ const FIRST_ORDER_BOX_RULES =
   '(horizontal axis), yMin and yMax the y range.';
 
 const LOCALE_RULE =
-  "`locale` is REQUIRED (the call fails without it): set it from the language the student writes in, 'zh' when the question is in Chinese, 'en' for every other language.";
+  "`locale` defaults to en: set it from the language the student writes in, 'zh' when the question is in Chinese, 'en' for every other language.";
 
 /** analyze_system and sample_field: what happens when f or g mentions t. */
 const NON_AUTONOMOUS_RULE =
@@ -119,12 +119,13 @@ const density = z
   .max(60)
   .default(20)
   .describe("Grid points per axis for the sampled field (5..60). 20 is a good default for a widget.");
-// Required on purpose (H2.9): a default would silently mask a model that forgot to set it, and
-// an English summary is indistinguishable from a deliberate 'en'. Failing loudly shows whether
-// the rule in the description is being followed.
+// Optional, default en (round M, reversing H2.9): a model that forgets it now costs the student an
+// English summary, whereas the earlier isError reached the student as a failed answer. The rule in
+// the description still asks for zh when the question is in Chinese.
 const localeSchema = z
   .enum(LOCALES as [Locale, ...Locale[]])
-  .describe("REQUIRED. Language of the text summary: 'zh' if the student writes in Chinese, otherwise 'en'.");
+  .default("en")
+  .describe("Language of the text summary: 'zh' if the student writes in Chinese, otherwise 'en'. Defaults to en.");
 const snapshotTime = z
   .number()
   .finite()
