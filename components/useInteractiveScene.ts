@@ -107,6 +107,11 @@ export type InteractiveInput = {
    * with it. Omit (widget) to draw `query` unconditionally.
    */
   queryStart?: Vec2;
+  /**
+   * The reduction of a second-order equation (Scene.secondOrder, analyze_second_order): carried
+   * into the live Scene unchanged so the widget's summary keeps the reduction line. Data only.
+   */
+  secondOrder?: Scene["secondOrder"];
 };
 
 export type InteractiveHandlers = {
@@ -145,7 +150,7 @@ export type InteractiveScene = {
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart, secondOrder } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   // Curves that came with the scene (the widget's trace_trajectory result): drawn and cleared with
@@ -243,8 +248,9 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       trajectories,
       start,
       query: queryShown,
+      secondOrder,
     };
-  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent, queryShown]);
+  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent, queryShown, secondOrder]);
 
   // Refs so the handlers stay referentially stable (the canvas binds its wheel listener once).
   const viewportRef = useRef(viewport);

@@ -130,6 +130,8 @@ export default function WidgetPage() {
     snapshotT: scene?.timeDependent?.snapshotT ?? 0,
     // query_solution: the hits stay marked on the live picture (and listed by SceneSummary).
     query: scene?.query,
+    // analyze_second_order: the reduction line stays in the live summary.
+    secondOrder: scene?.secondOrder,
   });
 
   const live = interactive.scene && interactive.viewport ? interactive : null;
