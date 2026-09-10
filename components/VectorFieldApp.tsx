@@ -15,13 +15,17 @@ import { exportScenePng } from "@/components/exportScenePng";
 import { exportFileName, exportFooterText } from "@/lib/export-footer";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
+import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
 import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, timeDependentFolded, type LabelTable, type Locale } from "@/lib/labels";
+import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
+import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
+import { kernelQueryKind, parseQueryValue, queryHitText, queryKindsFor, selectedTrajectoryIndex, trajectoryOptionText, type PanelVariables, type UiQueryKind } from "@/lib/query-panel";
 import type { ArrowMode } from "@/lib/render/arrows";
-import type { Scene } from "@/lib/scene";
+import type { QueryView, Scene, TrajectoryView } from "@/lib/scene";
 import { siteText } from "@/lib/site-text";
 import { initialValueNames, parseInitialValue, type InitialValueReason } from "@/lib/initial-value";
 import { isUndoKey } from "@/lib/undo-key";
@@ -43,6 +47,21 @@ export type VectorFieldAppProps = {
 const URL_SYNC_MS = 500;
 /** How long the "Copied" confirmation stays. */
 const COPIED_MS = 2000;
+/** Wall-clock budget of one solution query (the kernel is checkpointed, never given a clock of its own). */
+const QUERY_BUDGET_MS = 2000;
+
+class QueryBudgetError extends Error {}
+
+/** A finished solution query of the panel: what was asked, about which kept trajectory, under which picture. */
+type QueryRun = {
+  /** The equation, box and snapshot time the query ran under; another picture drops the result. */
+  key: string;
+  start: Vec2;
+  target: { kind: UiQueryKind; value: number };
+  result: QueryResult;
+  /** The queried trajectory passes through a point where uniqueness fails (its pair carried the flag). */
+  nonUnique: boolean;
+};
 
 const APP_TO_FORM_MODE: Record<AppMode, PresetMode> = { first: "explicit", diff: "differential", system: "system", second: "second" };
 const FORM_TO_APP_MODE: Record<PresetMode, AppMode> = { explicit: "first", differential: "diff", system: "system", second: "second" };
@@ -316,6 +335,20 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   }, [snapshotTText]);
   const compiled = useMemo(() => compile(form, L), [form, L]);
 
+  // Solution query (lib/core/query on the kept trajectory the student picked): the result is kept
+  // with the key of the picture it was computed under, so an equation, range or snapshot-time
+  // change drops it; the hook drops it when the queried curve is deleted (queryStart).
+  const [queryRun, setQueryRun] = useState<QueryRun | null>(null);
+  const [queryPick, setQueryPick] = useState<{ start: Vec2; count: number } | null>(null);
+  const [queryKind, setQueryKind] = useState<UiQueryKind>("t");
+  const [queryValueText, setQueryValueText] = useState("");
+  const [queryError, setQueryError] = useState<string | null>(null);
+  const queryKey = `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${form.second}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${snapshotT}`;
+  const queryView = useMemo<QueryView | undefined>(
+    () => (queryRun && queryRun.key === queryKey ? { target: queryRun.target, hits: queryRun.result.hits, note: queryRun.result.note, reached: queryRun.result.reached } : undefined),
+    [queryRun, queryKey],
+  );
+
   // The picture fills its column: measured after mount, clamped, height from the width.
   const [canvasWrapRef, wrapWidth] = useMeasuredWidth();
   const { width: canvasW, height: canvasH } = canvasSize(wrapWidth);
@@ -339,6 +372,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     // Another snapshot time re-traces the SAME initial points at that instant (the link keeps its
     // traj); it never resets to the seeds, so a cleared curve does not come back.
     retraceKey: String(snapshotT),
+    query: queryView,
+    queryStart: queryRun?.start,
   });
   const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers } = interactive;
 
@@ -355,6 +390,43 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     setInitialValueError(null);
     addTrajectory(r.point);
   };
+
+  const variables: PanelVariables = form.mode === "system" || form.mode === "second" ? "xy" : "ty";
+  const queryKinds = queryKindsFor(variables);
+  const queryKindShown = queryKinds.includes(queryKind) ? queryKind : queryKinds[0];
+  const selectedIndex = selectedTrajectoryIndex(trajectoryStarts, queryPick);
+  const selectedStart = selectedIndex === null ? null : trajectoryStarts[selectedIndex];
+  const runQuery = () => {
+    if (!selectedStart || !compiled.sys || !compiled.box) return;
+    const parsed = parseQueryValue(queryValueText);
+    if (!parsed.ok) {
+      setQueryError(fill(L.ui[INITIAL_VALUE_ERROR[parsed.reason]], { name: queryKindShown, max: String(MAX_ABS_VALUE) }));
+      return;
+    }
+    // The SAME rule as the curve on screen: 20x the entered range, CLICK_TSPAN per direction,
+    // from the displayed snapshot time; the student's kind mapped to the kernel's.
+    const deadline = Date.now() + QUERY_BUDGET_MS;
+    const checkpoint = () => {
+      if (Date.now() > deadline) throw new QueryBudgetError();
+    };
+    const i = selectedIndex ?? 0;
+    const nonUnique = trajectories.slice(2 * i, 2 * i + 2).some((t) => t.nonUnique);
+    try {
+      const target = { kind: kernelQueryKind(variables, queryKindShown), value: parsed.value };
+      const result = querySolution(compiled.sys, selectedStart, target, { tSpan: CLICK_TSPAN, stopBox: fixedStopBox(compiled.box), t0: snapshotT, checkpoint });
+      setQueryError(null);
+      setQueryRun({ key: queryKey, start: selectedStart, target: { kind: queryKindShown, value: parsed.value }, result, nonUnique });
+    } catch (error) {
+      setQueryError(error instanceof QueryBudgetError ? L.ui.queryTooLong : error instanceof Error ? error.message : String(error));
+    }
+  };
+  const queryOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    runQuery();
+  };
+  // The result shown: computed under this picture and about a curve that is still kept.
+  const queryShown = queryView && queryRun && trajectoryStarts.some((p) => p.x === queryRun.start.x && p.y === queryRun.start.y) ? queryRun : null;
 
   // Ctrl+Z / Cmd+Z undoes the last trajectory action, unless the student is typing in a field.
   const undoRef = useRef(undo);
@@ -682,6 +754,55 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </p>
             ) : null}
           </fieldset>
+          {/* Solution query: a kept trajectory, a constraint (t / x / y = value), the kernel's answer with markers. */}
+          <fieldset style={{ display: "grid", gap: 6, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-query-panel>
+            <legend style={{ padding: "0 4px" }}>{L.ui.querySolution}</legend>
+            <label style={labelStyle}>
+              <span>{fill(L.ui.queryTrajectory, { names: `${ivNames.first}, ${ivNames.second}` })}</span>
+              <select
+                value={selectedIndex ?? ""}
+                onChange={(e) => {
+                  const p = trajectoryStarts[Number(e.target.value)];
+                  if (p) setQueryPick({ start: p, count: trajectoryStarts.length });
+                }}
+                style={inputStyle}
+                name="queryTrajectory"
+                disabled={trajectoryStarts.length === 0}
+                data-query-trajectory
+              >
+                {trajectoryStarts.length === 0 ? <option value="">{L.ui.queryNoTrajectory}</option> : null}
+                {trajectoryStarts.map((p, i) => (
+                  <option key={i} value={i}>
+                    {trajectoryOptionText(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "auto 1fr auto", gap: 8, alignItems: "end" }}>
+              <label style={labelStyle}>
+                <span>{L.ui.queryCondition}</span>
+                <select value={queryKindShown} onChange={(e) => setQueryKind(e.target.value as UiQueryKind)} style={inputStyle} name="queryKind" data-query-kind>
+                  {queryKinds.map((k) => (
+                    <option key={k} value={k}>
+                      {k} =
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={labelStyle}>
+                <span>{queryKindShown}</span>
+                <input value={queryValueText} onChange={(e) => setQueryValueText(e.target.value)} onKeyDown={queryOnEnter} style={inputStyle} inputMode="decimal" name="queryValue" data-query-value />
+              </label>
+              <button type="button" onClick={runQuery} style={buttonStyle} disabled={compiled.error !== null || selectedStart === null} data-query-run>
+                {L.ui.queryRun}
+              </button>
+            </div>
+            {queryError ? (
+              <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-query-error>
+                {queryError}
+              </p>
+            ) : null}
+          </fieldset>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={clearTrajectories} style={{ ...buttonStyle, flex: "1 1 auto" }} disabled={trajectories.length === 0}>
               {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
@@ -798,9 +919,56 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {L.ui.lastTrajectory} {trajectoryLines(scene, lastGroup, L).join("; ")}
             </p>
           ) : null}
+          {scene && queryShown && queryView ? <QueryResultView scene={scene} run={queryShown} view={queryView} variables={variables} L={L} /> : null}
         </div>
       </div>
     </main>
+  );
+}
+
+/**
+ * The query panel's answer: the header (start and target), one line per hit rounded to its error
+ * estimate, the kernel's note (not reached / stopped before the target / possibly more crossings /
+ * the start itself), where each direction of the numerical solution got to and why it stopped
+ * (the shared mode-aware wording, far-box and non-autonomous aware, with the non-unique sentence
+ * when the curve carries it), and the accuracy sentence: crossings of the NUMERICAL solution.
+ */
+function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run: QueryRun; view: QueryView; variables: PanelVariables; L: LabelTable }) {
+  const legs: TrajectoryView[] = [run.result.forward, run.result.backward].map((leg, i) => ({
+    direction: i === 0 ? "forward" : "backward",
+    points: leg.points,
+    status: leg.status,
+    steps: leg.steps,
+    tEnd: leg.tEnd,
+    stop: "far",
+    ...(run.nonUnique ? { nonUnique: true } : {}),
+  }));
+  const note = queryNoteText(view.note, L);
+  return (
+    <section style={{ marginTop: 14 }} data-query-result data-query-note={view.note}>
+      <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.querySolution}</h2>
+      <p style={{ margin: "0 0 6px" }}>{fill(L.ui.queryHeader, { start: formatPoint(run.start), target: queryTargetText(view, L) })}</p>
+      {view.hits.length ? (
+        <ul style={{ margin: "0 0 6px", paddingLeft: 20 }}>
+          {view.hits.map((hit, i) => (
+            <li key={i} data-query-hit>
+              {queryHitText(hit, variables, L)}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {note ? (
+        <p style={{ margin: "0 0 6px", color: "#92400e" }} data-query-note-text>
+          {note}
+        </p>
+      ) : null}
+      <p style={{ margin: "0 0 6px", color: "#52606d" }} data-query-legs>
+        {trajectoryLines(scene, legs, L).join("; ")}
+      </p>
+      <p style={{ margin: 0, color: "#52606d", fontSize: 12 }} data-query-accuracy>
+        {L.tool.queryAccuracy}
+      </p>
+    </section>
   );
 }
 

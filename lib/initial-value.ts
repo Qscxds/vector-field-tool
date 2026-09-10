@@ -17,7 +17,8 @@ export function initialValueNames(variables: "xy" | "ty"): { first: string; seco
   return variables === "ty" ? { first: "t₀", second: "y₀" } : { first: "x₀", second: "y₀" };
 }
 
-function parseOne(text: string): { value: number } | { reason: InitialValueReason } {
+/** One typed decimal (shared with the query panel's target value): finite, within MAX_ABS_VALUE, or the reason it is not. */
+export function parseDecimal(text: string): { value: number } | { reason: InitialValueReason } {
   const trimmed = text.trim();
   if (trimmed === "") return { reason: "empty" };
   // Number() accepts what a student types ("-1", "0.5", ".5", "1e-3"); "1,5", "1/2" and "pi" are
@@ -30,9 +31,9 @@ function parseOne(text: string): { value: number } | { reason: InitialValueReaso
 
 /** The point (first, second) = (horizontal, y), or the first field that fails and why. */
 export function parseInitialValue(first: string, second: string): InitialValueResult {
-  const a = parseOne(first);
+  const a = parseDecimal(first);
   if ("reason" in a) return { ok: false, reason: a.reason, field: "first" };
-  const b = parseOne(second);
+  const b = parseDecimal(second);
   if ("reason" in b) return { ok: false, reason: b.reason, field: "second" };
   return { ok: true, point: { x: a.value, y: b.value } };
 }

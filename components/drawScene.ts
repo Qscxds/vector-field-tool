@@ -196,15 +196,43 @@ function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Sce
     ctx.arc(s.x, s.y, 3.5, 0, 2 * Math.PI);
     ctx.fill();
   }
-  // query_solution: every hit of the numerical solution as a ring on the curve (data from the Scene).
-  for (const hit of scene.query?.hits ?? []) {
-    const s = worldToScreen(v, hit);
-    ctx.strokeStyle = COLORS.queryHit;
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, 5, 0, 2 * Math.PI);
-    ctx.stroke();
-  }
+  // query_solution: every hit of the numerical solution as a filled diamond with a white halo and
+  // its coordinates beside it (data from the Scene): "(t, y)" on a first-order picture, "(x, y)"
+  // on a planar one; both are the hit's horizontal coordinate and y.
+  for (const hit of scene.query?.hits ?? []) drawQueryHit(ctx, v, hit);
+}
+
+const QUERY_HIT_RADIUS = 6;
+
+function drawQueryHit(ctx: CanvasRenderingContext2D, v: Viewport, hit: Vec2): void {
+  const s = worldToScreen(v, hit);
+  const r = QUERY_HIT_RADIUS;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(s.x, s.y - r);
+  ctx.lineTo(s.x + r, s.y);
+  ctx.lineTo(s.x, s.y + r);
+  ctx.lineTo(s.x - r, s.y);
+  ctx.closePath();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = COLORS.background; // halo, so the marker reads over the curve
+  ctx.stroke();
+  ctx.fillStyle = COLORS.queryHit;
+  ctx.fill();
+  const text = `(${formatNumber(hit.x, 4)}, ${formatNumber(hit.y, 4)})`;
+  ctx.font = "11px system-ui, sans-serif";
+  ctx.textBaseline = "middle";
+  // Left of the marker when the label would run off the right edge.
+  const width = ctx.measureText(text).width;
+  const fitsRight = s.x + r + 4 + width <= v.width - 4;
+  ctx.textAlign = fitsRight ? "left" : "right";
+  const x = fitsRight ? s.x + r + 4 : s.x - r - 4;
+  const y = Math.min(Math.max(s.y, 8), v.height - 8);
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = COLORS.background;
+  ctx.strokeText(text, x, y);
+  ctx.fillStyle = COLORS.queryHit;
+  ctx.fillText(text, x, y);
 }
 
 /** The "!" badge marking a point or line where uniqueness fails. */

@@ -32,7 +32,7 @@ import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRES
 import { labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, pinchAt, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
-import type { FieldStyle, Scene, SceneKind, TrajectoryView } from "@/lib/scene";
+import type { FieldStyle, QueryView, Scene, SceneKind, TrajectoryView } from "@/lib/scene";
 import { clickAction, nearestFixedTrajectory } from "@/lib/trajectory-hit";
 import {
   addTrajectory as addToStore,
@@ -96,6 +96,17 @@ export type InteractiveInput = {
    * starts) so that the picture never shows curves of another instant.
    */
   snapshotT?: number;
+  /**
+   * A solution query's result to draw (Scene.query: markers at the hits, lib/core/query): the
+   * widget passes the tool's, the web shell the one its query panel computed. Data only.
+   */
+  query?: QueryView;
+  /**
+   * The start of the kept trajectory `query` was asked about (web shell): the query is drawn only
+   * while a kept trajectory still starts there, so a deleted or cleared curve takes its markers
+   * with it. Omit (widget) to draw `query` unconditionally.
+   */
+  queryStart?: Vec2;
 };
 
 export type InteractiveHandlers = {
@@ -134,7 +145,7 @@ export type InteractiveScene = {
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0 } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   // Curves that came with the scene (the widget's trace_trajectory result): drawn and cleared with
@@ -146,6 +157,10 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const [hint, setHint] = useState<{ at: Vec2; text: string } | null>(null);
   const trajectories = useMemo(() => (external.length ? [...external, ...trajectoriesOf(store)] : trajectoriesOf(store)), [external, store]);
   const trajectoryStarts = useMemo(() => trajectoryStartsOf(store), [store]);
+  const queryShown = useMemo(
+    () => (query && (!queryStart || trajectoryStarts.some((s) => s.x === queryStart.x && s.y === queryStart.y)) ? query : undefined),
+    [query, queryStart, trajectoryStarts],
+  );
 
   // Screen position of the last hover preview; declared here because the reset effect clears it.
   const lastHoverScreen = useRef<Vec2 | null>(null);
@@ -224,8 +239,9 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       firstOrder: features.firstOrder,
       trajectories,
       start,
+      query: queryShown,
     };
-  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent]);
+  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent, queryShown]);
 
   // Refs so the handlers stay referentially stable (the canvas binds its wheel listener once).
   const viewportRef = useRef(viewport);

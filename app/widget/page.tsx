@@ -127,6 +127,8 @@ export default function WidgetPage() {
     equalScale,
     // The tool's snapshot time (its t parameter) is the instant the widget keeps showing.
     snapshotT: scene?.timeDependent?.snapshotT ?? 0,
+    // query_solution: the hits stay marked on the live picture (and listed by SceneSummary).
+    query: scene?.query,
   });
 
   const live = interactive.scene && interactive.viewport ? interactive : null;

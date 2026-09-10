@@ -91,7 +91,9 @@ export type LabelTable = {
     | "downloadPng" | "downloadFailed" | "exportRange" | "exportSnapshot" | "interactionHintTouch"
     | "exportEntered" | "exportShown"
     | "clickToRemove" | "holdToRemove" | "undo"
-    | "initialValue" | "addSolution" | "initialValueEmpty" | "initialValueNotANumber" | "initialValueOutOfRange",
+    | "initialValue" | "addSolution" | "initialValueEmpty" | "initialValueNotANumber" | "initialValueOutOfRange"
+    | "querySolution" | "queryTrajectory" | "queryNoTrajectory" | "queryCondition" | "queryRun" | "queryHeader"
+    | "queryHitFirst" | "queryHitSystem" | "queryTimeError" | "queryTooLong",
     string
   >;
 };
@@ -360,6 +362,16 @@ export const LABELS: Record<Locale, LabelTable> = {
       initialValueEmpty: "请填写 {name}。",
       initialValueNotANumber: "{name} 必须是一个数（例如 -1、0.5、1e-3）。",
       initialValueOutOfRange: "{name} 的绝对值不能超过 {max}。",
+      querySolution: "查询解曲线上的点",
+      queryTrajectory: "轨线（{names}）",
+      queryNoTrajectory: "还没有固定的轨线：先点击图片或添加初值。",
+      queryCondition: "条件",
+      queryRun: "查询",
+      queryHeader: "经过 {start} 的解，求 {target}：",
+      queryHitFirst: "t = {t}，y = {y}（±{error}）",
+      queryHitSystem: "t = {t}，x = {x}，y = {y}（±{error}）",
+      queryTimeError: "（±{error}）",
+      queryTooLong: "查询耗时过长，已中止：请换一个更简单的方程或更小的范围。",
     },
   },
   en: {
@@ -625,6 +637,16 @@ export const LABELS: Record<Locale, LabelTable> = {
       initialValueEmpty: "Enter {name}.",
       initialValueNotANumber: "{name} must be a number (e.g. -1, 0.5, 1e-3).",
       initialValueOutOfRange: "|{name}| must not exceed {max}.",
+      querySolution: "Query the solution",
+      queryTrajectory: "Trajectory ({names})",
+      queryNoTrajectory: "No kept trajectory yet: click the picture or add an initial value first.",
+      queryCondition: "Condition",
+      queryRun: "Query",
+      queryHeader: "Solution through {start}, asked for {target}:",
+      queryHitFirst: "t = {t}, y = {y} (±{error})",
+      queryHitSystem: "t = {t}, x = {x}, y = {y} (±{error})",
+      queryTimeError: " (±{error})",
+      queryTooLong: "The query took too long and was stopped: try a simpler equation or a smaller range.",
     },
   },
 };

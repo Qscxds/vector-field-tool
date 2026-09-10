@@ -27,6 +27,14 @@ export function queryLines(scene: Pick<Scene, "system" | "query">, L: LabelTable
       ? fill(L.tool.queryHitFirst, { t: formatNumber(hit.x, 6), tError, y: formatNumber(hit.y, 6), error })
       : fill(L.tool.queryHitSystem, { t: formatNumber(hit.t, 6), tError, x: formatNumber(hit.x, 6), y: formatNumber(hit.y, 6), error });
   });
+  const note = queryNoteText(query.note, L);
+  if (note) lines.push(note);
+  lines.push(L.tool.queryAccuracy);
+  return lines;
+}
+
+/** The note sentence for a kernel note key; null for "ok" (nothing to add). Shared with the web shell's query panel. */
+export function queryNoteText(note: QueryNote, L: LabelTable): string | null {
   const notes: Record<QueryNote, string | null> = {
     ok: null,
     not_reached_in_span: L.tool.queryNotReached,
@@ -34,8 +42,5 @@ export function queryLines(scene: Pick<Scene, "system" | "query">, L: LabelTable
     possibly_more_beyond_span: L.tool.queryMoreBeyond,
     target_is_start: L.tool.queryTargetIsStart,
   };
-  const note = notes[query.note];
-  if (note) lines.push(note);
-  lines.push(L.tool.queryAccuracy);
-  return lines;
+  return notes[note];
 }
