@@ -27,7 +27,7 @@ import {
 import type { Box, SystemSpec } from "@/lib/core/types";
 import { EXACT_PATH_TOL, fixedStopBox, markNonUnique, withUniqueness } from "@/lib/interactive";
 import { queryLines, queryTargetText } from "@/lib/labels-query";
-import { trajectoryStatus } from "@/lib/labels-trajectory";
+import { statusSentence, trajectoryStatus } from "@/lib/labels-trajectory";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
@@ -353,6 +353,7 @@ export function analyzePlanar(
     truncated: eq.truncated,
     singularPoints: eq.singularPoints,
     underflowPlateau: eq.underflowPlateau,
+    ...(eq.seeding.refineCapped ? { refineCapped: true } : {}),
   };
   return { scene, lines: [`${header}${singularNote(field.singularCount)}`, ...describeEquilibria(scene, locale)] };
 }
@@ -558,7 +559,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             direction: t.direction === "forward" ? L.tool.forward : L.tool.backward,
             tEnd: fmt(t.tEnd, 3),
             end: formatPoint(end),
-            status: L.status[t.status],
+            // Non-autonomous: a low-speed stop is not an equilibrium (lib/labels-trajectory).
+            status: statusSentence(t.status, L, td.dependsOnT ? { snapshotT: 0, maxRelDeviation: td.maxRelDeviation } : undefined),
             steps: t.steps,
           });
           return t.nonUnique ? [line, L.tool.nonUniqueTrajectory] : [line];

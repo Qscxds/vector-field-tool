@@ -57,7 +57,7 @@ export type LabelTable = {
     | "identicallyZero"
     | "queryHeaderFirst" | "queryHeaderSystem" | "queryTargetT" | "queryTargetX" | "queryTargetY"
     | "queryHitFirst" | "queryHitSystem" | "queryAccuracy" | "queryNotReached" | "queryStoppedBefore"
-    | "queryMoreBeyond" | "queryTargetIsStart" | "queryLeg" | "stoppedNonAutonomous",
+    | "queryMoreBeyond" | "queryTargetIsStart" | "queryLeg" | "stoppedNonAutonomous" | "refineCapped",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -88,7 +88,8 @@ export type LabelTable = {
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
     | "secondOrderImplicitProduct"
-    | "downloadPng" | "downloadFailed" | "exportRange" | "exportSnapshot" | "interactionHintTouch",
+    | "downloadPng" | "downloadFailed" | "exportRange" | "exportSnapshot" | "interactionHintTouch"
+    | "exportEntered" | "exportShown",
     string
   >;
 };
@@ -233,6 +234,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryTargetIsStart: "目标就是出发点本身。",
       queryLeg: "{direction}：积到 t = {tEnd}，终点 {end}，{status}。",
       stoppedNonAutonomous: "在该时刻速度降到接近零（低于起始速度的 1e-8）后停止；这是非自治系统，这里不是平衡点：向量场在这一点会随 t 变化",
+      refineCapped: "变号搜索达到了单元数上限：有些 f 和 g 同时变号的单元没有搜索，可能漏掉平衡点。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -345,6 +347,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       downloadFailed: "生成图片失败，请重试。",
       exportRange: "{hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}]",
       exportSnapshot: "t = {t}",
+      exportEntered: "输入范围 {range}",
+      exportShown: "显示范围 {range}",
       interactionHintTouch: "轻点预览解曲线 · 长按固定 · 双指缩放 · 拖动平移 · 双击复位",
     },
   },
@@ -487,6 +491,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryTargetIsStart: "The target is the start point itself.",
       queryLeg: "{direction}: reached t = {tEnd}, end point {end}, {status}.",
       stoppedNonAutonomous: "stopped after the speed fell close to zero at that time (below 1e-8 of its initial value); for a non-autonomous system this is not an equilibrium: the field at that point changes with t",
+      refineCapped: "The sign-change search hit its cell cap: some cells where both f and g change sign were not searched, so equilibria may be missing.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -599,6 +604,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       downloadFailed: "The picture could not be generated; please try again.",
       exportRange: "{hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
       exportSnapshot: "t = {t}",
+      exportEntered: "entered {range}",
+      exportShown: "shown {range}",
       interactionHintTouch: "Tap to preview a solution · hold to keep it · pinch to zoom · drag to pan · double-tap to reset",
     },
   },
@@ -715,11 +722,15 @@ export function timeDependenceEvidence(L: LabelTable, td: { maxRelDeviation: num
  */
 export function equilibriaNotices(
   L: LabelTable,
-  scene: { warning?: keyof LabelTable["warning"]; truncated?: boolean; equilibria?: readonly unknown[]; singularPoints?: readonly { x: number; y: number }[]; underflowPlateau?: boolean },
+  scene: { warning?: keyof LabelTable["warning"]; truncated?: boolean; equilibria?: readonly unknown[]; singularPoints?: readonly { x: number; y: number }[]; underflowPlateau?: boolean; refineCapped?: boolean },
 ): string[] {
   const lines: string[] = [];
   if (scene.warning && !(scene.warning === "hit_limit" && scene.truncated)) lines.push(L.warning[scene.warning]);
   if (scene.truncated) lines.push(fill(L.ui.equilibriaTruncated, { max: scene.equilibria?.length ?? 0 }));
+  // The sign-change quadtree's cap (round N): said unless the result is a continuum, where the
+  // cap is expected (every sub-cell along the curve shows both sign changes) and the continuum
+  // sentence already says that only representatives are listed.
+  if (scene.refineCapped && scene.warning !== "possible_continuum" && scene.warning !== "region_of_equilibria") lines.push(L.tool.refineCapped);
   for (const s of scene.singularPoints ?? []) lines.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
   // Part of the box evaluates to exactly 0 by underflow (lib/core/equilibria underflowPlateau): said once, after the points.
   if (scene.underflowPlateau) lines.push(L.tool.underflowPlateau);

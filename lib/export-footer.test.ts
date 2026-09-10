@@ -111,3 +111,27 @@ describe("exportFileName", () => {
     expect(exportFileName("///", now)).toBe("vector-field-scene-20260101-000000.png");
   });
 });
+
+describe("entered and shown ranges (round N.3 e)", () => {
+  it("prints both when the equal-scale viewport widens the entered range, labelled entered / shown", () => {
+    // The logistic box [0, 6] x [-0.5, 2] on a 720 x 518 canvas at equal scale: the y span 2.5
+    // must cover 518 px, so the scale is 207.2 px per unit and the x span shown is 720 / 207.2 =
+    // 3.475 < 6: the x span is the binding one instead: 720 / 6 = 120 px per unit, and the y span
+    // shown is 518 / 120 = 4.317, centred on 0.75: y ∈ [-1.41, 2.91] (3 significant digits).
+    const { scene } = logisticScene();
+    const viewport = fitViewport(scene.box!, 720, 518);
+    const text = exportFooterText(scene, viewport, "en", ORIGIN);
+    expect(text).toBe(`dy/dt = y*(1 - y)${FOOTER_SEPARATOR}entered t ∈ [0, 6], y ∈ [-0.5, 2]${FOOTER_SEPARATOR}shown t ∈ [0, 6], y ∈ [-1.41, 2.91]${FOOTER_SEPARATOR}${ORIGIN}`);
+    expect(exportFooterText(scene, viewport, "zh", ORIGIN)).toContain("输入范围 t ∈ [0, 6]，y ∈ [-0.5, 2] · 显示范围 t ∈ [0, 6]，y ∈ [-1.41, 2.91]");
+  });
+
+  it("takes the entered box explicitly (the shell's home box) and falls back to the scene's featuresBox, then box", () => {
+    const { scene, viewport } = logisticScene();
+    const home = { x: { min: -1, max: 1 }, y: { min: -1, max: 1 } };
+    expect(exportFooterText(scene, viewport, "en", ORIGIN, home)).toContain(`entered t ∈ [-1, 1], y ∈ [-1, 1]${FOOTER_SEPARATOR}shown t ∈ [0, 6], y ∈ [-0.5, 2]`);
+    const zoomed = { box: { x: { min: 1, max: 2 }, y: { min: 0, max: 1 } }, width: 720, height: 518 };
+    expect(exportFooterText({ ...scene, featuresBox: home }, zoomed, "en", ORIGIN)).toContain(`entered t ∈ [-1, 1], y ∈ [-1, 1]${FOOTER_SEPARATOR}shown t ∈ [1, 2], y ∈ [0, 1]`);
+    // Identical ranges are printed once, without labels.
+    expect(exportFooterText(scene, viewport, "en", ORIGIN, scene.box)).toBe(`dy/dt = y*(1 - y)${FOOTER_SEPARATOR}t ∈ [0, 6], y ∈ [-0.5, 2]${FOOTER_SEPARATOR}${ORIGIN}`);
+  });
+});

@@ -496,3 +496,19 @@ describe("[M] folded caveats: compact eigenvalues and the short line / full deta
     }
   });
 });
+
+describe("refineCapped notice (round N.3 f)", () => {
+  it("is printed for an ordinary result and for isolated degenerate points, never for a continuum", async () => {
+    const { equilibriaNotices, fill } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      expect(equilibriaNotices(L, { refineCapped: true })).toEqual([L.tool.refineCapped]);
+      expect(equilibriaNotices(L, { refineCapped: true, warning: "multiple_non_hyperbolic" })).toEqual([L.warning.multiple_non_hyperbolic, L.tool.refineCapped]);
+      expect(equilibriaNotices(L, { refineCapped: true, warning: "possible_continuum" })).toEqual([L.warning.possible_continuum]);
+      expect(equilibriaNotices(L, { refineCapped: true, warning: "region_of_equilibria" })).toEqual([L.warning.region_of_equilibria]);
+      expect(equilibriaNotices(L, { refineCapped: false })).toEqual([]);
+      expect(equilibriaNotices(L, { refineCapped: true, truncated: true, equilibria: [1, 2] })).toEqual([fill(L.ui.equilibriaTruncated, { max: 2 }), L.tool.refineCapped]);
+      expect(L.tool.refineCapped).toMatch(/[。.]$/);
+    }
+  });
+});

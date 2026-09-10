@@ -27,7 +27,7 @@ import { contourSegmentsFromGrid, sampleGrid } from "./render/contours";
 import { worldToScreen, type Viewport } from "./render/viewport";
 import type { FirstOrderView, Scene, TrajectoryView } from "./scene";
 
-export type Features = Pick<Scene, "equilibria" | "warning" | "truncated" | "singularPoints" | "underflowPlateau" | "firstOrder" | "timeDependent">;
+export type Features = Pick<Scene, "equilibria" | "warning" | "truncated" | "singularPoints" | "underflowPlateau" | "firstOrder" | "timeDependent" | "refineCapped">;
 
 export type FeatureOptions = {
   /** Snapshot time of a non-autonomous system; recorded in `timeDependent`. Default 0. */
@@ -97,7 +97,14 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
       const td = opts.timeDependence ?? detectTimeDependence(sys, box, { snapshotT: opts.snapshotT ?? 0 });
       if (td.dependsOnT) return { timeDependent: { snapshotT: opts.snapshotT ?? 0, maxRelDeviation: td.maxRelDeviation } };
       const eq = findEquilibria(sys, box);
-      return { equilibria: withUniqueness(sys, eq.points, box), warning: eq.warning, truncated: eq.truncated, singularPoints: eq.singularPoints, underflowPlateau: eq.underflowPlateau };
+      return {
+        equilibria: withUniqueness(sys, eq.points, box),
+        warning: eq.warning,
+        truncated: eq.truncated,
+        singularPoints: eq.singularPoints,
+        underflowPlateau: eq.underflowPlateau,
+        ...(eq.seeding.refineCapped ? { refineCapped: true } : {}),
+      };
     }
     const spec = firstOrder;
     const eq = firstOrderEquilibria(spec, box.y, { tRange: box.x });

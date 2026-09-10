@@ -248,3 +248,17 @@ describe("mode-specific fallback expressions", () => {
     expect(decodeState("m=first&g=sqrt(y)", D).state.g).toBe("sqrt(y)");
   });
 });
+
+describe("non-finite literals (round N.3 d)", () => {
+  it("1e999 parses to a ConstantNode holding Infinity and is rejected as invalidExpression in every mode", () => {
+    // mathjs parses the literal 1e999 as a ConstantNode whose value is Infinity (not a SymbolNode);
+    // the parser whitelist (lib/core/parse) refuses any non-finite numeric literal, and decodeState
+    // runs every expression through that whitelist, so the link falls back with the reason key.
+    expect(reasons(decodeState("m=first&g=y-1e999", D).problems)).toEqual(["g:invalidExpression"]);
+    expect(reasons(decodeState("m=system&f=1e999*x&g=y", D).problems)).toEqual(["f:invalidExpression"]);
+    expect(reasons(decodeState("m=diff&M=1e999&N=y", D).problems)).toEqual(["M:invalidExpression"]);
+    expect(reasons(decodeState("m=second&eq=x''+%3D+1e999*x", D).problems)).toEqual(["eq:invalidExpression"]);
+    // The finite neighbour is fine.
+    expect(reasons(decodeState("m=first&g=y-1e300", D).problems)).toEqual([]);
+  });
+});

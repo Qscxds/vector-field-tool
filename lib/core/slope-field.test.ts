@@ -641,17 +641,6 @@ describe("constant solutions are accepted by a local criterion, never by a box-w
     ]);
   });
 
-  it.fails("a root within the rounding floor of the scanned coordinates is reported as exactly 0 (J-fix2: the ladder now resolves 1e-20 and refuses the snap; see the next test)", () => {
-    // y - 1e-20 on [-1, 1]: the bracket around the sign change shrinks to 2^-200 of a cell and
-    // ends at 1e-20, which is below eps · 1 = 2.2e-16, the floor of the coordinates of this scan:
-    // the root was reported as 0 while the ladder's finest level (cell · 4^-15 = 4.6e-12) could
-    // not see that M(0) = 1e-20 is a nonzero limit. The adaptive ladder descends to 1e-38 at
-    // c = 0, sees the values level off at 1e-20 (β = 0: not vanishing) and keeps the root where
-    // the bisection put it; the old expectation is kept here as a record, not loosened.
-    const r = firstOrderEquilibria("y - 1e-20", { min: -1, max: 1 }, { tRange });
-    expect(r.solutions.map((s) => s.y)).toEqual([0]);
-  });
-
   it("a root the ladder can resolve below the coordinate floor stays where it is: y - 1e-20 gives 1e-20; sqrt(y - 1e-20) is not snapped either", () => {
     // M(0) = 1e-20 ≠ 0 and |M(±δ)| levels off at 1e-20 for δ < 1e-20 (β = 0), so 0 is refused and
     // the bisection's end, 1e-20 to the last bit, is the root: the true constant solution.

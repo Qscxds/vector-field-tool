@@ -1137,7 +1137,20 @@ export function findEquilibria(sys: CompiledSystem, box: Box, opts: FindEquilibr
     if (!rootInside(c)) {
       if (refined >= REFINE_CELL_CAP || located.length >= REFINE_ROOT_CAP) { refineCapped = true; break; }
       refined++;
-      runSeed({ x: (c.x0 + c.x1) / 2, y: (c.y0 + c.y1) / 2 });
+      const r = runSeed({ x: (c.x0 + c.x1) / 2, y: (c.y0 + c.y1) / 2 });
+      // Stop rule (round N): the run from the centre converged to a root OUTSIDE the cell that is
+      // further from the cell than the cell is wide. The sign changes on such a cell's corners are
+      // the far root's (a component that is exactly 0 along an axis makes every cell touching the
+      // axis "change sign"): x' = xy, y' = x² - y refined 1024 cells along the axes toward the
+      // origin before this rule and hit the cell cap. A root inside the cell would be at least a
+      // cell width from the one found, which the corner test would still show in a sub-cell; the
+      // regression guard is the x⁷ system on [-100, 100]², whose origin and saddle share a cell.
+      if (r !== null && !rootInside(c)) {
+        const size = Math.max(c.x1 - c.x0, c.y1 - c.y0);
+        const dx = Math.max(c.x0 - r.at.x, 0, r.at.x - c.x1);
+        const dy = Math.max(c.y0 - r.at.y, 0, r.at.y - c.y1);
+        if (Math.hypot(dx, dy) > size) continue;
+      }
     }
     if (c.depth >= REFINE_MAX_DEPTH) continue;
     const xm = (c.x0 + c.x1) / 2, ym = (c.y0 + c.y1) / 2;

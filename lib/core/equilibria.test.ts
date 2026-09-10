@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { collinearity, curveLikeFraction, findEquilibria, NEWTON_STEP_TOL, VANISHING_DELTA_FACTOR } from "./equilibria";
+import { collinearity, curveLikeFraction, findEquilibria, NEWTON_STEP_TOL, REFINE_CELL_CAP, VANISHING_DELTA_FACTOR } from "./equilibria";
 import { compileSystem } from "./parse";
 import type { Box } from "./types";
 
@@ -1085,5 +1085,34 @@ describe("findEquilibria: determinism (J-fix3 item 5)", () => {
       expect(findEquilibria(duffing, box(-3, 3))).toEqual(first[0]);
       expect(findEquilibria(pendulum, pBox)).toEqual(first[1]);
     }
+  });
+});
+
+describe("sign-change quadtree stop rule (round N.3 c)", () => {
+  it("regression guard: x' = y, y' = -x - y + x^7 on [-100, 100]² still finds the spiral at the origin and both saddles", () => {
+    // The depth-0 cell holding the origin also holds the saddle (1, 0) on its edge: the rule must
+    // not stop the refinement there (the origin lies INSIDE that cell, so no run is skipped).
+    // Classes as derived above: J(0, 0) = [[0, 1], [-1, -1]] stable spiral; J(±1, 0) det -6 saddles.
+    const r = findEquilibria(compileSystem({ f: "y", g: "-x - y + x^7" }), box(-100, 100));
+    expect(r.points).toHaveLength(3);
+    expect(r.points.find((p) => near(p.at, 0, 0, 1e-9))!.classification).toBe("stable_spiral");
+    expect(r.points.find((p) => near(p.at, 1, 0, 1e-9))!.classification).toBe("saddle");
+    expect(r.points.find((p) => near(p.at, -1, 0, 1e-9))!.classification).toBe("saddle");
+    expect(r.seeding.refineCapped).toBe(false);
+  });
+
+  it("x' = x*y, y' = x^2 - y on [-3, 3]²: the axis cells no longer refine to the cap", () => {
+    // xy = 0 and x² = y meet only at the origin (J = [[0, 0], [0, -1]]: non-hyperbolic). f = xy is
+    // exactly 0 on both axes, so every cell touching an axis passes the sign-change test; before
+    // the rule the quadtree refined 1024 such cells toward the origin (the cell cap) and reported
+    // refineCapped. A run from an axis cell far from the origin converges to the origin, further
+    // away than the cell is wide: the rule stops it, and only the cells within a cell width of
+    // the origin at each depth (a bounded ring per depth, 13 depths) are still refined.
+    const r = findEquilibria(compileSystem({ f: "x*y", g: "x^2 - y" }), box(-3, 3));
+    expect(r.points).toHaveLength(1);
+    expect(near(r.points[0].at, 0, 0, 1e-9)).toBe(true);
+    expect(r.points[0].classification).toBe("non_hyperbolic");
+    expect(r.seeding.refineCapped).toBe(false);
+    expect(r.seeding.refined).toBeLessThan(REFINE_CELL_CAP / 2);
   });
 });

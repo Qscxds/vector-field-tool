@@ -124,6 +124,8 @@ export type Scene = {
   singularPoints?: EquilibriaResult["singularPoints"];
   /** True when part of the box evaluates to exactly 0 by underflow (not equilibria, not listed; lib/core/equilibria). Both shells and the tool summary print the notice. */
   underflowPlateau?: EquilibriaResult["underflowPlateau"];
+  /** True when the sign-change quadtree hit its cell cap (lib/core/equilibria seeding.refineCapped): some sign-change cells were not searched. Printed by equilibriaNotices unless the result is a continuum. */
+  refineCapped?: boolean;
   /**
    * Set when the system is non-autonomous (the symbol t appears in f or g: the static rule of
    * lib/core/time-dependence; `maxRelDeviation` is the probe's evidence of how much the field

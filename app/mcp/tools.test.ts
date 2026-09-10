@@ -1497,3 +1497,22 @@ describe("query_solution (round N)", () => {
     expect(Math.abs(r.scene.query!.hits[0].y - Math.sin(1))).toBeLessThan(1e-6);
   });
 });
+
+describe("trace_trajectory over a non-autonomous system (round N.3 b)", () => {
+  it("x' = 0, y' = cos(t) from (0, 0) to t = pi/2 stops by low speed and is worded neutrally, never as an equilibrium", async () => {
+    // y = sin t. The last adaptive step lands exactly on tEnd = pi/2 (integrate.ts cuts the final
+    // step to the remaining time), where the speed |cos(pi/2)| = 6e-17 is below 1e-8 x the
+    // reference speed max(|v(0)| = 1, 6 / (pi/2)): the integrator says reached_equilibrium. For a
+    // time-dependent field that is not an equilibrium, and the summary must not say it is.
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("trace_trajectory", { f: "0", g: "cos(t)", x0: 0, y0: 0, direction: "forward", tSpan: Math.PI / 2, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.timeDependent).toBeTruthy();
+      expect(r.scene.trajectories![0].status).toBe("reached_equilibrium");
+      expect(r.scene.trajectories![0].tEnd).toBeCloseTo(Math.PI / 2, 12);
+      const L = labels(locale);
+      expect(r.text).toContain(L.tool.stoppedNonAutonomous);
+      expect(r.text).not.toContain(L.status.reached_equilibrium);
+    }
+  });
+});

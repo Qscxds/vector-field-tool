@@ -3,7 +3,7 @@ import { compileSystem } from "./core/parse";
 import { toSystem, type FirstOrderSpec } from "./core/slope-field";
 import { traceFixed } from "./interactive";
 import { fill, labels } from "./labels";
-import { groupTrajectories, trajectoryLines, trajectoryMode, trajectoryStatus } from "./labels-trajectory";
+import { groupTrajectories, statusSentence, trajectoryLines, trajectoryMode, trajectoryStatus } from "./labels-trajectory";
 import type { Scene, TrajectoryView } from "./scene";
 
 const en = labels("en");
@@ -153,5 +153,29 @@ describe("trajectoryLines for a planar system keeps today's text", () => {
     expect(trajectoryStatus(fwd, en)).toBe(en.ui.leftFarBox);
     expect(trajectoryStatus({ ...fwd, stop: "view" }, en)).toBe(en.status.left_box);
     expect(trajectoryLines({ system: { f: "5", g: "0" } }, [fwd], en)[0]).toBe(`${en.tool.forward} to t = 4, ${en.ui.leftFarBox}`);
+  });
+});
+
+describe("non-autonomous status wording (round N.3 b)", () => {
+  const stopped: TrajectoryView = { direction: "forward", points: [{ x: 0, y: 0 }, { x: 0, y: 1 }], status: "reached_equilibrium", steps: 10, tEnd: Math.PI / 2 };
+  it("reached_equilibrium over a time-dependent scene is worded as a low-speed stop, not an equilibrium, in both languages", () => {
+    for (const L of [en, zh]) {
+      expect(trajectoryStatus(stopped, L)).toBe(L.status.reached_equilibrium);
+      expect(trajectoryStatus(stopped, L, { snapshotT: 0, maxRelDeviation: 1 })).toBe(L.tool.stoppedNonAutonomous);
+      expect(statusSentence("reached_equilibrium", L, { snapshotT: 0, maxRelDeviation: 1 })).toBe(L.tool.stoppedNonAutonomous);
+      // Every other status is unchanged by time dependence.
+      expect(statusSentence("completed", L, { snapshotT: 0, maxRelDeviation: 1 })).toBe(L.status.completed);
+      expect(statusSentence("left_box", L, { snapshotT: 0, maxRelDeviation: 1 })).toBe(L.status.left_box);
+    }
+    expect(en.tool.stoppedNonAutonomous).toMatch(/not an equilibrium/);
+    expect(zh.tool.stoppedNonAutonomous).toMatch(/不是平衡点/);
+  });
+
+  it("trajectoryLines of a planar time-dependent scene carries the neutral wording", () => {
+    // x' = 0, y' = cos(t) from (0, 0) to t = pi/2: the speed |cos t| is 6e-17 at the end point.
+    const scene: Pick<Scene, "system" | "fieldStyle" | "timeDependent"> = { system: { f: "0", g: "cos(t)" }, timeDependent: { snapshotT: 0, maxRelDeviation: 1 } };
+    const lines = trajectoryLines(scene, [stopped], en);
+    expect(lines).toEqual([`${en.tool.forward} ${fill(en.ui.toward, { t: "1.57", status: en.tool.stoppedNonAutonomous })}`]);
+    expect(trajectoryLines({ system: { f: "0", g: "1" } }, [stopped], en)[0]).toContain(en.status.reached_equilibrium);
   });
 });
