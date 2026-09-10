@@ -1352,6 +1352,9 @@ describe("query_solution (round N)", () => {
     expect(q.description).toMatch(/value of the solution at some time/);
     expect(q.description).toMatch(/when does the solution reach some value/);
     expect(q.description).toMatch(/never evaluate that closed form mentally/);
+    // Phase O.1: the USE THIS sentence says explicitly that such a question must call the tool and is
+    // never answered from a closed form.
+    expect(q.description).toMatch(/USE THIS for any 'value at a time' or 'when does it reach a value' question[^.]*must call this tool and is never answered from a closed form/);
     const props = q.inputSchema.properties as Record<string, unknown>;
     expect(Object.keys(props)).toEqual(expect.arrayContaining(["mode", "expr", "M", "N", "f", "g", "equation", "t0", "x0", "y0", "target", "tSpan", "xMin", "locale"]));
   });

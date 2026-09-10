@@ -798,7 +798,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "error estimate, a note when the target was not reached (with where each direction stopped and why: left the " +
         "box, blew up, reached an equilibrium, span ended), when the run stopped before the target time, or when a " +
         "periodic-looking solution may cross again beyond the span. " +
-        "USE THIS for any 'value at' or 'time when' question about a specific solution; use trace_trajectory to see " +
+        "USE THIS for any 'value at a time' or 'when does it reach a value' question about a specific solution: such a " +
+        "question must call this tool and is never answered from a closed form; use trace_trajectory to see " +
         "the whole curve, analyze_first_order / analyze_system for equilibria and stability. " +
         "Inputs: `mode` selects the equation form and which expression parameters are read: 'first' (expr: dy/dt = " +
         "g(t, y)), 'diff' (M and N: M dt + N dy = 0), 'system' (f and g: x' = f, y' = g), 'second' (equation: x'' = " +
