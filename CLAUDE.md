@@ -4,7 +4,8 @@
 
 Teaching tool for differential-equations courses. Claude answers students' questions by calling MCP
 tools; every number comes from deterministic code in `lib/core`. The AI only translates language to
-parameters and results to explanations. README.md (Chinese) has run / tunnel / deploy steps.
+parameters and results to explanations. README.md (English, public-facing) has run / tunnel /
+deploy steps; the docs/ notes are Chinese.
 `docs/NIGHT-*.md` record the 2026-09-02 overnight build (stages A-E); `docs/FG-*.md` the 2026-09-03
 S/F/G round (sandbox spike, differential forms, bilingual labels, interaction); `docs/H-*.md` the
 H round (deploy readiness, cost caps, and the math-first re-decisions listed below);
@@ -64,8 +65,9 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   `locale`, `system`, `firstOrder.spec` so clients can recompute); the widget and the web shell only
   ever consume a Scene.
 - `lib/labels.ts` ALL student/user-facing text as keyed tables `LABELS.zh` / `LABELS.en` with an
-  identical key set (tested), `labels(locale)`, `fill()`, `localeFromLanguageTag()`, number
-  formatting. English is American spelling. The kernel returns keys; presentation looks them up.
+  identical key set (tested), `labels(locale)`, `fill()`, number formatting
+  (`localeFromLanguageTag()` is still exported and tested but no shell uses it since round M:
+  the language never comes from the browser). English is American spelling. The kernel returns keys; presentation looks them up.
   Placeholder convention `{hv}`: the range templates (`shownRange*`, `featuresBox`, `xRangeError`,
   `equalScale`) take `{hv}`, the student-facing name of the horizontal coordinate: "x" for a planar
   system, "t" for a first-order scene (`system.variables === "ty"`); both shells fill it via
@@ -98,14 +100,14 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION`; `app/mcp/tools.ts` the four analysis tools (`locale` is
-  REQUIRED; analyze_first_order keeps the parameter names xMin/xMax but they are the t range, and
+  resource + ping + `WIDGET_VERSION`; `app/mcp/tools.ts` the five analysis tools (`locale` is
+  optional and defaults to en since round M; analyze_first_order keeps the parameter names xMin/xMax but they are the t range, and
   its expressions use t and y only); `app/mcp/budget.ts` (2 s wall-clock budget per call via kernel checkpoints) and
   `app/mcp/rate-limit.ts` (per-process sliding window, best effort only on serverless).
 - `app/widget/page.tsx` MCP Apps widget (compiles the Scene's equation locally, falls back to the
   static picture if compiling is blocked); `app/page.tsx` home.
 - `lib/url-state.ts` the web shell's URL state (pure): `AppState` (mode first / diff / system /
-  second, g f M N eq, the ENTERED box, `locale | null` = follow the browser, equalScale, density,
+  second, g f M N eq, the ENTERED box, `locale | null` = no loc in the link (English), equalScale, density,
   arrowMode, snapshotT, trajectoryStarts) with `DEFAULT_STATE`; `encodeState` (short names,
   defaults omitted, readable parentheses; tmin/tmax for first-order pictures, xmin/xmax for planar
   ones); `decodeState(query, fallback)` never throws: 4096-char query cap, 200-char expressions
@@ -166,6 +168,66 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 8. Every user-visible string lives in `lib/labels.ts` (or `detect-form.ts` / `NO_FORM_NOTE` for the
    form evidence) in BOTH languages. No hard-coded Chinese or English in tools, pages or components.
 
+## Kernel freeze (decided 2026-09-09, round M)
+
+`lib/core` gets NO new numerical machinery and NO threshold changes. The constants below were chosen
+by agents during the J rounds (equilibria / uniqueness / non-autonomous / second-order and the three
+review-and-fix rounds); they are unverified heuristics that may only change when a real classroom
+failure drives it, with a derived test for that failure. The extreme-box open questions
+(`docs/IJKL-open-questions.md`: sin(1/y), the 637 roots of sin(100y), K >= 1e9 systems, half-widths
+>= 1.5e5) stay as they are.
+
+- `uniqueness.ts`: `LIPSCHITZ_MAX_LEVELS` 60 most offset levels per side; `LIPSCHITZ_FIRST_FRACTION`
+  1e-2 first offset as a fraction of the scale; `LIPSCHITZ_SHRINK` 4 offset divisor per level;
+  `UNBOUNDED_EXPONENT` 0.25 quotient-growth exponent alpha at or above which the side is unbounded;
+  `BORDERLINE_EXPONENT` 0.1 alpha at or above which it is at least borderline; `LEVEL_OFF_EXPONENT`
+  0.05 change per level below which the descent stops as bounded; `TAIL_LEVELS` 4 levels the exponent
+  is fitted over; `MIN_LEVELS` 3 usable levels for any verdict but untestable; `ROUNDING_GUARD` 0.1
+  rounding-floor fraction of the quotient that ends the descent; `FLOOR_WINDOW` 4 levels the rounding
+  floor is estimated over; `POSITION_GUARD` 1e6 eps of |center| below which offsets are not
+  representable; `RESOLUTION_FACTOR` 10 multiple of a point's resolution at which a probe starts.
+- `slope-field.ts` (vanishing ladder of a constant solution): `VANISH_MAX_LEVELS` 60, `VANISH_SHRINK`
+  4, `VANISH_EXPONENT_MIN` 0.05 (M vanishes when |M| falls like delta^beta with beta at least this),
+  `VANISH_TAIL` 6 levels fitted, `VANISH_MIN_LEVELS` 3, `UNDERFLOW_MIN_LEVELS` 2 usable levels before
+  an underflow counts as measured, `VANISH_POSITION_GUARD` 1e3 eps of |c|, `UNDERFLOW_REACH` 1e60
+  factor of the smallest normal within which an exact 0 is an underflow and not a coincidence,
+  `PRECISION_REACH` 1e6 factor of the rounding bound within which a value is the rounding floor,
+  `RESIDUAL_SAFETY` 10 allowed excess of |M(t, c)| over the vanishing law's prediction, `N_FLOOR`
+  1e3 eps of |N| below which N counts as zero on the line, `LOCATE_ITERATIONS` 200,
+  `MIN_USABLE_PROBES` 2 / `PROBES_NOTED` 3 probes a constant solution needs / below which the shells
+  say how many, `CANDIDATE_CAP_PER_SAMPLE` 4, `PROBE_FRACTIONS` / `DEFAULT_PROBES` the
+  irrational-looking t probes.
+- `equilibria.ts`: `COLLINEAR_RATIO` 1e-6, `CURVE_LOCAL_RATIO` 0.02, `CURVE_FRACTION` 0.8,
+  `CURVE_MIN_POINTS` 6 continuum shape thresholds (H2.7); `CONNECTED_FRACTION` 0.8 (deprecated) and
+  `COMPONENT_NEIGHBOURS` 4 connectedness; `SEED_GRID_MIN` 12 / `SEED_GRID_MAX` 32 Newton seed grid;
+  `SCAN_GRID_DEFAULT` 64 and `SCAN_SEED_CAP` 400 the |F| scan; `EDGE_CELL_CAP` 256 edge cells
+  bisected; `REFINE_MAX_DEPTH` 12, `REFINE_CELL_CAP` 1024, `REFINE_VISIT_CAP` 8192,
+  `REFINE_ROOT_CAP` 128 the sign-change quadtree; `NEWTON_STEP_TOL` 1e-13 of the box stops Newton;
+  `SINGULAR_SCALED_DET` 1e-8 scaled determinant below which the pseudo-inverse step is used;
+  `SINGULAR_DET_NOISE_FACTOR` 2 and `SINGULAR_DET_FLOOR` 16 eps the noise-based determinant tolerance;
+  `ABORT_RADIUS` 1e-6 of the box abandons a run heading into a found root; `LOCATION_RELATIVE_TOL`
+  1e-9 merges two converged points; `VANISHING_MIN_EXPONENT` 0.1 beta below which the field is
+  discontinuous at the point (singular, not an equilibrium); `VANISHING_DELTA_FACTOR` 1e3 first
+  offset as a multiple of stepTol; `VANISHING_RESOLUTION_FACTOR` (= 10) smallest offset relative to
+  the point's resolution; `ROUNDING_FLOOR_FACTOR` 4 residual within this factor of the rounding bound
+  is at the floor; `EXTENDED_ITERATIONS` 10 x maxIterations for a run still closing in;
+  `POOR_DECREASE` 0.9 full step compared with the half step; `JACOBIAN_NOISE_FRACTION` 0.5 no step
+  verdict above this noise; `JACOBIAN_WIDEN_FRACTION` 0.1 FD step widened until row noise is below
+  it; `FD_QUANTIZATION_FRACTION` 1e-4 FD step never below eps |p| / this; `POLISH_ITERATIONS` 20;
+  `REGION_ZERO_FRACTION` 0.25 of the scan exactly 0 means region_of_equilibria; `CORNER_NUDGE` 2^-20
+  inward sign witness at a non-finite corner.
+- `jacobian.ts`: `JACOBIAN_TRUNCATION_TARGET` 1e-7 truncation fraction the step is shrunk to;
+  `JACOBIAN_STEP_HALVINGS` 20 most quarterings; `ROUNDING_SAFETY` 4 factor on the rounding bound;
+  `EDGE_HALVINGS` 1000 deepest step halving for a column at a domain edge at coordinate 0.
+- `classify.ts`: no numerical constants of its own (`zeroFloor` is the Jacobian's per-entry error).
+- `detect-form.ts`: `TOL_ALGEBRAIC` 1e-8 identities evaluated directly; `TOL_DERIVATIVE` 1e-6
+  identities with estimated derivatives; `MIN_SAMPLES` 5 usable samples for a verdict.
+- `time-dependence.ts`: `PROBE_TIMES` 0, 0.7183, 1.4142, 3.1416, -2.7183 and the `FX` / `FY`
+  irrational-looking box fractions.
+- `second-order.ts`: `AFFINITY_REL_TOL` 1e-9 affinity of E in x''; `XDD_PROBES` the eight x''
+  values; `CONSTANT_REL_TOL` 1e-12 "same constant at every sample"; `CROSS_CHECK_REL_TOL` 1e-12
+  F == -E0/a; `DISPLAY_DIGITS` 12; `MIN_FINITE_POINTS` 3; `SAMPLE_POINTS` the nine generic points.
+
 ## Stack decisions
 
 - No mcp-handler. `@modelcontextprotocol/sdk` 1.x + `WebStandardStreamableHTTPServerTransport`
@@ -185,9 +247,11 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   disconnect / reconnect the connector in Claude (it caches the tool list with the old URI).
 - Local compute in the sandbox works WITHOUT `unsafe-eval`: mathjs `compile()` builds closures, no
   code strings (S spike, `docs/FG-decisions.md`). `new Function` is blocked there; never depend on it.
-- Tools take `locale` (`zh` | `en`, REQUIRED): the model sets `zh` when the student writes Chinese.
-  The web shell defaults from `navigator.language` and keeps the choice in component state (no
-  localStorage). The widget follows `scene.locale`.
+- Tools take `locale` (`zh` | `en`, optional, default `en` since round M; H2.9 had it REQUIRED, but
+  the isError of a forgotten locale reached the student, whereas the default only costs an English
+  summary): the model sets `zh` when the student writes Chinese. The site is English by default and
+  NEVER reads `navigator.language`: only `?loc=zh` (or the visitor's pick, kept in component state,
+  no localStorage, written into the link) gives Chinese. The widget follows `scene.locale`, else en.
 - Tunnel dev: `$env:BASE_URL = "https://<tunnel>"; npm run dev` (PowerShell); cloudflared, not free
   ngrok. Vercel Deployment Protection is intentionally OFF.
 - SDK 1.30 reports zod schema violations as `isError` tool results (not JSON-RPC errors); our own
@@ -210,4 +274,6 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   3 refuters per finding) confirmed 14/14 verified findings; all are fixed in `[H2-fix]` commits
   with derived tests. Every relative tolerance in the kernel is relative to magnitudes actually
   measured (never to an absolute 1 or 1e-8): review items C6, C7, C8 were all absolute floors.
-- Reply to the user in Chinese. Keep code, comments, commit messages and paths in English.
+- Reply to the user in Chinese. Keep code, comments, commit messages and paths in English. The SITE
+  and the README are English by default (zh only via `?loc=zh`); `docs/*.md` and this file stay Chinese
+  working notes.
