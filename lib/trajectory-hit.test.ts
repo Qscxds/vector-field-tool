@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { Vec2 } from "./core/types";
 import type { Viewport } from "./render/viewport";
 import type { TrajectoryView } from "./scene";
+import { IDLE_GESTURE, LONG_PRESS_MS, reduceGesture } from "./gestures";
 import { clickAction, HIT_THRESHOLD_PX, nearestFixedTrajectory, pointToSegmentDistance, polylineScreenDistance } from "./trajectory-hit";
 
 // 400 x 400 canvas over [-2, 2]^2: 100 px per unit. World (x, y) -> screen ((x + 2) * 100, (2 - y) * 100).
@@ -72,5 +73,21 @@ describe("clickAction", () => {
     const starts = [{ x: 0, y: 1 }];
     expect(clickAction(pairs, starts, { x: 200, y: 104 }, view)).toEqual({ type: "delete", index: 0 });
     expect(clickAction(pairs, starts, { x: 200, y: 300 }, view)).toEqual({ type: "add" });
+  });
+});
+
+describe("touch long press on a kept curve (lib/gestures -> clickAction)", () => {
+  it("a finger held still on the curve yields a longPress at that point, which clickAction turns into a delete; on empty canvas, an add", () => {
+    const pairs = horizontalPair(1);
+    const starts = [{ x: 0, y: 1 }];
+    const hold = (x: number, y: number) => {
+      const down = reduceGesture(IDLE_GESTURE, { type: "down", id: 1, x, y, t: 1000 });
+      const fired = reduceGesture(down.state, { type: "tick", t: 1000 + LONG_PRESS_MS });
+      expect(fired.actions).toEqual([{ type: "longPress", at: { x, y } }]);
+      return fired.actions[0] as { type: "longPress"; at: Vec2 };
+    };
+    // 4 px below the line y = 1 (screen row 100): removed. Row 300 (y = -1): a new curve.
+    expect(clickAction(pairs, starts, hold(200, 104).at, view)).toEqual({ type: "delete", index: 0 });
+    expect(clickAction(pairs, starts, hold(200, 300).at, view)).toEqual({ type: "add" });
   });
 });

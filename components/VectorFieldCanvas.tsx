@@ -25,9 +25,14 @@ export type VectorFieldCanvasProps = {
   overlay?: TrajectoryView[];
   /** Short text shown on the overlay near the cursor (e.g. "direction undefined here"). */
   overlayHint?: { at: Vec2; text: string } | null;
+  /** Kept curves under the pointer (a click removes them): redrawn on the overlay with a thicker stroke. */
+  highlight?: TrajectoryView[];
+  /** Cursor over the canvas while interactive (default crosshair; the parent passes "pointer" over a removable curve). */
+  cursor?: string;
+  /** A click, or a touch long press (lib/gestures): the parent decides whether it keeps or removes a curve. */
   onClickWorld?: (p: Vec2) => void;
-  /** World and screen position while the pointer moves; null when it leaves. */
-  onHoverWorld?: (world: Vec2 | null, screen: Vec2 | null) => void;
+  /** World and screen position while the pointer moves; null when it leaves. `touch` marks a finger's tap. */
+  onHoverWorld?: (world: Vec2 | null, screen: Vec2 | null, touch?: boolean) => void;
   onWheelZoom?: (screenPoint: Vec2, factor: number) => void;
   onPan?: (dxScreen: number, dyScreen: number) => void;
   /**
@@ -55,6 +60,8 @@ export function VectorFieldCanvas({
   arrowMode = "unit",
   overlay,
   overlayHint,
+  highlight,
+  cursor,
   onClickWorld,
   onHoverWorld,
   onWheelZoom,
@@ -89,6 +96,24 @@ export function VectorFieldCanvas({
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
     if (!v) return;
+    if (highlight?.length) {
+      // The pair a click would remove, over its base-layer stroke (1.8 px), in its own colors.
+      ctx.lineWidth = 4;
+      ctx.lineJoin = "round";
+      for (const t of highlight) {
+        if (t.points.length < 2) continue;
+        ctx.strokeStyle = t.direction === "forward" ? COLORS.forward : COLORS.backward;
+        ctx.setLineDash(t.nonUnique ? NON_UNIQUE_DASH : []);
+        ctx.beginPath();
+        t.points.forEach((p, i) => {
+          const s = worldToScreen(v, p);
+          if (i === 0) ctx.moveTo(s.x, s.y);
+          else ctx.lineTo(s.x, s.y);
+        });
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+    }
     if (overlay?.length) {
       ctx.lineWidth = 2.2;
       ctx.strokeStyle = COLORS.hover;
@@ -115,7 +140,7 @@ export function VectorFieldCanvas({
       ctx.textBaseline = "bottom";
       ctx.fillText(overlayHint.text, Math.min(s.x + 10, width - 160), Math.max(s.y - 8, 12));
     }
-  }, [overlay, overlayHint, v, width, height]);
+  }, [overlay, overlayHint, highlight, v, width, height]);
 
   // Wheel must be non-passive to prevent the page from scrolling; React's onWheel is passive.
   useEffect(() => {
@@ -157,13 +182,14 @@ export function VectorFieldCanvas({
         return;
       case "tap":
         // The preview stays until the next tap or gesture (there is no pointerleave to clear it).
-        if (v && onHoverWorld) onHoverWorld(screenToWorld(v, a.at), a.at);
+        if (v && onHoverWorld) onHoverWorld(screenToWorld(v, a.at), a.at, true);
         return;
       case "doubleTap":
         cancelPendingClick();
         onDoubleClick?.();
         return;
       case "longPress":
+        // Same as a click: on a kept curve the parent removes it, on empty canvas it keeps the solution.
         if (v && onClickWorld) onClickWorld(screenToWorld(v, a.at));
         onHoverWorld?.(null, null);
         return;
@@ -292,7 +318,7 @@ export function VectorFieldCanvas({
       <canvas ref={baseRef} style={{ position: "absolute", left: 0, top: 0, display: "block" }} role="img" aria-label="Phase portrait" />
       <canvas
         ref={overlayRef}
-        style={{ position: "absolute", left: 0, top: 0, display: "block", cursor: interactive ? "crosshair" : "default", touchAction: "none" }}
+        style={{ position: "absolute", left: 0, top: 0, display: "block", cursor: interactive ? (cursor ?? "crosshair") : "default", touchAction: "none" }}
         onPointerDown={handleDown}
         onPointerMove={handleMove}
         onPointerUp={handleUp}

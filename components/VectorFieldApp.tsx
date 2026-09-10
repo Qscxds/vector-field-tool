@@ -23,6 +23,7 @@ import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
 import { siteText } from "@/lib/site-text";
+import { isUndoKey } from "@/lib/undo-key";
 import { buildShareUrl, encodeState, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
 import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } from "@/app/vector-field/presets";
 
@@ -338,7 +339,20 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     // traj); it never resets to the seeds, so a cleared curve does not come back.
     retraceKey: String(snapshotT),
   });
-  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, clearTrajectories, handlers } = interactive;
+  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, clearTrajectories, undo, canUndo, handlers } = interactive;
+
+  // Ctrl+Z / Cmd+Z undoes the last trajectory action, unless the student is typing in a field.
+  const undoRef = useRef(undo);
+  undoRef.current = undo;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!isUndoKey(event)) return;
+      event.preventDefault();
+      undoRef.current();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   const update = (patch: Partial<Form>) => {
     setPresetId(null);
@@ -625,9 +639,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {fill(L.ui.equalScaleDetail, { hv })}
             </Info>
           </div>
-          <button type="button" onClick={clearTrajectories} style={buttonStyle} disabled={trajectories.length === 0}>
-            {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
-          </button>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={clearTrajectories} style={{ ...buttonStyle, flex: "1 1 auto" }} disabled={trajectories.length === 0}>
+              {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
+            </button>
+            <button type="button" onClick={undo} style={buttonStyle} disabled={!canUndo} data-undo title="Ctrl+Z">
+              {L.ui.undo}
+            </button>
+          </div>
           <button type="button" onClick={copyLink} style={buttonStyle} disabled={compiled.error !== null} data-copy-link aria-live="polite">
             {copied ? L.ui.copied : L.ui.copyLink}
           </button>
@@ -673,6 +692,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                 arrowMode={form.arrowMode}
                 overlay={overlay}
                 overlayHint={hint}
+                highlight={highlight}
+                cursor={cursor}
                 {...handlers}
               />
               {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
