@@ -131,3 +131,34 @@ describe("link helpers", () => {
     expect(bilingual("homeTitle")).toBe(`${SITE_TEXT.zh.meta.homeTitle} / ${SITE_TEXT.en.meta.homeTitle}`);
   });
 });
+
+describe("[M] help absorbs every explanation trimmed from the application", () => {
+  it("controls / notation / reading are the three sections, in that order, and name what the app no longer explains", () => {
+    for (const locale of LOCALES) {
+      const H = SITE_TEXT[locale].help;
+      const src = JSON.stringify(SITE_TEXT[locale].help);
+      // the three section headings exist and are short
+      for (const h of [H.controls.heading, H.notation.heading, H.reading.heading]) expect(h.length, locale).toBeLessThan(30);
+      // the form list explains every control that kept only its label
+      expect(H.controls.form.length).toBeGreaterThanOrEqual(8);
+      expect(src).toMatch(/Uniform|等长/);
+      expect(src).toMatch(/Scaled|按模长/);
+      expect(src).toMatch(/Equal scale|等比/);
+      expect(src).toMatch(/Copy link|复制链接/);
+      expect(src).toMatch(/PNG/);
+      // the interaction hints of the mouse and the touch screen
+      expect(H.controls.mouse.length).toBe(5);
+      expect(H.controls.touch.length).toBe(5);
+      // the syntax hints: multiplication, t only in a first-order equation, x'' linear and checked numerically
+      expect(src).toMatch(/t\*y/);
+      expect(H.notation.firstOrderLine).toMatch(/x/);
+      expect(H.notation.secondOrderLine).toMatch(/x''/);
+      expect(H.notation.secondOrderLine).toMatch(/sample points|采样点/);
+      // the features-box explanation and the folded caveats
+      expect(H.reading.rangeLine).toMatch(/entered range|输入范围/);
+      expect(H.reading.rangeLine).toMatch(/visible range|可见范围/);
+      expect(H.reading.detailsLine).toContain("ⓘ");
+      expect(H.reading.equilibriumLine).toMatch(/±/);
+    }
+  });
+});

@@ -1,6 +1,8 @@
 "use client";
 /**
- * Help page body. Sections in course order; the function list comes from the parser whitelist
+ * Help page body: Controls / Notation / Reading the results, then the limits, embedding and the
+ * Claude connection. Every explanation trimmed from the application lives here (M.3 / M.4).
+ * The function list comes from the parser whitelist
  * (lib/core/parse ALLOWED_FUNCTIONS through lib/site-text), never retyped; the marker
  * conventions describe what components/VectorFieldCanvas.tsx draws.
  */
@@ -41,8 +43,18 @@ export function HelpContent({ initialLocale }: { initialLocale: Locale | null })
       <h1>{H.title}</h1>
       <p className="site-note">{H.intro}</p>
 
+      <h2 id="controls">{H.controls.heading}</h2>
+      <h3>{H.controls.formHeading}</h3>
+      <List items={H.controls.form} />
+      <h3>{H.controls.mouseHeading}</h3>
+      <List items={H.controls.mouse} />
+      <h3>{H.controls.touchHeading}</h3>
+      <List items={H.controls.touch} />
+
       <h2 id="notation">{H.notation.heading}</h2>
       <List items={H.notation.items} />
+      <p>{H.notation.firstOrderLine}</p>
+      <p>{H.notation.secondOrderLine}</p>
       <p>
         {H.notation.functionsLead}{" "}
         <span data-help-functions>
@@ -58,15 +70,12 @@ export function HelpContent({ initialLocale }: { initialLocale: Locale | null })
       <p>{H.notation.piecewiseLine}</p>
       <p>{H.notation.negativePowerLine}</p>
 
-      <h2 id="controls">{H.controls.heading}</h2>
-      <h3>{H.controls.mouseHeading}</h3>
-      <List items={H.controls.mouse} />
-      <h3>{H.controls.touchHeading}</h3>
-      <List items={H.controls.touch} />
-
       <h2 id="reading">{H.reading.heading}</h2>
+      <p>{H.reading.rangeLine}</p>
+      <p>{H.reading.detailsLine}</p>
       <p>{H.reading.markersLead}</p>
       <List items={H.reading.markers} />
+      <p>{H.reading.equilibriumLine}</p>
       <p>{H.reading.centerNote}</p>
       <p>{H.reading.formsLead}</p>
       <List items={H.reading.forms} />
