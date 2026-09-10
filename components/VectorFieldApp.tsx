@@ -123,11 +123,15 @@ const VF_STYLE = `
 .vf-app.vf-embed { max-width: none; padding: 6px 10px 12px; }
 .vf-topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 8px; color: #52606d; }
 .vf-columns { display: flex; gap: 24px; align-items: flex-start; }
-.vf-form { width: 300px; flex: 0 0 300px; display: grid; gap: 10px; }
+.vf-form { flex: 0 1 320px; min-width: 280px; max-width: 100%; display: grid; gap: 10px; align-content: start; }
+/* The column fits its content in both languages: text wraps, controls fill the column, nothing is clipped. */
+.vf-form > * { min-width: 0; }
+.vf-form label, .vf-form span, .vf-form p { overflow-wrap: anywhere; white-space: normal; }
+.vf-form button, .vf-form select, .vf-form input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; min-width: 0; text-align: left; }
 .vf-canvas { flex: 1 1 0; min-width: 0; }
 @media (max-width: 800px) {
   .vf-columns { flex-direction: column; gap: 14px; }
-  .vf-form { width: auto; flex: none; }
+  .vf-form { flex: none; min-width: 0; width: 100%; }
   .vf-canvas { width: 100%; }
   .vf-app [data-preset-select], .vf-app [data-copy-link], .vf-app [data-download-png] { width: 100%; }
 }
