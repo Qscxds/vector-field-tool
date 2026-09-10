@@ -12,7 +12,10 @@ H round (deploy readiness, cost caps, and the math-first re-decisions listed bel
 `docs/IJKL-*.md` the 2026-09-08/09 I-L round (dy/dt notation and the equal-scale toggle; the
 equilibria / uniqueness / non-autonomous / second-order math with three review-and-fix rounds; the
 website: URL state, /embed, /help, presets, touch gestures, PNG export, metadata; the call-first
-rule in every tool description and widget l-1).
+rule in every tool description and widget l-1); `docs/MNO-*.md` the 2026-09-09 M-O round (English
+by default with the language only from the URL, trimmed copy with folded caveats and the
+reorganized /help, the kernel freeze below; trajectory removal / undo / long-press delete,
+initial-value inputs, solution queries and the `query_solution` tool; widget o-1).
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 ## Module map
@@ -56,7 +59,16 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   returned with a verdict consistent / borderline / inconsistent / untestable, the measured
   relative deviation, the threshold, sample counts; Bernoulli exponents snap to fractions with
   denominator <= 6 when the identity still holds), `exact` (potential by two-path Simpson with a
-  path-independence check whose failure is reported, level values).
+  path-independence check whose failure is reported, level values), `query` (`querySolution`:
+  both directions integrated under the caller's stop box; a time target is ABSOLUTE and answered
+  by re-integrating from the start to exactly t*, an unreachable t* is `stopped_before_target`
+  with the leg's status saying why; a coordinate target x = c / y = c brackets every sign change
+  of the stored polyline and solves the crossing time by Brent IN TIME, every trial re-integrated
+  from the accepted bracket-left state, never interpolated; errors are ESTIMATES:
+  `TOLERANCE_SAFETY` (10) x (atol + rtol |p|) plus |dp/dt| x the final bracket width;
+  `timeUncertainty(hit)` = max(bracket, position error / speed) is what the shells display; the
+  note is always a key: ok / not_reached_in_span / stopped_before_target /
+  possibly_more_beyond_span (>= 3 hits in a COMPLETED direction) / target_is_start).
 - `lib/render/` pure geometry: `viewport` (`fitViewport` equal-scale by default, `equalScale: false`
   returns the entered box unchanged so it fills the canvas; cursor-anchored `zoomAt`, `panBy`,
   `resetViewport`), `arrows`, `ticks`, `axis-names` (where the axis names go without covering the
@@ -68,18 +80,41 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   identical key set (tested), `labels(locale)`, `fill()`, number formatting
   (`localeFromLanguageTag()` is still exported and tested but no shell uses it since round M:
   the language never comes from the browser). English is American spelling. The kernel returns keys; presentation looks them up.
-  Placeholder convention `{hv}`: the range templates (`shownRange*`, `featuresBox`, `xRangeError`,
-  `equalScale`) take `{hv}`, the student-facing name of the horizontal coordinate: "x" for a planar
+  Placeholder convention `{hv}`: the range templates (`shownRange*`, `featuresBox` /
+  `featuresBoxDetail`, `xRangeError`, `equalScaleDetail`) take `{hv}`, the student-facing name of the horizontal coordinate: "x" for a planar
   system, "t" for a first-order scene (`system.variables === "ty"`); both shells fill it via
   `horizontalName()`.
 - `lib/labels-trajectory.ts` the mode-aware "last trajectory" text shared by both shells:
   planar = direction + tEnd; explicit first order = direction + the END POINT's t (tEnd is the
   parameter of the reduced system, not the t coordinate); differential form = the two sides by
-  status only (no natural direction, no t number).
+  status only (no natural direction, no t number). Since round M the shells FOLD long caveats
+  (`Folded` = short line + full detail behind an info toggle: `equilibriumDetail`,
+  `constantSolutionFolded`, `timeDependentFolded`, `formFolded`, `formatEigenvalues` for the
+  "±0.9682i" shorthand); folding is display only, the Scene and the tool summaries keep every word.
+- `lib/labels-query.ts` the query wording shared by the tool summary and the widget
+  (`queryTargetText`, `queryLines` at 6 fixed digits, `queryNoteText` for the note keys).
 - `lib/interactive.ts` pure helpers for the interactive shells: `computeFeatures` for a box,
   `featuresBoxFor` (the features-box rule below), `tracePreview` (hover: fixed ON-SCREEN length,
   2 canvas diagonals, steps only a safety cap) and `traceFixed` (click: stops at 20x the original
   problem domain, never at the view edge).
+- `lib/trajectory-store.ts` the kept trajectories as a pure store: the STARTS are the single source
+  of truth, curves are derived by an injected trace; add / delete / clear with an undo history of
+  `HISTORY_LIMIT` 20; a system change or a new seed array resets to the seeds, a `retraceKey`
+  change (the web shell passes the snapshot t) re-traces the CURRENT starts, so a cleared start never
+  comes back (the N.1 bug).
+- `lib/trajectory-hit.ts` point-to-polyline distance in SCREEN pixels (`HIT_THRESHOLD_PX` 8,
+  zoom-independent), `nearestFixedTrajectory`, `clickAction` (a click within the threshold removes
+  that pair, otherwise it adds; long press and mouse share this one rule).
+- `lib/undo-key.ts` `isUndoKey` (Ctrl/Cmd+Z outside inputs, selects, textareas and contenteditable).
+- `lib/initial-value.ts` `parseInitialValue` / `parseDecimal` for the initial-value inputs (finite
+  decimals within `MAX_ABS_VALUE` from url-state so an added start always round-trips through
+  `traj`).
+- `lib/query-panel.ts` pure helpers of the web shell's query panel: `queryKindsFor` (t / y on a
+  first-order picture, t / x / y on a planar one), `kernelQueryKind` (the student's t on a
+  first-order picture is the coordinate kind "x", the time kind exists only on planar pictures),
+  `parseQueryValue`, `errorDigits` / `roundToError` (2 significant digits of the error),
+  `queryHitText`, `trajectoryOptionText`, `selectedTrajectoryIndex` (the newest addition is
+  preselected; a click cannot both select and remove a curve).
 - `components/VectorFieldCanvas.tsx` draws a Scene on a base + overlay canvas; data props only,
   never calls lib/core; draws the axis names (t or x from `scene.system.variables`, and y);
   reports pointer/wheel as world/screen coordinates. Touch pointers go through `lib/gestures.ts`
@@ -89,20 +124,32 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   `components/drawScene.ts` is the base-layer drawing shared with `components/exportScenePng.ts`
   (2x PNG, white footer strip with the one-line text of `lib/export-footer.ts`: equation, displayed
   range at 3 significant digits, `t = t0` when time-dependent, origin; canvas drawing is browser
-  only and not unit-tested, the footer text and file name are).
+  only and not unit-tested, the footer text and file name are; the footer prints "entered ... ·
+  shown ..." when the two ranges differ; query hits are drawn as a filled diamond with a white halo
+  and a coordinate label). `components/Info.tsx` the one disclosure control of both shells: `Info`
+  (a real "ⓘ" button with aria-expanded / aria-controls, Escape closes, 44 px hit area by negative
+  margins, panel is a block span so it is valid inside <p> / <li>) and `FoldedLine`; display only,
+  whatever it hides is still in the Scene and the tool summary word for word.
   `components/useInteractiveScene.ts` the interaction state shared by both shells (home box,
   viewport with `equalScale` (default true; false fills the canvas with the entered box and the
   web shell shows a persistent not-to-scale warning), resampled field, debounced features, rAF
-  hover preview, click-to-keep). Features-box rule: at the home view (not zoomed or panned) the
+  hover preview, click-to-keep / click-to-remove through `lib/trajectory-store` and
+  `lib/trajectory-hit`; inputs `retraceKey`, `query` + `queryStart` (the query is kept on the scene
+  only while a kept trajectory still starts there), `secondOrder` pass-through; outputs `highlight`,
+  `cursor`, `addTrajectory`, `deleteTrajectory`, `clearTrajectories`, `undo`, `canUndo`). Features-box rule: at the home view (not zoomed or panned) the
   features are computed for the ENTERED range in both equal-scale modes, so the toggle or a canvas
   of another aspect ratio never changes what is listed (the equal-scale margin only carries
   arrows); after a zoom or pan they are computed for the visible box. `Scene.featuresBox` says which.
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION`; `app/mcp/tools.ts` the five analysis tools (`locale` is
-  optional and defaults to en since round M; analyze_first_order keeps the parameter names xMin/xMax but they are the t range, and
-  its expressions use t and y only); `app/mcp/budget.ts` (2 s wall-clock budget per call via kernel checkpoints) and
+  resource + ping + `WIDGET_VERSION` (o-1 since round O); `app/mcp/tools.ts` the six analysis tools
+  (`locale` is optional and defaults to en since round M; analyze_first_order keeps the parameter
+  names xMin/xMax but they are the t range, and its expressions use t and y only; `query_solution`
+  since round N: mode first / diff / system / second, t0 for first-order pictures, x0 (t0 accepted as
+  an alias) for planar ones, y0, `target { kind: "t" | "x" | "y", value }`, tSpan default 20 max 1000,
+  stop box 20x the view like the shells, Scene kind "query_solution" + `Scene.query`; its description
+  says value-at-time / time-of-value questions must call it, never a closed form); `app/mcp/budget.ts` (2 s wall-clock budget per call via kernel checkpoints) and
   `app/mcp/rate-limit.ts` (per-process sliding window, best effort only on serverless).
 - `app/widget/page.tsx` MCP Apps widget (compiles the Scene's equation locally, falls back to the
   static picture if compiling is blocked); `app/page.tsx` home.
@@ -143,7 +190,13 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   `{ id, group, mode: AppMode, name, note, expressions, box, starts? }` with hand-derived honest
   notes; `presetState`, `presetUrl` (a shareable link per preset), `presetsByGroup`. Tests check
   compilation per mode, both languages, unique ids, link round trips and derived key features.
-- `scripts/smoke.mjs` HTTP smoke test against a running server (`npm run smoke`).
+- `scripts/smoke.mjs` HTTP smoke test against a running server (`npm run smoke`; 20 checks, 7
+  tools, the widget URI version). `scripts/mock-host/` (`serve.mjs`, `host.html`, `sandbox.html`)
+  the two-origin mock MCP Apps host (`npm run mock-host -- --mcp <url>`): the sandbox page is served
+  by URL on its own origin with the CSP built from `_meta.ui.csp`, no eval; scenarios for ping and
+  the visual tools (analyze_first_order, analyze_system, analyze_second_order, trace_trajectory,
+  query_solution); diagnostic hooks (`mock.readText()`, `?inspect=1`) exist only
+  here. Build with `BASE_URL=http://localhost:<port>` first so the absolute-asset check is real.
 
 ## Architecture rules (long-lived, do not change)
 
