@@ -423,3 +423,76 @@ describe("constant-solution lines and notices (J-fix2)", () => {
     }
   });
 });
+
+describe("[M] folded caveats: compact eigenvalues and the short line / full detail pairs (display only)", () => {
+  it("formatEigenvalues prints a conjugate pair compactly and everything else as the plain list (derived strings)", async () => {
+    const { formatEigenvalues, formatEigenvalue } = await import("./labels");
+    // a center-like pair with real part exactly 0: "±1i" (formatNumber(1) = "1")
+    expect(formatEigenvalues([{ re: 0, im: 1 }, { re: 0, im: -1 }])).toBe("±1i");
+    // damped oscillator x'' + 0.5x' + x = 0: λ = -0.25 ± i sqrt(1 - 1/16) = -0.25 ± 0.96825i -> 4 digits "0.9682"
+    const im = Math.sqrt(1 - 1 / 16);
+    expect(formatEigenvalues([{ re: -0.25, im }, { re: -0.25, im: -im }])).toBe("-0.25 ± 0.9682i");
+    expect(formatEigenvalues([{ re: -0.25, im: -im }, { re: -0.25, im }])).toBe("-0.25 ± 0.9682i");
+    // two real eigenvalues: the list, each as formatEigenvalue prints it
+    expect(formatEigenvalues([{ re: -1, im: 0 }, { re: -2, im: 0 }])).toBe("-1, -2");
+    expect(formatEigenvalues([{ re: 3, im: 0 }])).toBe("3");
+    expect(formatEigenvalues([])).toBe("");
+    // not a conjugate pair (different real parts): no ± shorthand
+    expect(formatEigenvalues([{ re: 1, im: 2 }, { re: 3, im: -2 }])).toBe(`${formatEigenvalue({ re: 1, im: 2 })}, ${formatEigenvalue({ re: 3, im: -2 })}`);
+    // a tiny real part is printed, not hidden (what was measured)
+    expect(formatEigenvalues([{ re: 1e-17, im: 1 }, { re: 1e-17, im: -1 }])).toBe("1e-17 ± 1i");
+    expect(formatEigenvalues([{ re: 0, im: 1 }, { re: 0, im: -1 }], 5)).toBe("±1i");
+  });
+
+  it("equilibriumDetail is the caveat then the uniqueness sentence, each only when it speaks", async () => {
+    const { equilibriumDetail } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      const at = { x: 0, y: 0 };
+      expect(equilibriumDetail(L, { at })).toEqual([]);
+      expect(equilibriumDetail(L, { at, caveat: "center" })).toEqual([L.caveat.center]);
+      expect(equilibriumDetail(L, { at, caveat: null, uniqueness: { verdict: "bounded_at_tested_scales", exponent: 0 } })).toEqual([]);
+      expect(equilibriumDetail(L, { at, caveat: "domainEdge", uniqueness: { verdict: "unbounded", exponent: 0.5 } })).toEqual([
+        L.caveat.domainEdge,
+        fill(L.uniqueness.unboundedPoint, { point: "(0, 0)", alpha: "0.5" }),
+      ]);
+    }
+  });
+
+  it("constantSolutionFolded: the canvas tag on the line, every full line of constantSolutionLines behind it", async () => {
+    const { constantSolutionFolded, constantSolutionLines } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      const plain = { y: 1, stability: "stable" as const, probes: { usable: 7, total: 7 } };
+      expect(constantSolutionFolded(L, plain)).toEqual({
+        short: fill(L.tool.constantSolution, { y: "1", stability: L.stabilityShort.stable }),
+        detail: [fill(L.tool.constantSolution, { y: "1", stability: L.stability.stable })],
+      });
+      const edge = { y: 0, stability: "edge_leave" as const, domainEdge: "above" as const, probes: { usable: 7, total: 7 }, uniqueness: { verdict: "unbounded" as const, exponent: 0.5, probesFailing: 2, probesTotal: 2, side: "above" as const } };
+      const folded = constantSolutionFolded(L, edge, { kind: "explicit", g: "3*y^(2/3)" });
+      expect(folded.short).toBe(fill(L.tool.constantSolution, { y: "0", stability: L.stabilityShort.edge_leave }));
+      expect(folded.detail).toEqual(constantSolutionLines(L, edge, { kind: "explicit", g: "3*y^(2/3)" }));
+      expect(folded.detail).toHaveLength(2);
+      expect(folded.detail[0]).toContain(L.side.above);
+      expect(folded.detail[0]).toContain(L.tool.fractionalPowerHint);
+      expect(folded.detail[1]).toMatch(/Lipschitz/);
+      expect(folded.short.length).toBeLessThan(folded.detail[0].length);
+    }
+  });
+
+  it("timeDependentFolded and formFolded keep the full sentences in the detail", async () => {
+    const { timeDependentFolded, formFolded } = await import("./labels");
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      expect(timeDependentFolded(L, 1.5)).toEqual({ short: fill(L.ui.timeDependentShort, { t: "1.5" }), detail: [fill(L.ui.timeDependentNote, { t: "1.5" })] });
+      const f = { form: "separable" as const, verdict: "consistent" as const, evidence: "EVIDENCE.", caveat: "CAVEAT." };
+      const folded = formFolded(L, f);
+      expect(folded.short).toBe(fill(L.tool.formLine, { form: L.form.separable, evidence: "" }).replace(/^- /, "").trim());
+      expect(folded.short).not.toMatch(/^- /);
+      expect(folded.short).not.toMatch(/\s$/);
+      expect(folded.detail).toEqual(["EVIDENCE.", "CAVEAT."]);
+      expect(formFolded(L, { ...f, verdict: "borderline", caveat: "" }).detail).toEqual(["EVIDENCE."]);
+      expect(formFolded(L, { ...f, verdict: "borderline" }).short).toBe(fill(L.tool.formBorderlineLine, { form: L.form.separable, evidence: "" }).replace(/^- /, "").trim());
+    }
+  });
+});

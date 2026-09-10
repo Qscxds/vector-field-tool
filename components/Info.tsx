@@ -79,3 +79,28 @@ export function Info({ label, children, defaultOpen = false, "data-info": dataIn
     </>
   );
 }
+
+/**
+ * A short line followed by the info toggle, the detail lines (full sentences) behind it. With no
+ * detail the line stands alone. Used by both shells for every folded caveat.
+ */
+export function FoldedLine({ short, detail, label, "data-info": dataInfo, children, style }: { short: React.ReactNode; detail: readonly string[]; label: string; "data-info"?: string; children?: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <span style={style} data-folded={dataInfo ?? ""}>
+      {short}
+      {detail.length ? (
+        <>
+          {" "}
+          <Info label={label} data-info={dataInfo}>
+            {detail.map((line, i) => (
+              <span key={i} style={{ display: "block", margin: i ? "4px 0 0" : 0 }}>
+                {line}
+              </span>
+            ))}
+          </Info>
+        </>
+      ) : null}
+      {children}
+    </span>
+  );
+}

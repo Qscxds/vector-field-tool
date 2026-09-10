@@ -727,3 +727,71 @@ export function formatEigenvalue(e: Complex, digits = 5): string {
 export function formatPoint(p: { x: number; y: number }, digits = 4): string {
   return `(${formatNumber(p.x, digits)}, ${formatNumber(p.y, digits)})`;
 }
+
+/**
+ * The eigenvalue list of one equilibrium, compact: a conjugate pair (same real part, opposite
+ * non-negligible imaginary parts, as lib/core/classify produces them from one formula) prints as
+ * "±0.968i" (real part exactly 0) or "-0.25 ± 0.968i"; anything else is the plain list. Display
+ * only: the Scene keeps both numbers. An empty list gives "" (the caller says "unavailable").
+ */
+export function formatEigenvalues(eigenvalues: readonly Complex[], digits = 4): string {
+  if (eigenvalues.length === 2) {
+    const [a, b] = eigenvalues;
+    const complex = Math.abs(a.im) > 1e-15 * Math.abs(a.re);
+    const sameRe = a.re === b.re || Math.abs(a.re - b.re) <= 1e-12 * Math.max(Math.abs(a.re), Math.abs(b.re));
+    const conjugate = Math.abs(a.im + b.im) <= 1e-12 * Math.abs(a.im);
+    if (complex && sameRe && conjugate) {
+      const im = `${formatNumber(Math.abs(a.im), digits)}i`;
+      return a.re === 0 ? `±${im}` : `${formatNumber(a.re, digits)} ± ${im}`;
+    }
+  }
+  return eigenvalues.map((e) => formatEigenvalue(e, digits)).join(", ");
+}
+
+/** A short line with the full text behind a disclosure; `detail` empty means nothing is folded. */
+export type Folded = { short: string; detail: string[] };
+
+/**
+ * One equilibrium as the shells show it: the short line is the point's classification (already
+ * honest on its own: "center or weak spiral (linearization cannot tell)"); the detail is the
+ * caveat sentence and the uniqueness sentence when they speak. Display only.
+ */
+export function equilibriumDetail(L: LabelTable, p: { at: { x: number; y: number }; caveat?: CaveatKey | null; uniqueness?: { verdict: UniquenessVerdict; exponent: number } }): string[] {
+  const lines: string[] = [];
+  if (p.caveat) lines.push(L.caveat[p.caveat]);
+  const u = uniquenessSentence(L, p.uniqueness, { point: p.at });
+  if (u) lines.push(u);
+  return lines;
+}
+
+/**
+ * One constant solution folded: the short line is "Constant solution y = 1: stable" with the
+ * canvas tag (`stabilityShort`, a domain-edge line says so), the detail is every full line of
+ * `constantSolutionLines` (the stability sentence with the side and the fractional-power hint,
+ * the plateau and probe notes, the uniqueness sentence).
+ */
+export function constantSolutionFolded(L: LabelTable, s: EquilibriumSolution, spec?: FirstOrderSpec): Folded {
+  return {
+    short: fill(L.tool.constantSolution, { y: formatNumber(s.y, 6), stability: L.stabilityShort[s.stability] }),
+    detail: constantSolutionLines(L, s, spec),
+  };
+}
+
+/** The non-autonomous notice folded: the snapshot time on the line, the full sentence behind it. */
+export function timeDependentFolded(L: LabelTable, snapshotT: number): Folded {
+  const t = formatNumber(snapshotT, 4);
+  return { short: fill(L.ui.timeDependentShort, { t }), detail: [fill(L.ui.timeDependentNote, { t })] };
+}
+
+/**
+ * A detected form folded: the verdict sentence on the line ("Numerically behaves like a separable
+ * equation." / the borderline sentence, both hedged on their own), the measured evidence and the
+ * caveat behind it. The tool summary prints all of it on one line (app/mcp/tools.ts, untouched).
+ */
+export function formFolded(L: LabelTable, f: { form: OdeForm; verdict: "consistent" | "borderline"; evidence: string; caveat: string }): Folded {
+  const template = f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine;
+  return {
+    short: fill(template, { form: L.form[f.form], evidence: "" }).replace(/^- /, "").trim(),
+    detail: [f.evidence, f.caveat].filter((line) => line.trim().length > 0),
+  };
+}

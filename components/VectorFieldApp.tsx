@@ -7,7 +7,7 @@
  */
 import Link from "next/link";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Info } from "@/components/Info";
+import { FoldedLine, Info } from "@/components/Info";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useDocumentLang } from "@/components/useDocumentLang";
@@ -18,7 +18,7 @@ import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSyste
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type LabelTable, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, timeDependentFolded, type LabelTable, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { Scene } from "@/lib/scene";
@@ -708,7 +708,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               equilibria list give way to the snapshot note. */}
           {scene?.timeDependent ? (
             <p role="status" data-time-dependent style={{ margin: "12px 0 0", color: "#92400e" }}>
-              {fill(L.ui.timeDependentNote, { t: formatNumber(scene.timeDependent.snapshotT, 4) })}
+              <FoldedLine {...timeDependentFolded(L, scene.timeDependent.snapshotT)} label={L.ui.details} data-info="time-dependent" />
             </p>
           ) : null}
           {scene?.box && !scene.timeDependent ? (
@@ -750,11 +750,23 @@ function EquilibriaList({ scene, L }: { scene: Scene; L: LabelTable }) {
       ))}
       <ol style={{ margin: 0, paddingLeft: 20 }}>
         {eq.map((p, i) => (
-          <li key={i} style={{ marginBottom: 6 }}>
-            <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}; λ = {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable}; tr ={" "}
-            {formatNumber(p.trace, 5)}, det = {formatNumber(p.determinant, 5)}.
-            {p.caveat ? <span style={{ color: "#92400e" }}> {L.caveat[p.caveat]}</span> : null}
-            <UniquenessNote text={uniquenessSentence(L, p.uniqueness, { point: p.at })} />
+          <li key={i} style={{ marginBottom: 6 }} data-caveat={p.caveat ?? undefined} data-uniqueness={p.uniqueness?.verdict}>
+            {/* The caveat and the uniqueness sentence are folded (display only; the Scene keeps them). */}
+            <FoldedLine
+              short={
+                <>
+                  <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}
+                </>
+              }
+              detail={equilibriumDetail(L, p)}
+              label={L.ui.details}
+              data-info="equilibrium"
+            >
+              <span style={{ color: "#52606d" }}>
+                {" "}
+                λ = {formatEigenvalues(p.eigenvalues) || L.tool.eigenvaluesUnavailable} · tr = {formatNumber(p.trace, 5)}, det = {formatNumber(p.determinant, 5)}
+              </span>
+            </FoldedLine>
           </li>
         ))}
       </ol>
@@ -773,16 +785,13 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
           <p style={{ margin: 0 }}>{noConstantSentence(L, fo.autonomous, fo.untestableReason, fo.identicallyZero)}</p>
         ) : (
           <ul style={{ margin: 0, paddingLeft: 20 }}>
-            {fo.solutions.map((s) => {
-              // The sentence, then the plateau / probe-count notes and the uniqueness sentence when they apply.
-              const [sentence, ...notes] = constantSolutionLines(L, s, fo.spec);
-              return (
-                <li key={s.y} data-domain-edge={s.domainEdge} data-uniqueness={s.uniqueness?.verdict}>
-                  {sentence}
-                  {notes.map((note) => <UniquenessNote key={note} text={note} />)}
-                </li>
-              );
-            })}
+            {fo.solutions.map((s) => (
+              // The canvas tag on the line; the full stability sentence, the plateau / probe notes and
+              // the uniqueness sentence behind the toggle (display only; the Scene keeps them).
+              <li key={s.y} data-domain-edge={s.domainEdge} data-uniqueness={s.uniqueness?.verdict}>
+                <FoldedLine {...constantSolutionFolded(L, s, fo.spec)} label={L.ui.details} data-info="constant-solution" />
+              </li>
+            ))}
           </ul>
         )}
         {constantSolutionNotices(L, fo).map((note) => (
@@ -815,21 +824,10 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
   );
 }
 
-/** The uniqueness sentence under a constant solution or an equilibrium; nothing when the quotients stayed bounded. */
-function UniquenessNote({ text }: { text: string | null }) {
-  return text ? (
-    <div data-uniqueness-note style={{ color: "#92400e", marginTop: 2 }}>
-      {text}
-    </div>
-  ) : null;
-}
-
 /** Detected forms by verdict: consistent, borderline (flagged), then the rejected and untestable ones. */
 export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: LabelTable }) {
   const all = fo.forms ?? [];
   const reported = reportedForms(all);
-  const consistent = reported.find((f) => f.verdict === "consistent");
-  const borderline = reported.find((f) => f.verdict === "borderline");
   // A form ruled out by a textbook rule (Bernoulli with n = 0 or 1) is not a failed test: its
   // deviation may be far below the threshold, so the rule is printed instead of the deviation
   // (the same split as the tool summary in app/mcp/tools.ts).
@@ -843,14 +841,13 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
       {reported.length ? (
         <>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
+            {/* The verdict sentence on the line; the measured evidence and the caveat behind the toggle. */}
             {reported.map((f) => (
-              <li key={f.form} style={f.verdict === "borderline" ? { color: "#92400e" } : undefined}>
-                {fill(f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine, { form: L.form[f.form], evidence: f.evidence }).replace(/^- /, "")}
+              <li key={f.form} style={f.verdict === "borderline" ? { color: "#92400e" } : undefined} data-form-verdict={f.verdict}>
+                <FoldedLine {...formFolded(L, f as { form: typeof f.form; verdict: "consistent" | "borderline"; evidence: string; caveat: string })} label={L.ui.details} data-info="form" />
               </li>
             ))}
           </ul>
-          {consistent ? <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.tool.formsCaveat, { caveat: consistent.caveat })}</p> : null}
-          {borderline ? <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.tool.formsCaveat, { caveat: borderline.caveat })}</p> : null}
         </>
       ) : (
         <p style={{ margin: 0 }}>{fo.formsNote}</p>

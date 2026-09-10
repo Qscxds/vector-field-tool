@@ -13,13 +13,13 @@
  */
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Info } from "@/components/Info";
+import { FoldedLine, Info } from "@/components/Info";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useCoarsePointer } from "@/components/useCoarsePointer";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
-import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, localeFromLanguageTag, noConstantSentence, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
 
@@ -222,9 +222,11 @@ function horizontalName(scene: Scene): "x" | "t" {
 
 function SceneSummary({ scene }: { scene: Scene }) {
   const L = labels(scene.locale ?? "en");
-  const items: string[] = [];
+  // Every line is a short text with optional detail behind the info toggle (display only: the
+  // Scene and the tool summary keep the full sentences).
+  const items: (string | Folded)[] = [];
   // Non-autonomous: the snapshot note replaces the features-box line (nothing was computed for a range).
-  if (scene.timeDependent) items.push(fill(L.ui.timeDependentNote, { t: formatNumber(scene.timeDependent.snapshotT, 4) }));
+  if (scene.timeDependent) items.push(timeDependentFolded(L, scene.timeDependent.snapshotT));
   const fb = scene.box && !scene.timeDependent && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order") ? scene.featuresBox ?? scene.box : null;
   const featuresBoxLine = fb
     ? fill(L.ui.featuresBox, { hv: horizontalName(scene), xMin: formatNumber(fb.x.min, 3), xMax: formatNumber(fb.x.max, 3), yMin: formatNumber(fb.y.min, 3), yMax: formatNumber(fb.y.max, 3) })
@@ -243,7 +245,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
     if (fo.solutions.length === 0) items.push(noConstantSentence(L, fo.autonomous, fo.untestableReason, fo.identicallyZero));
     // Per line: the sentence, then the plateau / probe-count notes and the uniqueness sentence when
     // they apply; then the zero-plateau notice and the scan resolution.
-    for (const s of fo.solutions) items.push(...constantSolutionLines(L, s, fo.spec));
+    for (const s of fo.solutions) items.push(constantSolutionFolded(L, s, fo.spec));
     items.push(...constantSolutionNotices(L, fo));
     if (fo.singularities?.length) {
       // The truncation is stated once, by the singularitiesTruncated sentence below (as in tools.ts).
@@ -255,11 +257,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
     const reported = reportedForms(all);
     if (reported.length) {
       items.push(L.tool.formsHeader);
-      for (const f of reported) items.push(fill(f.verdict === "consistent" ? L.tool.formLine : L.tool.formBorderlineLine, { form: L.form[f.form], evidence: f.evidence }));
-      const consistent = reported.find((f) => f.verdict === "consistent");
-      const borderline = reported.find((f) => f.verdict === "borderline");
-      if (consistent) items.push(fill(L.tool.formsCaveat, { caveat: consistent.caveat }));
-      if (borderline) items.push(fill(L.tool.formsCaveat, { caveat: borderline.caveat }));
+      for (const f of reported) items.push(formFolded(L, f as { form: typeof f.form; verdict: "consistent" | "borderline"; evidence: string; caveat: string }));
     } else if (fo.formsNote) {
       items.push(fo.formsNote);
     }
@@ -292,17 +290,28 @@ function SceneSummary({ scene }: { scene: Scene }) {
       ) : null}
       {items.map((line, i) => (
         <p key={i} style={{ margin: "2px 0", color: "#52606d" }}>
-          {line}
+          {typeof line === "string" ? line : <FoldedLine {...line} label={L.ui.details} data-info="summary" />}
         </p>
       ))}
       {scene.equilibria && scene.equilibria.length > 0 ? (
         <ol style={{ margin: "4px 0 0", paddingLeft: 18 }}>
           {scene.equilibria.map((p, i) => (
-            <li key={i} style={{ margin: "2px 0" }}>
-              <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}; λ = {p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable}; tr ={" "}
-              {formatNumber(p.trace, 5)}, det = {formatNumber(p.determinant, 5)}.
-              {p.caveat ? <span style={{ color: "#92400e" }}> {L.caveat[p.caveat]}</span> : null}
-              {uniquenessSentence(L, p.uniqueness, { point: p.at }) ? <span style={{ color: "#92400e" }}> {uniquenessSentence(L, p.uniqueness, { point: p.at })}</span> : null}
+            <li key={i} style={{ margin: "2px 0" }} data-caveat={p.caveat ?? undefined} data-uniqueness={p.uniqueness?.verdict}>
+              <FoldedLine
+                short={
+                  <>
+                    <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}
+                  </>
+                }
+                detail={equilibriumDetail(L, p)}
+                label={L.ui.details}
+                data-info="equilibrium"
+              >
+                <span style={{ color: "#52606d" }}>
+                  {" "}
+                  λ = {formatEigenvalues(p.eigenvalues) || L.tool.eigenvaluesUnavailable} · tr = {formatNumber(p.trace, 5)}, det = {formatNumber(p.determinant, 5)}
+                </span>
+              </FoldedLine>
             </li>
           ))}
         </ol>
