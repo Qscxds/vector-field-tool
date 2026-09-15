@@ -216,10 +216,14 @@ export default function WidgetPage() {
               {equalScaleTexts(L, pictureModeOf(live.scene)).detail}
             </Info>
           </div>
-          {/* Undo the last trajectory action (a click that kept or removed a curve), as in the web shell. */}
-          <div style={{ margin: "4px 0 0" }}>
+          {/* Undo the last trajectory action (a click that kept or removed a curve), as in the web shell.
+              Clear (round R) removes only the curves the student added; the tool's own curves are the answer and stay. */}
+          <div style={{ margin: "4px 0 0", display: "flex", gap: 6, flexWrap: "wrap" }}>
             <button type="button" onClick={live.undo} disabled={!live.canUndo} data-undo title="Ctrl+Z" style={buttonStyle}>
               {L.ui.undo}
+            </button>
+            <button type="button" onClick={live.clearOwnTrajectories} disabled={live.ownCount === 0} data-clear-own style={buttonStyle}>
+              {fill(L.ui.clearOwn, { count: live.ownCount })}
             </button>
           </div>
           {live.overlay.some((t) => t.nonUnique) ? (

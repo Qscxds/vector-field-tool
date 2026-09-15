@@ -37,6 +37,7 @@ import { compileScalar } from "./core/parse";
 import { reduceSecondOrder } from "./core/second-order";
 import type { Locale, Range, Vec2 } from "./core/types";
 import type { ArrowMode } from "./render/arrows";
+import { MAX_TRAJECTORIES } from "./trajectory-store";
 
 export type AppMode = "first" | "diff" | "system" | "second";
 
@@ -96,7 +97,8 @@ export const MAX_URL_EXPRESSION_LENGTH = 200;
 export const MAX_ABS_VALUE = 1e6;
 /** A range side below this is a degenerate box. */
 export const MIN_BOX_SIDE = 1e-9;
-export const MAX_TRAJECTORY_STARTS = 20;
+/** A link carries at most as many starts as a store keeps (lib/trajectory-store, round R): 20. */
+export const MAX_TRAJECTORY_STARTS = MAX_TRAJECTORIES;
 export const DENSITY_MIN = 5;
 export const DENSITY_MAX = 40;
 

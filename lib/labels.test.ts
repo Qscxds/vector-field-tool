@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fill, LABELS, labels, localeFromLanguageTag, LOCALES } from "./labels";
+import { fill, LABELS, labels, LOCALES } from "./labels";
 
 function keyPaths(value: unknown, prefix = ""): string[] {
   if (value === null || typeof value !== "object") return [prefix];
@@ -377,18 +377,10 @@ describe("formatNumber", () => {
   });
 });
 
-describe("fill and locale detection", () => {
+describe("fill and the locale fallback", () => {
   it("fills placeholders and leaves unknown ones visible", () => {
     expect(fill("a {x} b {y}", { x: 1, y: "two" })).toBe("a 1 b two");
     expect(fill("{missing}", {})).toBe("{missing}");
-  });
-
-  it("maps language tags", () => {
-    expect(localeFromLanguageTag("zh-CN")).toBe("zh");
-    expect(localeFromLanguageTag("zh")).toBe("zh");
-    expect(localeFromLanguageTag("en-US")).toBe("en");
-    expect(localeFromLanguageTag("de")).toBe("en");
-    expect(localeFromLanguageTag(undefined)).toBe("en");
   });
 
   it("falls back to English for an unknown locale", () => {

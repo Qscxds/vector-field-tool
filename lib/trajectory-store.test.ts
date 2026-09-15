@@ -3,11 +3,13 @@ import type { Vec2 } from "./core/types";
 import type { TrajectoryView } from "./scene";
 import {
   addTrajectory,
+  atCapacity,
   canUndo,
   clearTrajectories,
   deleteTrajectory,
   EMPTY_TRAJECTORY_STORE,
   HISTORY_LIMIT,
+  MAX_TRAJECTORIES,
   resetTrajectories,
   retraceTrajectories,
   trajectoriesOf,
@@ -107,11 +109,39 @@ describe("trajectory store: add / delete / clear / undo", () => {
   it("keeps the last HISTORY_LIMIT actions (at least 10) and forgets the oldest", () => {
     expect(HISTORY_LIMIT).toBeGreaterThanOrEqual(10);
     let s = EMPTY_TRAJECTORY_STORE;
-    for (let i = 0; i < HISTORY_LIMIT + 5; i++) s = addTrajectory(s, P(i, 0), trace);
+    for (let i = 0; i < 5; i++) s = addTrajectory(s, P(i, 0), trace);
+    // HISTORY_LIMIT more actions without ever exceeding the curve cap (round R): add a sixth start, delete it again.
+    for (let i = 0; i < HISTORY_LIMIT / 2; i++) s = deleteTrajectory(addTrajectory(s, P(9, 9), trace), 5);
     expect(s.history).toHaveLength(HISTORY_LIMIT);
     // Undoing everything that is remembered leaves the 5 forgotten adds in place.
     for (let i = 0; i < HISTORY_LIMIT; i++) s = undoTrajectory(s, trace);
     expect(trajectoryStartsOf(s)).toEqual([0, 1, 2, 3, 4].map((x) => P(x, 0)));
     expect(canUndo(s)).toBe(false);
+  });
+});
+
+describe("[R] trajectory store: at most MAX_TRAJECTORIES kept curves", () => {
+  it("the 21st add is refused: the store is returned unchanged, with no history entry; a delete makes room again", () => {
+    let store = EMPTY_TRAJECTORY_STORE;
+    for (let i = 0; i < MAX_TRAJECTORIES; i++) store = addTrajectory(store, P(i, 0), trace);
+    expect(store.entries).toHaveLength(MAX_TRAJECTORIES);
+    expect(atCapacity(store)).toBe(true);
+    const refused = addTrajectory(store, P(99, 99), trace);
+    expect(refused).toBe(store);
+    expect(trajectoryStartsOf(refused)).not.toContainEqual(P(99, 99));
+    const room = deleteTrajectory(store, 0);
+    expect(atCapacity(room)).toBe(false);
+    expect(trajectoryStartsOf(addTrajectory(room, P(99, 99), trace))).toHaveLength(MAX_TRAJECTORIES);
+    // The cap and a link's limit are the same number (lib/url-state reads it here).
+    expect(MAX_TRAJECTORIES).toBe(20);
+  });
+
+  it("reset and undo are not capped by the add rule (a link's 20 starts, an undone clear) but never exceed it in practice", () => {
+    const starts = Array.from({ length: MAX_TRAJECTORIES }, (_, i) => P(i, i));
+    const full = resetTrajectories(starts, trace);
+    expect(atCapacity(full)).toBe(true);
+    const restored = undoTrajectory(clearTrajectories(full), trace);
+    expect(restored.entries).toHaveLength(MAX_TRAJECTORIES);
+    expect(atCapacity(restored)).toBe(true);
   });
 });

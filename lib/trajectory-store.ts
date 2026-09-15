@@ -31,6 +31,13 @@ export type TrajectoryStore = {
 /** Undo depth. */
 export const HISTORY_LIMIT = 20;
 
+/**
+ * How many curves a store keeps (round R): the same 20 as a link's `traj` (lib/url-state
+ * MAX_TRAJECTORY_STARTS reads it here), so every kept curve always round-trips through the link.
+ * `addTrajectory` refuses the 21st; the shells say so and disable their Add button.
+ */
+export const MAX_TRAJECTORIES = 20;
+
 export const EMPTY_TRAJECTORY_STORE: TrajectoryStore = { entries: [], history: [] };
 
 function push(history: ReadonlyArray<TrajectoryAction>, action: TrajectoryAction): TrajectoryAction[] {
@@ -48,8 +55,14 @@ export function retraceTrajectories(store: TrajectoryStore, trace: TraceFn): Tra
   return { entries: store.entries.map((e) => ({ start: e.start, curves: trace(e.start) })), history: store.history };
 }
 
-/** A click on empty canvas or an "Add solution" input: appended at the end. */
+/** Whether the store is full (MAX_TRAJECTORIES kept curves): an add changes nothing then. */
+export function atCapacity(store: TrajectoryStore): boolean {
+  return store.entries.length >= MAX_TRAJECTORIES;
+}
+
+/** A click on empty canvas or an "Add solution" input: appended at the end; refused (store unchanged, no history entry) when full. */
 export function addTrajectory(store: TrajectoryStore, start: Vec2, trace: TraceFn): TrajectoryStore {
+  if (atCapacity(store)) return store;
   const index = store.entries.length;
   return {
     entries: [...store.entries, { start, curves: trace(start) }],

@@ -30,15 +30,17 @@ import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
 import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
 import { coordinateNames } from "@/lib/coordinate-names";
-import { curveWords, labels } from "@/lib/labels";
+import { curveWords, fill, labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, pinchAt, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
 import type { FieldStyle, QueryView, Scene, SceneKind, TrajectoryView } from "@/lib/scene";
 import { clickAction, nearestFixedTrajectory } from "@/lib/trajectory-hit";
 import {
   addTrajectory as addToStore,
+  atCapacity,
   canUndo as storeCanUndo,
   clearTrajectories as clearStore,
+  MAX_TRAJECTORIES,
   deleteTrajectory as deleteFromStore,
   EMPTY_TRAJECTORY_STORE,
   resetTrajectories,
@@ -145,6 +147,12 @@ export type InteractiveScene = {
   deleteTrajectory: (index: number) => void;
   /** Drops every kept pair as ONE undoable action. */
   clearTrajectories: () => void;
+  /** Drops only the curves the student added (the store), keeping a tool's own curves (round R: the widget's Clear); undoable. */
+  clearOwnTrajectories: () => void;
+  /** How many curves the student added (the store's entries; a tool's own curves are not counted). */
+  ownCount: number;
+  /** The store is full (lib/trajectory-store MAX_TRAJECTORIES): an add is refused until a curve is removed; the hover hint says so. */
+  atCapacity: boolean;
   undo: () => void;
   canUndo: boolean;
   handlers: InteractiveHandlers;
@@ -380,6 +388,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       if (!sysRef.current || !homeBoxRef.current) return;
       // The curve's extent is the solution's business (20x the home box); the view only clips it.
       // It starts at the displayed snapshot time (matters only for a non-autonomous system).
+      // A full store (MAX_TRAJECTORIES) refuses the add: the store stays as it is (round R).
       setStore((prev) => addToStore(prev, p, traceNow));
     },
     [traceNow],
@@ -439,6 +448,12 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
         return;
       }
       setHoverTarget(null);
+      // Full (round R): no preview, and the hint says why a click here would add nothing.
+      if (atCapacity(cur)) {
+        setOverlay([]);
+        setHint({ at: h.world, text: fill(labels(localeRef.current).ui.trajectoryCapHint, { max: MAX_TRAJECTORIES }) });
+        return;
+      }
       const nearSingular = singularRef.current.some((p) => {
         const q = worldToScreen(vp, p);
         return Math.hypot(q.x - h.screen.x, q.y - h.screen.y) < SINGULAR_PIXEL_RADIUS;
@@ -467,6 +482,14 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     lastHoverScreen.current = null;
   }, []);
 
+  // The widget's Clear (round R): the tool's own curves (`external`) stay, they belong to the answer.
+  const clearOwnTrajectories = useCallback(() => {
+    setStore((prev) => clearStore(prev));
+    setHoverTarget(null);
+    setHint(null);
+    lastHoverScreen.current = null;
+  }, []);
+
   const undo = useCallback(() => {
     setStore((prev) => undoTrajectory(prev, traceNow));
     setHoverTarget(null);
@@ -488,6 +511,9 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     addTrajectory,
     deleteTrajectory,
     clearTrajectories,
+    clearOwnTrajectories,
+    ownCount: store.entries.length,
+    atCapacity: atCapacity(store),
     undo,
     canUndo: storeCanUndo(store),
     handlers: { onClickWorld, onHoverWorld, onWheelZoom, onPan, onPinch, onDoubleClick },

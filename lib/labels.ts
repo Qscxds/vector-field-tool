@@ -95,6 +95,9 @@ export type LabelTable = {
     // Round Q: the time-series view of a planar system / second-order equation.
     | "view" | "viewPhase" | "viewTime" | "timeFrom" | "timeTo" | "showVelocity" | "timeSeriesScaleNote"
     | "timeSeriesEmpty" | "timeSeriesSpanNote" | "shownTimeRange" | "exportTimeRange" | "timeRangeError"
+    // Round R: the kept-curve cap, the widget's own Clear, the computing note, the problem report.
+    | "trajectoryCap" | "trajectoryCapHint" | "clearOwn"
+    | "reportProblem" | "reportTitle" | "reportPage" | "reportBrowser" | "reportDid" | "reportExpected" | "reportSaw"
     | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
     | "equilibriaTruncated" | "singularitiesTruncated"
     | "nonUniqueTrajectory"
@@ -409,6 +412,16 @@ export const LABELS: Record<Locale, LabelTable> = {
       shownTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]（时间序列）",
       exportTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]",
       timeRangeError: "t 范围无效：起点必须是小于终点的数。图中仍用上一个有效范围。",
+      trajectoryCap: "已保留 {max} 条曲线（上限）：再添加前请点击一条删除它，或清除。",
+      trajectoryCapHint: "已达 {max} 条上限：点击已有曲线可删除。",
+      clearOwn: "清除我添加的曲线（{count} 条）",
+      reportProblem: "报告问题",
+      reportTitle: "问题报告",
+      reportPage: "页面：{url}",
+      reportBrowser: "浏览器：{ua}",
+      reportDid: "我做了什么：",
+      reportExpected: "我期望看到：",
+      reportSaw: "实际看到：",
       copyLink: "复制链接",
       copied: "已复制",
       copyLinkFallback: "无法访问剪贴板，请手动复制下面的链接：",
@@ -744,6 +757,16 @@ export const LABELS: Record<Locale, LabelTable> = {
       shownTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}] (time series)",
       exportTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}]",
       timeRangeError: "Invalid t range: the start must be a number smaller than the end. The picture keeps the last valid range.",
+      trajectoryCap: "{max} curves kept (the limit): click one to remove it, or clear, before adding another.",
+      trajectoryCapHint: "{max} curves kept (the limit): click a kept curve to remove it.",
+      clearOwn: "Clear my curves ({count})",
+      reportProblem: "Report a problem",
+      reportTitle: "Problem report",
+      reportPage: "Page: {url}",
+      reportBrowser: "Browser: {ua}",
+      reportDid: "What I did:",
+      reportExpected: "What I expected:",
+      reportSaw: "What I saw instead:",
       copyLink: "Copy link",
       copied: "Copied",
       copyLinkFallback: "The clipboard is not available; copy the link below by hand:",
@@ -933,11 +956,6 @@ export function equilibriaNotices(
   // Part of the box evaluates to exactly 0 by underflow (lib/core/equilibria underflowPlateau): said once, after the points.
   if (scene.underflowPlateau) lines.push(L.tool.underflowPlateau);
   return lines;
-}
-
-/** Picks a locale from a BCP 47 tag (navigator.language): Chinese -> zh, everything else -> en. */
-export function localeFromLanguageTag(tag: string | undefined | null): Locale {
-  return typeof tag === "string" && /^zh\b/i.test(tag) ? "zh" : "en";
 }
 
 /**
