@@ -854,19 +854,25 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <input value={snapshotTText} onChange={(e) => setSnapshotTText(e.target.value)} style={inputStyle} name="snapshotT" inputMode="decimal" />
             </label>
           ) : null}
-          <label style={labelStyle}>
-            <span>
-              {L.ui.density}: {form.density} × {form.density}
-            </span>
-            <input type="range" min={5} max={40} value={form.density} onChange={(e) => setForm((prev) => ({ ...prev, density: Number(e.target.value) }))} name="density" />
-          </label>
-          <label style={labelStyle}>
-            <span>{L.ui.arrowLength}</span>
-            <select value={form.arrowMode} onChange={(e) => setForm((prev) => ({ ...prev, arrowMode: e.target.value as ArrowMode }))} style={inputStyle} name="arrowMode">
-              <option value="unit">{L.ui.arrowUnit}</option>
-              <option value="scaled">{L.ui.arrowScaled}</option>
-            </select>
-          </label>
+          {/* Round S: the field's own controls exist only where a field is drawn. Hidden (not disabled) in the
+              time-series view; the values stay in the form and in the link, so the phase plane gets them back. */}
+          {view === "phase" ? (
+            <>
+              <label style={labelStyle}>
+                <span>
+                  {L.ui.density}: {form.density} × {form.density}
+                </span>
+                <input type="range" min={5} max={40} value={form.density} onChange={(e) => setForm((prev) => ({ ...prev, density: Number(e.target.value) }))} name="density" />
+              </label>
+              <label style={labelStyle}>
+                <span>{L.ui.arrowLength}</span>
+                <select value={form.arrowMode} onChange={(e) => setForm((prev) => ({ ...prev, arrowMode: e.target.value as ArrowMode }))} style={inputStyle} name="arrowMode">
+                  <option value="unit">{L.ui.arrowUnit}</option>
+                  <option value="scaled">{L.ui.arrowScaled}</option>
+                </select>
+              </label>
+            </>
+          ) : null}
           <div style={{ color: "#1f2933" }}>
             <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
               {/* Off and disabled in the time-series view (t and a value have different units); the phase plane keeps its setting. */}
