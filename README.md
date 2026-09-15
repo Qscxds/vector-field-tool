@@ -1,5 +1,7 @@
 # vector-field-tool
 
+[![CI](https://github.com/Qscxds/vector-field-tool/actions/workflows/ci.yml/badge.svg)](https://github.com/Qscxds/vector-field-tool/actions/workflows/ci.yml)
+
 A vector field teaching tool for differential-equations courses. Live site: <https://tools.studycase.net>.
 Repository: <https://github.com/Qscxds/vector-field-tool> (public).
 
@@ -21,7 +23,8 @@ parameters and results to explanations. The site is English by default; Chinese 
   "trajectory" on a phase plane; the buttons follow the picture): click a kept curve (within 8
   screen pixels; it highlights on hover) to remove it, `Undo` / Ctrl+Z for the last 20 add / remove /
   clear steps, "Clear …" for all, long press on touch. Every change is written into the link's
-  `traj` parameter.
+  `traj` parameter. At most 20 curves are kept (the same limit as a link); the page says so and
+  refuses the 21st until one is removed.
 - **Initial-value inputs**: enter `t₀, y₀` (first-order), `x₀, y₀` (system) or `x(t₀), x'(t₀)`
   (second-order) and press "Add …" to keep the curve through an exact point instead of clicking
   near it.
@@ -62,6 +65,8 @@ parameters and results to explanations. The site is English by default; Chinese 
 - **PNG export** at 2x with a one-line footer (equation, entered and displayed ranges when they
   differ, snapshot time, origin).
 - **Touch**: pinch to zoom, one-finger pan, tap to preview, long press to keep, double tap to reset.
+- **Report a problem**: a link at the bottom of the page (and of `/embed`) opens a new GitHub issue
+  prefilled with the page's link, the browser's name and three prompt lines. Nothing is tracked.
 
 ## Notation conventions (the professor's)
 
@@ -83,12 +88,16 @@ Requires Node >= 20.9 (24 recommended; Vercel's default).
 ```bash
 npm install
 npm run dev          # http://localhost:3000 (the app is at /vector-field)
-npm test             # vitest: 906 tests (904 pass, 2 marked it.fails with derived expectations)
+npm test             # vitest: 956 tests (954 pass, 2 marked it.fails with derived expectations)
 npm run typecheck    # tsc --noEmit
 npm run build        # production build
 npm run smoke        # HTTP smoke test against a running server (default http://localhost:3000/mcp)
 npm run mock-host    # two-origin mock MCP Apps host for exercising the widget without Claude
 ```
+
+GitHub Actions (`.github/workflows/ci.yml`) runs `npm ci`, the typecheck, the tests and the build
+on Node 24 for every push to `main` and every pull request; it never deploys (Vercel builds `main`
+on its own). The badge at the top of this file shows the last run.
 
 The smoke test checks `initialize`, `tools/list`, one call per tool, the error shape of invalid
 input, the widget resource's HTML and CSP, and that GET returns 405. Start a server in another
@@ -149,7 +158,7 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
   every user must **disconnect and reconnect the connector** in Claude (it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `p-1`.
+  the old resource URI; the widget silently goes blank otherwise). The current version is `p-2`.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
   y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "use ping
   with hello" tests the transport alone. Inside the widget a kept trajectory can be removed by
