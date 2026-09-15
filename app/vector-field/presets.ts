@@ -12,7 +12,7 @@ import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState } 
 /** The form vocabulary of VectorFieldApp (explicit / differential); presets use the link vocabulary AppMode. */
 export type PresetMode = "system" | "explicit" | "differential" | "second";
 
-export type PresetGroupId = "separable" | "linear" | "exact" | "bernoulli" | "homogeneous" | "noClosedForm" | "uniqueness" | "systems" | "nonAutonomous";
+export type PresetGroupId = "separable" | "linear" | "exact" | "bernoulli" | "homogeneous" | "noClosedForm" | "uniqueness" | "secondOrder" | "systems" | "nonAutonomous";
 
 export type PresetGroup = { id: PresetGroupId; name: Record<Locale, string> };
 
@@ -42,7 +42,10 @@ export const PRESET_GROUPS: PresetGroup[] = [
   { id: "homogeneous", name: { zh: "一阶·齐次", en: "First order · homogeneous" } },
   { id: "noClosedForm", name: { zh: "一阶·解不出来的", en: "First order · no closed form" } },
   { id: "uniqueness", name: { zh: "一阶·唯一性失效", en: "First order · uniqueness fails" } },
-  { id: "systems", name: { zh: "二阶/系统", en: "Second order / systems" } },
+  // Round P2.8: the second-order chapter's examples are entered as the student sees them (x'' = F),
+  // and the same models as planar systems live in their own group.
+  { id: "secondOrder", name: { zh: "二阶方程", en: "Second-order equations" } },
+  { id: "systems", name: { zh: "平面系统", en: "Planar systems" } },
   { id: "nonAutonomous", name: { zh: "非自治", en: "Non-autonomous" } },
 ];
 
@@ -144,7 +147,24 @@ export const PRESETS: Preset[] = [
       en: "dy/dt = √y: y = 0 is a constant solution, but ∂g/∂y = 1/(2√y) is unbounded there and the uniqueness theorem does not apply: infinitely many solutions pass through (t₀, 0) (stay on y = 0 for a while, then rise along y = (t − C)²/4).",
     },
   },
-  // ---- Second order / systems ----
+  // ---- Second-order equations (as the student writes them: x'' = F(t, x, x'), phase plane (x, x')) ----
+  {
+    id: "harmonic2", group: "secondOrder", mode: "second", name: { zh: "简谐振子 x'' = −x", en: "Harmonic oscillator x'' = −x" },
+    expressions: { eq: "x'' = -x" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
+    note: {
+      zh: "x'' = −x：令 v = x' 得 x' = v，v' = −x；平衡点 (x, x') = (0, 0) 是常数解 x ≡ 0（静止）。线性化只能说「中心或弱螺旋」；能量 x'²/2 + x²/2 守恒，所以它其实是中心，相平面里的轨线是圆 x² + x'² = C。",
+      en: "x'' = −x: with v = x', x' = v, v' = −x; the equilibrium (x, x') = (0, 0) is the constant solution x ≡ 0 (at rest). Linearization can only say 'center or weak spiral'; the energy x'²/2 + x²/2 is conserved, so it is in fact a center and the trajectories of the phase plane are the circles x² + x'² = C.",
+    },
+  },
+  {
+    id: "vdp2", group: "secondOrder", mode: "second", name: { zh: "Van der Pol x'' = (1 − x²)x' − x", en: "Van der Pol x'' = (1 − x²)x' − x" },
+    expressions: { eq: "x'' = (1 - x^2)*x' - x" }, box: sq(4), starts: [{ x: 0.1, y: 0 }, { x: 3, y: 3 }],
+    note: {
+      zh: "x'' = (1 − x²)x' − x：令 v = x' 得 x' = v，v' = (1 − x²)v − x，与「Van der Pol」平面系统是同一个系统；平衡点 (x, x') = (0, 0) 是不稳定螺旋点（迹 1，行列式 1），里外的轨线都趋向同一个极限环。",
+      en: "x'' = (1 − x²)x' − x: with v = x', x' = v, v' = (1 − x²)v − x, the same system as the planar 'Van der Pol'; the equilibrium (x, x') = (0, 0) is an unstable spiral (trace 1, determinant 1), and trajectories from inside and outside approach the same limit cycle.",
+    },
+  },
+  // ---- Planar systems ----
   {
     id: "harmonic", group: "systems", mode: "system", name: { zh: "简谐振子", en: "Harmonic oscillator" },
     expressions: { f: "y", g: "-x" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
@@ -162,7 +182,7 @@ export const PRESETS: Preset[] = [
     },
   },
   {
-    id: "damped2", group: "systems", mode: "second", name: { zh: "阻尼振子（二阶方程）", en: "Damped oscillator (second order)" },
+    id: "damped2", group: "secondOrder", mode: "second", name: { zh: "阻尼振子 x'' + 0.5x' + x = 0", en: "Damped oscillator x'' + 0.5x' + x = 0" },
     expressions: { eq: "x'' + 0.5*x' + x = 0" }, box: sq(3), starts: [{ x: 2, y: 0 }],
     note: {
       zh: "x'' + 0.5x' + x = 0：令 v = x' 得 x' = v，v' = −x − 0.5v，与「阻尼振子（系统）」是同一个系统；平衡点 (x, x') = (0, 0)（物体静止）是稳定螺旋点。",
@@ -170,7 +190,7 @@ export const PRESETS: Preset[] = [
     },
   },
   {
-    id: "pendulum", group: "systems", mode: "second", name: { zh: "单摆 x'' = −sin x", en: "Pendulum x'' = −sin x" },
+    id: "pendulum", group: "secondOrder", mode: "second", name: { zh: "单摆 x'' = −sin x", en: "Pendulum x'' = −sin x" },
     expressions: { eq: "x'' = -sin(x)" }, box: { xMin: -7, xMax: 7, yMin: -3, yMax: 3 }, starts: [{ x: 0, y: 1 }, { x: 0, y: 2.5 }],
     note: {
       zh: "x'' = −sin x：令 v = x' 得 x' = v，v' = −sin x；(x, x') = (2kπ, 0) 是中心或弱螺旋（线性化分不清），(x, x') = ((2k+1)π, 0) 是鞍点；能量 x'²/2 − cos x 守恒，过 (x, x') = (0, ±2) 的分界线把振动（内）与旋转（外）分开。",
@@ -216,6 +236,14 @@ export const PRESETS: Preset[] = [
     note: {
       zh: "x' = y，y' = −x + sin t：非自治系统，向量场随 t 变化，图上只是所选快照时刻的场，平衡点与线性化稳定性在此不适用；外力频率等于固有频率 1，共振使 x = (sin t − t·cos t)/2 的振幅随 t 线性增长。",
       en: "x' = y, y' = −x + sin t: a non-autonomous system; the field changes with t, the picture is the snapshot at the chosen time, and equilibria / linearized stability do not apply; the forcing frequency equals the natural frequency 1, so resonance makes x = (sin t − t·cos t)/2 grow linearly in amplitude.",
+    },
+  },
+  {
+    id: "beats", group: "nonAutonomous", mode: "second", name: { zh: "拍频 x'' = −x + 0.5cos(1.2t)", en: "Beats x'' = −x + 0.5cos(1.2t)" },
+    expressions: { eq: "x'' = -x + 0.5*cos(1.2*t)" }, box: sq(3), starts: [{ x: 0, y: 0 }],
+    note: {
+      zh: "x'' = −x + 0.5cos(1.2t)：右端含 t，方程非自治，相平面只是 t₀ 时刻的快照，不做平衡点分析。从静止出发的解是 x = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t)：外力频率 1.2 接近固有频率 1，振幅按 sin(0.1t) 缓慢起伏，这就是拍。",
+      en: "x'' = −x + 0.5cos(1.2t): t appears on the right, so the equation is non-autonomous, the phase plane is only the snapshot at t₀ and no equilibrium analysis is made. From rest the solution is x = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t): the forcing frequency 1.2 is close to the natural frequency 1, so the amplitude rises and falls slowly with sin(0.1t): beats.",
     },
   },
 ];

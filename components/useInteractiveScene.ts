@@ -29,7 +29,7 @@ import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
 import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
-import { labels } from "@/lib/labels";
+import { curveWords, labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, pinchAt, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
 import type { FieldStyle, QueryView, Scene, SceneKind, TrajectoryView } from "@/lib/scene";
@@ -429,7 +429,9 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       if (hit !== null) {
         setOverlay([]);
         setHoverTarget(hit);
-        setHint({ at: h.world, text: h.touch ? labels(localeRef.current).ui.holdToRemove : labels(localeRef.current).ui.clickToRemove });
+        // "solution curve" on a first-order picture, "trajectory" on a phase plane (P2.5).
+        const words = curveWords(labels(localeRef.current), probeRef.current?.firstOrder ? "first" : "system");
+        setHint({ at: h.world, text: h.touch ? words.holdToRemove : words.clickToRemove });
         return;
       }
       setHoverTarget(null);

@@ -404,7 +404,9 @@ export function analyzePlanar(
     ...(eq.seeding.refineCapped ? { refineCapped: true } : {}),
     ...(second ? { secondOrder: second } : {}),
   };
-  return { scene, lines: [`${header}${singularNote(field.singularCount)}`, ...describeEquilibria(scene, locale)] };
+  // P2.3: on a second-order equation the point (c, 0) of the phase plane is the constant solution x ≡ c.
+  const meaning = second && scene.equilibria?.length ? [L.tool.equilibriaSecondNote] : [];
+  return { scene, lines: [`${header}${singularNote(field.singularCount)}`, ...meaning, ...describeEquilibria(scene, locale)] };
 }
 
 // ---------- tools ----------

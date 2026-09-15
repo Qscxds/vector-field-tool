@@ -106,7 +106,7 @@ describe("label tables", () => {
     // The vertical-name placeholder {vv} exists wherever a range or an axis pair is named.
     for (const locale of LOCALES) {
       const L = LABELS[locale];
-      for (const key of ["yRangeError", "featuresBox", "equalScaleDetail", "shownRangeEqual", "shownRangeFilled", "exportRange"] as const) {
+      for (const key of ["yRangeError", "featuresBox", "shownRangeEqual", "shownRangeFilled", "exportRange"] as const) {
         expect(L.ui[key], `${locale}.${key}`).toContain("{vv}");
       }
     }
@@ -135,8 +135,13 @@ describe("label tables", () => {
         expect(L.ui[key].length, `${locale}.${key}`).toBeLessThanOrEqual(12);
         expect(L.ui[key], `${locale}.${key}`).not.toMatch(/[（(]/);
       }
-      expect(L.ui.equalScaleDetail).toContain("{hv}");
-      expect(L.ui.equalScaleDetail).toMatch(/[。.]$/);
+      // P2.4: the equal-scale explanation says what an angle means in each kind of picture.
+      expect(L.ui.equalScaleDetailFirst).toContain("dy/dt");
+      expect(L.ui.equalScaleDetailSystem).toContain("dy/dx");
+      expect(L.ui.equalScaleDetailSecond).toContain("dx'/dx");
+      for (const key of ["equalScaleDetailFirst", "equalScaleDetailSystem", "equalScaleDetailSecond"] as const) expect(L.ui[key], key).toMatch(/[。.]$/);
+      expect(L.ui.equalScaleWarningFirst).toContain("dy/dt");
+      expect(L.ui.equalScaleWarningPlane).not.toContain("dy/dt");
       // the tagline is one short line; the long subtitle is gone
       expect(L.ui.tagline.length).toBeLessThan(50);
       expect(Object.keys(L.ui)).not.toContain("subtitle");

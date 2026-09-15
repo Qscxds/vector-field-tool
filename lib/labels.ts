@@ -14,6 +14,7 @@ import type { EquilibriumSolution } from "./core/slope-field";
 import type { Complex, Locale } from "./core/types";
 import { hasFractionalPower, PROBES_NOTED, type FirstOrderSpec } from "./core/slope-field";
 import type { UniquenessVerdict } from "./core/uniqueness";
+import type { Scene } from "./scene";
 
 export type { Locale };
 export const LOCALES: readonly Locale[] = ["zh", "en"];
@@ -61,7 +62,9 @@ export type LabelTable = {
     // Second-order mode (round P): the student's problem has t, x and x'; the kernel's y never shows.
     | "secondOrderHeader" | "timeDependentSecond" | "pointSecond" | "queryHeaderSecond" | "queryTargetXp" | "queryHitSecond"
     // First-order pictures (round P2.1): the kernel's integration parameter is never printed as t.
-    | "queryLegFirst" | "queryLegDiff" | "sideOne" | "sideOther" | "completedDiff" | "maxStepsDiff" | "reachedSingularDiff" | "queryMoreBeyondDiff",
+    | "queryLegFirst" | "queryLegDiff" | "sideOne" | "sideOther" | "completedDiff" | "maxStepsDiff" | "reachedSingularDiff" | "queryMoreBeyondDiff"
+    // Round P2.3: the phase-plane equilibrium of a second-order equation is a constant solution.
+    | "equilibriaSecondNote",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -75,7 +78,11 @@ export type LabelTable = {
     | "notRenderedByHost" | "localComputeUnavailable" | "rangeError" | "xRangeError" | "yRangeError" | "exprError"
     | "featuresBox" | "featuresBoxDetail" | "leftFarBox"
     | "tMin" | "tMax" | "syntaxHintFirstOrder" | "xInFirstOrder" | "lhsInExpression"
-    | "equalScale" | "equalScaleDetail" | "equalScaleWarning" | "shownRangeEqual" | "shownRangeFilled"
+    // Round P2.4: what an angle in the picture means differs by mode, so the equal-scale texts do too.
+    | "equalScale" | "equalScaleDetailFirst" | "equalScaleDetailSystem" | "equalScaleDetailSecond"
+    | "equalScaleWarningFirst" | "equalScaleWarningPlane" | "shownRangeEqual" | "shownRangeFilled"
+    // Round P2.5: a first-order picture shows solution curves, a phase plane shows trajectories.
+    | "lastSolution" | "clearSolutions" | "querySolutionCurve" | "queryNoSolution" | "clickToRemoveSolution" | "holdToRemoveSolution"
     | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
     | "equilibriaTruncated" | "singularitiesTruncated"
     | "nonUniqueTrajectory"
@@ -244,7 +251,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryTargetIsStart: "目标就是出发点本身。",
       queryLeg: "{direction}：积到 t = {tEnd}，终点 {end}，{status}。",
       stoppedNonAutonomous: "在该时刻速度降到接近零（低于起始速度的 1e-8）后停止；这是非自治系统，这里不是平衡点：向量场在这一点会随 t 变化",
-      refineCapped: "变号搜索达到了单元数上限：有些 f 和 g 同时变号的单元没有搜索，可能漏掉平衡点。",
+      refineCapped: "平衡点搜索达到了它能细分的区域数上限：有些向量场变号的区域没有搜索，可能漏掉平衡点。",
       secondOrderHeader: "相平面：横轴 x ∈ [{xMin}, {xMax}]，纵轴 x' ∈ [{xpMin}, {xpMax}]。",
       timeDependentSecond: "这是非自治方程：右端 F 含 t，相平面里的方向场随 t 变化。{evidence}图上画的是 t = {t} 时刻的快照。平衡点（即常数解 x ≡ c，物体静止）与线性化稳定性只对自治方程有定义，因此这里不给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
       pointSecond: "(x, x') = {point}",
@@ -259,6 +266,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       maxStepsDiff: "在走完指定跨度前停止（步数或步长耗尽），解仍然有界",
       reachedSingularDiff: "趋近一个 M = N = 0 的点（方向场在那里无定义）后停止",
       queryMoreBeyondDiff: "起点的同一侧出现了三次或更多穿越，看起来是周期性的：在积分范围之外可能还有更多穿越点。",
+      equilibriaSecondNote: "相平面里的平衡点 (x, x') = (c, 0) 就是常数解 x ≡ c：物体停在 x = c 不动。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -316,10 +324,19 @@ export const LABELS: Record<Locale, LabelTable> = {
       xInFirstOrder: "一阶方程的自变量是 t（dy/dt = g(t, y)），请把 x 写成 t。",
       lhsInExpression: "只需输入方程的右端，「dy/dt =」这一部分是默认的。",
       equalScale: "等比",
-      equalScaleDetail: "{hv} 与 {vv} 每单位像素相同，斜率可以从图上读出；范围会向一个方向扩大以填满画布。取消勾选后输入范围填满画布，两个方向的比例不同，图上的角度不再是真实斜率。",
-      equalScaleWarning: "横纵比例不同，图上的角度不代表真实斜率。",
+      equalScaleDetailFirst: "t 与 y 每单位像素相同，图上一条线段或解曲线的倾角就是它的真实斜率 dy/dt；为此显示范围会向一个方向扩大以填满画布。取消勾选后输入范围填满画布，两个方向的比例不同，图上的角度不再是真实斜率。",
+      equalScaleDetailSystem: "x 与 y 每单位像素相同，图上箭头和轨线的方向就是它们在相平面里的真实方向（沿轨线的斜率是 dy/dx，不是随时间变化的速率）；为此显示范围会向一个方向扩大以填满画布。取消勾选后输入范围填满画布，两个方向的比例不同，图上的方向不再是真实方向。",
+      equalScaleDetailSecond: "x 与 x' 每单位像素相同，相平面里箭头和轨线的方向按真实比例画出（沿轨线的斜率是 dx'/dx，是速度变化与位置变化之比，不是随时间的变化率）；为此显示范围会向一个方向扩大以填满画布。取消勾选后输入范围填满画布，两个方向的比例不同，图上的方向不再是真实方向。",
+      equalScaleWarningFirst: "横纵比例不同，图上曲线的倾角不是真实斜率 dy/dt。",
+      equalScaleWarningPlane: "横纵比例不同，图上箭头和轨线的方向不是相平面里的真实方向。",
       shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}]（等比）",
       shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}]（填满）",
+      lastSolution: "最近一条解曲线：",
+      clearSolutions: "清除解曲线（{count} 条）",
+      querySolutionCurve: "解曲线（{names}）",
+      queryNoSolution: "还没有固定的解曲线：先点击图片或添加初值。",
+      clickToRemoveSolution: "点击删除这条解曲线",
+      holdToRemoveSolution: "长按删除这条解曲线",
       lhsInExpressionSystem: "只需输入方程的右端，「x' =」「y' =」这一部分是默认的。",
       towardT: "到 t = {t}，{status}",
       trajectorySides: "一侧：{first}；另一侧：{second}",
@@ -540,7 +557,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryTargetIsStart: "The target is the start point itself.",
       queryLeg: "{direction}: reached t = {tEnd}, end point {end}, {status}.",
       stoppedNonAutonomous: "stopped after the speed fell close to zero at that time (below 1e-8 of its initial value); for a non-autonomous system this is not an equilibrium: the field at that point changes with t",
-      refineCapped: "The sign-change search hit its cell cap: some cells where both f and g change sign were not searched, so equilibria may be missing.",
+      refineCapped: "The equilibrium search reached its limit on the number of regions it can subdivide: some regions where the vector field changes sign were not searched, so equilibria may be missing.",
       secondOrderHeader: "Phase plane: x ∈ [{xMin}, {xMax}] horizontally, x' ∈ [{xpMin}, {xpMax}] vertically.",
       timeDependentSecond: "This is a non-autonomous equation: t appears in F, so the direction field of the phase plane changes with t. {evidence} The picture is a snapshot at t = {t}. Equilibrium points (the constant solutions x ≡ c, the body at rest) and linearized stability are defined for autonomous equations only, so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
       pointSecond: "(x, x') = {point}",
@@ -555,6 +572,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       maxStepsDiff: "stopped before the end of the requested span (step budget or step size exhausted); the solution stayed bounded",
       reachedSingularDiff: "stopped after approaching a point where M = N = 0 (the direction field is undefined there)",
       queryMoreBeyondDiff: "Three or more crossings on one side of the start look periodic: more crossings may exist beyond the integrated span.",
+      equilibriaSecondNote: "An equilibrium (x, x') = (c, 0) of the phase plane is the constant solution x ≡ c: the body stays at x = c, at rest.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -612,10 +630,19 @@ export const LABELS: Record<Locale, LabelTable> = {
       xInFirstOrder: "In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.",
       lhsInExpression: "Enter only the right-hand side of the equation; the “dy/dt =” part is implied.",
       equalScale: "Equal scale",
-      equalScaleDetail: "The same pixels per unit for {hv} and {vv}, so slopes can be read from the picture; the range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas, the two directions are scaled differently, and angles in the picture are no longer true slopes.",
-      equalScaleWarning: "Axes are not to the same scale: angles in the picture do not represent true slopes.",
+      equalScaleDetailFirst: "The same pixels per unit for t and y, so the angle of a segment or of a solution curve in the picture is its true slope dy/dt; to achieve that the displayed range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas, the two directions are scaled differently, and angles in the picture are no longer true slopes.",
+      equalScaleDetailSystem: "The same pixels per unit for x and y, so the direction of an arrow or of a trajectory in the picture is its true direction in the phase plane (the slope along a trajectory is dy/dx, not a rate of change in time); to achieve that the displayed range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas, the two directions are scaled differently, and directions in the picture are no longer true.",
+      equalScaleDetailSecond: "The same pixels per unit for x and x', so the direction of an arrow or of a trajectory in the phase plane is drawn true (the slope along a trajectory is dx'/dx, a ratio of velocity change to position change, not a rate of change in time); to achieve that the displayed range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas, the two directions are scaled differently, and directions in the picture are no longer true.",
+      equalScaleWarningFirst: "Axes are not to the same scale: the angle of a curve in the picture is not its true slope dy/dt.",
+      equalScaleWarningPlane: "Axes are not to the same scale: the directions of arrows and trajectories in the picture are not their true directions in the phase plane.",
       shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}], {vv} ∈ [{yMin}, {yMax}] (equal scale)",
       shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}], {vv} ∈ [{yMin}, {yMax}] (filled)",
+      lastSolution: "Last solution curve:",
+      clearSolutions: "Clear solution curves ({count})",
+      querySolutionCurve: "Solution curve ({names})",
+      queryNoSolution: "No kept solution curve yet: click the picture or add an initial value first.",
+      clickToRemoveSolution: "Click to remove this solution curve",
+      holdToRemoveSolution: "Hold to remove this solution curve",
       lhsInExpressionSystem: "Enter only the right-hand side of each equation; the “x' =” / “y' =” part is implied.",
       towardT: "to t = {t}, {status}",
       trajectorySides: "one side: {first}; other side: {second}",
@@ -886,6 +913,40 @@ export function formatEigenvalues(eigenvalues: readonly Complex[], digits = 4): 
     }
   }
   return eigenvalues.map((e) => formatEigenvalue(e, digits)).join(", ");
+}
+
+/**
+ * What kind of picture the student is looking at, for the words that differ by mode (round P2):
+ * a first-order picture shows the graphs of solutions y(t) ("solution curve", slope dy/dt); a
+ * planar system shows trajectories of the phase plane; a second-order equation shows its phase
+ * plane (x, x').
+ */
+export type PictureMode = "first" | "system" | "second";
+
+export function pictureModeOf(scene: Pick<Scene, "system" | "secondOrder">): PictureMode {
+  if (scene.secondOrder) return "second";
+  return scene.system?.variables === "ty" ? "first" : "system";
+}
+
+/** The equal-scale explanation and the not-to-scale warning, worded for what an angle means in this picture (P2.4). */
+export function equalScaleTexts(L: LabelTable, mode: PictureMode): { detail: string; warning: string } {
+  return {
+    detail: mode === "first" ? L.ui.equalScaleDetailFirst : mode === "second" ? L.ui.equalScaleDetailSecond : L.ui.equalScaleDetailSystem,
+    warning: mode === "first" ? L.ui.equalScaleWarningFirst : L.ui.equalScaleWarningPlane,
+  };
+}
+
+/** The words for a kept curve: "solution curve" on a first-order picture, "trajectory" on a phase plane (P2.5). */
+export function curveWords(L: LabelTable, mode: PictureMode): { last: string; clear: string; query: string; none: string; clickToRemove: string; holdToRemove: string } {
+  const first = mode === "first";
+  return {
+    last: first ? L.ui.lastSolution : L.ui.lastTrajectory,
+    clear: first ? L.ui.clearSolutions : L.ui.clearTrajectories,
+    query: first ? L.ui.querySolutionCurve : L.ui.queryTrajectory,
+    none: first ? L.ui.queryNoSolution : L.ui.queryNoTrajectory,
+    clickToRemove: first ? L.ui.clickToRemoveSolution : L.ui.clickToRemove,
+    holdToRemove: first ? L.ui.holdToRemoveSolution : L.ui.holdToRemove,
+  };
 }
 
 /** A short line with the full text behind a disclosure; `detail` empty means nothing is folded. */

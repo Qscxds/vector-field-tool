@@ -21,7 +21,7 @@ import { coordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { sceneEquationText } from "@/lib/export-footer";
-import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equalScaleTexts, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureModeOf, pointText, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
 import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
@@ -194,7 +194,7 @@ export default function WidgetPage() {
           {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
           {!equalScale ? (
             <p role="status" data-scale-warning style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
-              {L.ui.equalScaleWarning}
+              {equalScaleTexts(L, pictureModeOf(live.scene)).warning}
             </p>
           ) : null}
           <p style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }} data-shown-range>
@@ -213,7 +213,7 @@ export default function WidgetPage() {
               <span>{L.ui.equalScale}</span>
             </label>{" "}
             <Info label={L.ui.details} data-info="equal-scale">
-              {fill(L.ui.equalScaleDetail, coordinateNames(live.scene))}
+              {equalScaleTexts(L, pictureModeOf(live.scene)).detail}
             </Info>
           </div>
           {/* Undo the last trajectory action (a click that kept or removed a curve), as in the web shell. */}
@@ -257,8 +257,11 @@ function SceneSummary({ scene }: { scene: Scene }) {
     : null;
   // A second-order scene shows the reduction step (the equation the student gave, then let v = x':
   // x' = v, v' = g); the kernel's x' = y, y' = g form is never printed for it.
-  if (scene.secondOrder) items.push(fill(L.tool.secondOrderReduced, { equation: scene.secondOrder.equation, g: scene.secondOrder.reduced.g }));
-  else if (scene.system) {
+  if (scene.secondOrder) {
+    items.push(fill(L.tool.secondOrderReduced, { equation: scene.secondOrder.equation, g: scene.secondOrder.reduced.g }));
+    // P2.3: the point (c, 0) of the phase plane is the constant solution x ≡ c.
+    if (scene.equilibria?.length) items.push(L.tool.equilibriaSecondNote);
+  } else if (scene.system) {
     items.push(scene.firstOrderSpec || scene.firstOrder ? sceneEquationText(scene, scene.locale ?? "en") : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));

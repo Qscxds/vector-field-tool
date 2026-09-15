@@ -11,6 +11,7 @@
 import { describe, expect, it } from "vitest";
 import { compileScalar, compileSystem } from "@/lib/core/parse";
 import { reduceSecondOrder } from "@/lib/core/second-order";
+import { integrateAdaptive } from "@/lib/core/integrate";
 import { toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box } from "@/lib/core/types";
@@ -128,5 +129,45 @@ describe("derived key features", () => {
       expect(v.x).toBeCloseTo(q.y, 12);
       expect(v.y).toBeCloseTo(-(0.5 * q.y + q.x), 12);
     }
+  });
+});
+
+describe("[P2.8] the second-order chapter has its own presets, entered as x'' = F(t, x, x')", () => {
+  it("harmonic, damped, pendulum and Van der Pol exist in second-order mode; the same models stay available as planar systems", () => {
+    for (const id of ["harmonic2", "damped2", "pendulum", "vdp2"]) {
+      const p = byId(id);
+      expect(p.mode, id).toBe("second");
+      expect(p.group, id).toBe("secondOrder");
+      expect(p.expressions.eq, id).toMatch(/x''/);
+      expect(p.note.en, id).not.toMatch(/(^|[^A-Za-z'])y(?![A-Za-z])/);
+      expect(p.note.zh, id).not.toMatch(/(^|[^A-Za-z'一-鿿])y(?![A-Za-z])/);
+    }
+    for (const id of ["harmonic", "damped", "vdp"]) expect(byId(id).mode, id).toBe("system");
+    expect(PRESET_GROUPS.map((g) => g.id)).toContain("secondOrder");
+  });
+
+  it("harmonic2 and vdp2 reduce to the same kernel systems as the planar harmonic and vdp presets (derived: f = y, g as written)", () => {
+    for (const [second, planar] of [["harmonic2", "harmonic"], ["vdp2", "vdp"]] as const) {
+      const sys = compileSystem(reduceSecondOrder(presetState(byId(second)).eq).spec);
+      const ref = compileSystem({ f: presetState(byId(planar)).f, g: presetState(byId(planar)).g });
+      for (const q of [{ x: 0.3, y: -1.2 }, { x: 2, y: 0.5 }, { x: -1.7, y: 2.2 }]) {
+        expect(sys.eval(q).x, second).toBeCloseTo(ref.eval(q).x, 12);
+        expect(sys.eval(q).y, second).toBeCloseTo(ref.eval(q).y, 12);
+      }
+    }
+  });
+
+  it("beats x'' = -x + 0.5*cos(1.2*t) from rest: x(t) = (0.5/0.44)(cos t - cos 1.2t), checked at t = 5 by integration", () => {
+    // Particular solution -1.1364 cos(1.2t) (0.5 / (1 - 1.44)); with x(0) = x'(0) = 0 the homogeneous part is
+    // +1.1364 cos t, so x = 1.1364 (cos t - cos 1.2 t) = 2.2727 sin(0.1 t) sin(1.1 t).
+    const p = byId("beats");
+    expect(p.mode).toBe("second");
+    expect(p.group).toBe("nonAutonomous");
+    const sys = compileSystem(reduceSecondOrder(presetState(p).eq).spec);
+    const tr = integrateAdaptive(sys, { x: 0, y: 0 }, 5, { rtol: 1e-9, atol: 1e-12 });
+    expect(tr.status).toBe("completed");
+    const expected = (0.5 / 0.44) * (Math.cos(5) - Math.cos(6));
+    expect(tr.points.at(-1)!.x).toBeCloseTo(expected, 6);
+    expect(expected).toBeCloseTo(2 * (0.5 / 0.44) * Math.sin(0.5) * Math.sin(5.5), 12);
   });
 });

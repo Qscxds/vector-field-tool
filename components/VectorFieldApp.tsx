@@ -20,7 +20,7 @@ import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type LabelTable, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
@@ -567,6 +567,11 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const { hv, vv } = namesFor(form.mode);
   const second = form.mode === "second";
   const ivNames = initialValueNames(second ? "second" : hv === "t" ? "ty" : "xy");
+  // Words that depend on what the picture is (P2.4 / P2.5): solution curves and slopes dy/dt on a
+  // first-order picture, trajectories and directions on a phase plane.
+  const picture: PictureMode = second ? "second" : form.mode === "system" ? "system" : "first";
+  const words = curveWords(L, picture);
+  const scale = equalScaleTexts(L, picture);
   const addOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -749,7 +754,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <span>{L.ui.equalScale}</span>
             </label>{" "}
             <Info label={L.ui.details} data-info="equal-scale">
-              {fill(L.ui.equalScaleDetail, { hv, vv })}
+              {scale.detail}
             </Info>
           </div>
           {/* Initial value: (t0, y0) on a first-order picture, (x0, y0) on a planar one; Enter in either field adds too. */}
@@ -778,7 +783,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           <fieldset style={{ display: "grid", gap: 6, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-query-panel>
             <legend style={{ padding: "0 4px" }}>{L.ui.querySolution}</legend>
             <label style={labelStyle}>
-              <span>{fill(L.ui.queryTrajectory, { names: `${ivNames.first}, ${ivNames.second}` })}</span>
+              <span>{fill(words.query, { names: `${ivNames.first}, ${ivNames.second}` })}</span>
               <select
                 value={selectedIndex ?? ""}
                 onChange={(e) => {
@@ -790,7 +795,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                 disabled={trajectoryStarts.length === 0}
                 data-query-trajectory
               >
-                {trajectoryStarts.length === 0 ? <option value="">{L.ui.queryNoTrajectory}</option> : null}
+                {trajectoryStarts.length === 0 ? <option value="">{words.none}</option> : null}
                 {trajectoryStarts.map((p, i) => (
                   <option key={i} value={i}>
                     {trajectoryOptionText(p)}
@@ -825,7 +830,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           </fieldset>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={clearTrajectories} style={{ ...buttonStyle, flex: "1 1 auto" }} disabled={trajectories.length === 0}>
-              {fill(L.ui.clearTrajectories, { count: trajectories.length / 2 })}
+              {fill(words.clear, { count: trajectories.length / 2 })}
             </button>
             <button type="button" onClick={undo} style={buttonStyle} disabled={!canUndo} data-undo title="Ctrl+Z">
               {L.ui.undo}
@@ -883,7 +888,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
               {!equalScale ? (
                 <p role="status" data-scale-warning style={{ margin: "6px 0 0", color: "#92400e" }}>
-                  {L.ui.equalScaleWarning}
+                  {scale.warning}
                 </p>
               ) : null}
               {/* The hover preview passes through a point where uniqueness fails (kept curves say it in the last-trajectory line). */}
@@ -938,7 +943,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
           {scene && lastGroup ? (
             <p style={{ margin: "8px 0 0", color: "#52606d" }} data-last-trajectory>
-              {L.ui.lastTrajectory} {trajectoryLines(scene, lastGroup, L).join("; ")}
+              {words.last} {trajectoryLines(scene, lastGroup, L).join("; ")}
             </p>
           ) : null}
           {scene && queryShown && queryView ? <QueryResultView scene={scene} run={queryShown} view={queryView} variables={variables} L={L} /> : null}
@@ -1004,6 +1009,12 @@ function EquilibriaList({ scene, L, second }: { scene: Scene; L: LabelTable; sec
   return (
     <section style={{ marginTop: 14 }}>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.equilibriaHeading}</h2>
+      {/* P2.3: on a second-order equation the point (c, 0) of the phase plane is the constant solution x ≡ c. */}
+      {second && eq.length > 0 ? (
+        <p style={{ margin: "0 0 6px", color: "#52606d" }} data-equilibria-second-note>
+          {L.tool.equilibriaSecondNote}
+        </p>
+      ) : null}
       {equilibriaNotices(L, scene).map((line) => (
         <p key={line} style={{ margin: "0 0 6px", color: "#92400e" }}>
           {line}
