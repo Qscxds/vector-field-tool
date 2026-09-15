@@ -136,6 +136,12 @@ export type Scene = {
    * scenes never set it.
    */
   timeDependent?: { snapshotT: number; maxRelDeviation: number };
+  /**
+   * The original first-order equation, also on query scenes that do not compute a FirstOrderView.
+   * Keeps student notation and lets interactive clients probe newly traced curves for uniqueness.
+   * Older analysis scenes carry the same information in firstOrder.spec.
+   */
+  firstOrderSpec?: FirstOrderSpec;
   firstOrder?: FirstOrderView;
   /**
    * analyze_second_order only: the second-order equation the student gave (primes normalized) and

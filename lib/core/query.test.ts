@@ -8,6 +8,24 @@ const STOP: Box = { x: { min: -60, max: 60 }, y: { min: -60, max: 60 } };
 const exponential = compileSystem({ f: "1", g: "y", variables: "ty" });
 const harmonic = compileSystem({ f: "y", g: "-x" });
 
+describe("querySolution: a time-dependent system starting at rest", () => {
+  it("x' = 0, y' = t from (0, 0) reaches y = 1/2 at t = 1 and t = -1", () => {
+    // y(t) = integral_0^t s ds = t^2 / 2, even though the initial velocity is zero.
+    const sys = compileSystem({ f: "0", g: "t" });
+    for (const value of [1, -1]) {
+      const r = querySolution(sys, { x: 0, y: 0 }, { kind: "time", value }, { tSpan: 1, stopBox: STOP });
+      expect(r.note).toBe("ok");
+      expect(r.reached).toBe(true);
+      expect(r.forward.status).toBe("completed");
+      expect(r.backward.status).toBe("completed");
+      expect(r.hits).toHaveLength(1);
+      expect(r.hits[0].t).toBe(value);
+      expect(r.hits[0].x).toBe(0);
+      expect(r.hits[0].y).toBeCloseTo(0.5, 12);
+    }
+  });
+});
+
 describe("querySolution: coordinate targets (kind x / y) of first-order equations", () => {
   it("dy/dt = y from (0, 1): t = 2 gives y = e^2, y = 2 gives t = ln 2", () => {
     // The reduced system is t' = 1, y' = y, so the horizontal coordinate x IS the student's t and

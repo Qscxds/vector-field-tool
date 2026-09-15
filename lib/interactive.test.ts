@@ -42,6 +42,25 @@ describe("computeFeatures", () => {
     expect(f.firstOrder?.expr).toBe("(2*t*y) dt + (t^2 + y^2) dy = 0");
   });
 
+  it("keeps the constant-solution scan resolution even when there is no zero plateau", () => {
+    const spec = { kind: "explicit" as const, g: "y*(1-y)" };
+    const range = { x: box.x, y: { min: -0.5, max: 2 } };
+    const firstOrder = computeFeatures(compileSystem(toSystem(spec)), spec, range, "en").firstOrder;
+    expect(firstOrder?.resolution).toBe(2.5 / 400);
+    expect(firstOrder?.zeroPlateaus).toEqual([]);
+  });
+
+  it("keeps the zero-plateau intervals instead of claiming underflow zeros as constant solutions", () => {
+    const spec = { kind: "explicit" as const, g: "exp(-y^2)" };
+    const range = { x: box.x, y: { min: -30, max: 30 } };
+    const firstOrder = computeFeatures(compileSystem(toSystem(spec)), spec, range, "en").firstOrder;
+    expect(firstOrder?.solutions).toEqual([]);
+    expect(firstOrder?.zeroPlateaus).toHaveLength(2);
+    expect(firstOrder?.zeroPlateaus?.[0].min).toBe(-30);
+    expect(firstOrder?.zeroPlateaus?.[1].min).toBeGreaterThan(27);
+    expect(firstOrder?.zeroPlateaus?.[1].max).toBe(30);
+  });
+
   it("a non-autonomous system gets timeDependent instead of equilibria, with the snapshot time it was asked for", () => {
     // x' = y, y' = -x + sin(t): the field changes by up to sin(1.4142) ≈ 0.98777 over the probe
     // times, |F| <= hypot(2, 3) < 3.61 on this box -> relative deviation above 0.27.
@@ -314,6 +333,24 @@ describe("trajectories through a point where uniqueness fails (J.2)", () => {
   it("computeFeatures carries the domain-edge line with its uniqueness verdict", () => {
     expect(features.firstOrder?.solutions).toHaveLength(1);
     expect(features.firstOrder?.solutions[0]).toMatchObject({ y: 0, domainEdge: "above", stability: "edge_leave", uniqueness: { verdict: "unbounded" } });
+  });
+
+  it("propagates a caller's budget interruption instead of silently dropping uniqueness diagnostics", () => {
+    const pair = traceFixed(sys, { x: 0, y: 0.25 }, home);
+    const planar = compileSystem({ f: "-x", g: "-y" });
+    for (const probe of [{ sys, firstOrder: spec }, { sys: planar, firstOrder: null }]) {
+      const interrupted = { reason: "caller budget exhausted" };
+      let calls = 0;
+      const checkpoint = () => { if (calls++ === 0) throw interrupted; };
+      let caught: unknown;
+      try {
+        markNonUnique(pair, {}, home, { ...probe, checkpoint });
+      } catch (error) {
+        caught = error;
+      }
+      expect(caught).toBe(interrupted);
+      expect(calls).toBe(1);
+    }
   });
 
   it("dy/dt = sqrt(y) from (0, 0.25) backward reaches y = 0 and is flagged; forward it is not", () => {

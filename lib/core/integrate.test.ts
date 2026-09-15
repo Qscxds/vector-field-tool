@@ -10,6 +10,59 @@ const allFinite = (tr: Trajectory) => tr.points.every((p) => Number.isFinite(p.x
 const polylineLength = (tr: Trajectory, metric = dist) => tr.points.slice(1).reduce((s, p, i) => s + metric(tr.points[i], p), 0);
 const TWO_PI = 2 * Math.PI;
 
+describe.each([
+  ["RK4", integrateRK4],
+  ["adaptive", integrateAdaptive],
+] as const)("%s: zero instantaneous speed in a time-dependent system", (_name, integrate) => {
+  it("moves from rest in either time direction, including a nonzero start time", () => {
+    // y' = t - t0, y(t0) = 0 gives y(t) = (t - t0)^2 / 2: both ends are 1/2.
+    for (const t0 of [0, 2]) {
+      const sys = compileSystem({ f: "0", g: `t - (${t0})` });
+      for (const direction of [1, -1] as const) {
+        const tr = integrate(sys, { x: 0, y: 0 }, 1, { t0, direction });
+        expect(tr.status).toBe("completed");
+        expect(tr.times.at(-1)).toBe(t0 + direction);
+        expect(last(tr).x).toBe(0);
+        expect(last(tr).y).toBeCloseTo(0.5, 12);
+      }
+    }
+  });
+
+  it("continues through an accepted zero-speed point in either direction", () => {
+    // The first step lands exactly at t = t0 ± 1/4, where y' = 0. Integrating
+    // y' = t - (t0 ± 1/4) over the full signed unit interval gives 1/2 - 1/4 = 1/4.
+    for (const t0 of [0, 2]) {
+      for (const direction of [1, -1] as const) {
+        const zeroTime = t0 + direction / 4;
+        const sys = compileSystem({ f: "0", g: `t - (${zeroTime})` });
+        const tr = integrate(sys, { x: 0, y: 0 }, 1, { t0, direction, h: 0.25 });
+        expect(tr.times[1]).toBe(zeroTime);
+        expect(tr.status).toBe("completed");
+        expect(tr.times.at(-1)).toBe(t0 + direction);
+        expect(last(tr).y).toBeCloseTo(0.25, 12);
+      }
+    }
+  });
+
+  it("also recognizes time dependence in the first component", () => {
+    const tr = integrate(compileSystem({ f: "t", g: "0" }), { x: 0, y: 0 }, 1);
+    expect(tr.status).toBe("completed");
+    expect(last(tr).x).toBeCloseTo(0.5, 12);
+    expect(last(tr).y).toBe(0);
+  });
+
+  it("keeps the equilibrium stop for autonomous systems and the ty coordinate mode", () => {
+    // In ty mode t is the horizontal state x, so this field stays zero at (0, 0).
+    for (const sys of [harmonic, compileSystem({ f: "0", g: "t", variables: "ty" })]) {
+      const tr = integrate(sys, { x: 0, y: 0 }, 1, { t0: 2 });
+      expect(tr.status).toBe("reached_equilibrium");
+      expect(tr.points).toEqual([{ x: 0, y: 0 }]);
+      expect(tr.times).toEqual([2]);
+      expect(tr.steps).toBe(0);
+    }
+  });
+});
+
 describe("integrateRK4 on the harmonic oscillator x'=y, y'=-x", () => {
   it("returns to the start after one period", () => {
     const tr = integrateRK4(harmonic, { x: 1, y: 0 }, TWO_PI, { h: 0.01 });

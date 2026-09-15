@@ -96,6 +96,9 @@
         trajectory: ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 6.283185307179586, locale: "en" }],
         // Phase O: a planar crossing query, markers at every hit plus the "possibly more beyond the span" note.
         query_solution: ["query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, target: { kind: "x", value: 0 }, tSpan: 10, locale: "en" }],
+        query_first_sqrt: ["query_solution", { mode: "first", expr: "sqrt(y)", t0: 0, y0: 0.25, target: { kind: "t", value: -1 }, locale: "en" }],
+        query_diff_sqrt: ["query_solution", { mode: "diff", M: "-sqrt(y)", N: "1", t0: 0, y0: 0.25, target: { kind: "t", value: -1 }, locale: "zh" }],
+        query_zero_speed: ["query_solution", { mode: "system", f: "0", g: "t", x0: 0, y0: 0, target: { kind: "t", value: 1 }, tSpan: 2, locale: "en" }],
         ping: ["ping", { message: "hello widget" }],
       };
       const select = document.getElementById("scenario");

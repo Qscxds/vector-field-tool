@@ -129,6 +129,8 @@ export function computeFeatures(sys: CompiledSystem, firstOrder: FirstOrderSpec 
         autonomous: eq.autonomous,
         identicallyZero: eq.identicallyZero,
         solutions: eq.solutions,
+        resolution: eq.resolution,
+        zeroPlateaus: eq.zeroPlateaus,
         singularities: singular.points,
         singularitiesTruncated: singular.truncated,
         singularitiesWarning: singular.warning,
@@ -190,7 +192,13 @@ function touchesSet(t: TrajectoryView, set: NonUniqueSet, tol: number): boolean 
  * scene, its equation. `timeDependent` (a non-autonomous planar system) disables the probe:
  * equilibria and their uniqueness are not defined for such a system.
  */
-export type NonUniqueProbe = { sys: CompiledSystem; firstOrder: FirstOrderSpec | null; timeDependent?: boolean };
+export type NonUniqueProbe = {
+  sys: CompiledSystem;
+  firstOrder: FirstOrderSpec | null;
+  timeDependent?: boolean;
+  /** Optional caller budget. An interruption propagates rather than becoming a missing diagnostic. */
+  checkpoint?: () => void;
+};
 
 /** Seeds per axis of the equilibrium search around a speed minimum of a planar curve (a small square box). */
 export const CURVE_SEED_GRID = 4;
@@ -207,17 +215,28 @@ export const CURVE_EXTENT_PAD = 1e-3;
  * - Planar: an equilibrium the curve passes through is a local minimum of the speed |F| along the
  *   curve, so each such point (its ends included) is searched in a square box spanning the steps
  *   around it; a bounding box of the whole curve would be degenerate for a curve on an axis.
- * The uniqueness scale is the box's, as for the listed features. Never throws: a failure inside
- * the kernel means nothing is flagged by this path.
+ * The uniqueness scale is the box's, as for the listed features. A failure inside the kernel
+ * means nothing is flagged by this path; a caller's checkpoint interruption still propagates.
  */
 function curveNonUnique(probe: NonUniqueProbe, t: TrajectoryView, box: Box, tol: number): NonUniqueSet {
   const none: NonUniqueSet = { lines: [], points: [] };
   const pts = t.points;
   if (pts.length === 0 || probe.timeDependent || !pts.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y))) return none;
+  let interrupted = false;
+  const checkpoint = probe.checkpoint ? () => {
+    try {
+      probe.checkpoint!();
+    } catch (error) {
+      interrupted = true;
+      throw error;
+    }
+  } : undefined;
   try {
+    checkpoint?.();
     if (probe.firstOrder) {
       let xMin = Infinity, xMax = -Infinity, yMin = Infinity, yMax = -Infinity;
       for (const p of pts) {
+        checkpoint?.();
         if (p.x < xMin) xMin = p.x;
         if (p.x > xMax) xMax = p.x;
         if (p.y < yMin) yMin = p.y;
@@ -226,26 +245,29 @@ function curveNonUnique(probe: NonUniqueProbe, t: TrajectoryView, box: Box, tol:
       const padY = Math.max(CURVE_EXTENT_PAD * (yMax - yMin), tol);
       const padX = Math.max(CURVE_EXTENT_PAD * (xMax - xMin), tol);
       const tRange = xMax - xMin > NON_UNIQUE_REL_TOL * (box.x.max - box.x.min) ? { min: xMin - padX, max: xMax + padX } : box.x;
-      const eq = firstOrderEquilibria(probe.firstOrder, { min: yMin - padY, max: yMax + padY }, { tRange });
+      const eq = firstOrderEquilibria(probe.firstOrder, { min: yMin - padY, max: yMax + padY }, { tRange, checkpoint });
       return nonUniqueOf({ firstOrder: { expr: "", autonomous: eq.autonomous, solutions: eq.solutions } });
     }
     const speed = pts.map((p) => {
+      checkpoint?.();
       const f = probe.sys.eval(p);
       return Number.isFinite(f.x) && Number.isFinite(f.y) ? Math.hypot(f.x, f.y) : Infinity;
     });
     const step = (i: number, j: number) => Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y);
     const found: Equilibrium[] = [];
     for (let i = 0; i < pts.length; i++) {
+      checkpoint?.();
       if (!Number.isFinite(speed[i])) continue;
       if ((i > 0 && speed[i - 1] < speed[i]) || (i + 1 < pts.length && speed[i + 1] < speed[i])) continue;
       const half = Math.max(i > 0 ? step(i, i - 1) : 0, i + 1 < pts.length ? step(i, i + 1) : 0, tol);
       const around: Box = { x: { min: pts[i].x - half, max: pts[i].x + half }, y: { min: pts[i].y - half, max: pts[i].y + half } };
-      for (const e of findEquilibria(probe.sys, around, { seedGrid: CURVE_SEED_GRID, maxPoints: 4 }).points) {
+      for (const e of findEquilibria(probe.sys, around, { seedGrid: CURVE_SEED_GRID, maxPoints: 4, checkpoint }).points) {
         if (!found.some((q) => Math.hypot(q.at.x - e.at.x, q.at.y - e.at.y) <= tol)) found.push(e);
       }
     }
-    return nonUniqueOf({ equilibria: withUniqueness(probe.sys, found, box) });
-  } catch {
+    return nonUniqueOf({ equilibria: withUniqueness(probe.sys, found, box, checkpoint) });
+  } catch (error) {
+    if (interrupted) throw error;
     return none;
   }
 }

@@ -25,6 +25,8 @@ export function formatSignificant(v: number, digits = 3): string {
 /** The equation the Scene shows, in the professor's notation, or "" for a scene without one. */
 export function sceneEquationText(scene: Scene, locale: Locale): string {
   if (scene.firstOrder?.expr) return scene.firstOrder.expr;
+  const firstOrder = scene.firstOrderSpec ?? scene.firstOrder?.spec;
+  if (firstOrder) return firstOrder.kind === "explicit" ? `dy/dt = ${firstOrder.g}` : `(${firstOrder.M}) dt + (${firstOrder.N}) dy = 0`;
   if (scene.secondOrder) return scene.secondOrder.equation;
   if (scene.system) return fill(labels(locale).ui.equationSystem, { f: scene.system.f, g: scene.system.g });
   return "";

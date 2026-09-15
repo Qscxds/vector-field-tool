@@ -83,7 +83,17 @@ const calls = [
   [
     "query_solution",
     { mode: "first", expr: "y", t0: 0, y0: 1, target: { kind: "t", value: 2 } },
-    (r) => r.structuredContent?.kind === "query_solution" && r.structuredContent.query?.hits?.length === 1 && Math.abs(r.structuredContent.query.hits[0].y - 7.38905609893065) < 1e-4 && r.structuredContent.query.note === "ok",
+    (r) => r.structuredContent?.kind === "query_solution" && r.structuredContent.firstOrderSpec?.g === "y" && r.structuredContent.query?.hits?.length === 1 && Math.abs(r.structuredContent.query.hits[0].y - 7.38905609893065) < 1e-4 && r.structuredContent.query.note === "ok",
+  ],
+  [
+    "query_solution",
+    { mode: "diff", M: "-sqrt(y)", N: "1", t0: 0, y0: 2, xMin: -1, xMax: 1, yMin: 1, yMax: 4, tSpan: 4, target: { kind: "t", value: -3 } },
+    (r) => r.structuredContent?.firstOrderSpec?.M === "-sqrt(y)" && r.structuredContent.fieldStyle === "segments" && r.structuredContent.trajectories?.some((t) => t.direction === "backward" && t.nonUnique === true),
+  ],
+  [
+    "query_solution",
+    { mode: "system", f: "0", g: "t", x0: 0, y0: 0, tSpan: 2, target: { kind: "t", value: 1 } },
+    (r) => r.structuredContent?.query?.hits?.length === 1 && Math.abs(r.structuredContent.query.hits[0].y - 0.5) < 1e-6 && r.structuredContent.trajectories?.every((t) => t.status === "completed" && t.steps > 0),
   ],
 ];
 for (const [name, args, verify] of calls) {
@@ -115,7 +125,7 @@ if (widget) {
   const csp = c?._meta?.ui?.csp ?? {};
   // The widget version (app/mcp/server.ts WIDGET_VERSION): a stale build would still answer with
   // the previous URI, and Claude caches the URI per connection (reconnect after a bump).
-  const WIDGET_VERSION = "o-1";
+  const WIDGET_VERSION = "o-2";
   check(`resources/list and resources/read carry the ${WIDGET_VERSION} widget URI`, widget.uri.endsWith(`?v=${WIDGET_VERSION}`) && c?.uri === widget.uri, `${widget.uri} / ${c?.uri}`);
   check("resources/read returns widget HTML", html.toLowerCase().startsWith("<!doctype html") && html.includes("<base href="), JSON.stringify(read.msg).slice(0, 300));
   check("resources/read CSP declares connect/resource/baseUri domains", ["connectDomains", "resourceDomains", "baseUriDomains"].every((k) => Array.isArray(csp[k]) && csp[k].length > 0), JSON.stringify(csp));

@@ -9,8 +9,9 @@
  *   undefined just ahead (sqrt, log, fractional powers)         where the field is finite is kept)
  * - `box` given and the new point lies outside               -> the segment is cut at the border and
  *                                                               that border point is kept, status 'left_box'
- * - speed below `equilibriumTol` x the reference speed       -> status 'reached_equilibrium'
+ * - autonomous speed below `equilibriumTol` x reference     -> status 'reached_equilibrium'
  *   (reference = max(initial speed, problem scale / tSpan))
+ *   A system whose xy expressions mention t keeps going: an instantaneous zero is not an equilibrium.
  * - `arcLength` given and the polyline reaches the limit     -> last segment cut exactly at the
  *                                                               limit, status 'arc_length'
  * - step budget exhausted, or the adaptive step collapsed    -> status 'max_steps'
@@ -33,6 +34,7 @@
  * of every trajectory.
  */
 import type { CompiledSystem } from "./parse";
+import { mentionsTime } from "./time-dependence";
 import type { Box, Vec2 } from "./types";
 
 export type IntegrationStatus =
@@ -186,12 +188,16 @@ class Run {
   arc = 0;
   /** Speed below which the point counts as an equilibrium (set at start). */
   private equilibriumSpeed = 0;
+  private readonly hasEquilibriumStop: boolean;
 
   constructor(
     private readonly sys: CompiledSystem,
     private readonly o: Resolved,
     private readonly tEnd: number,
-  ) {}
+  ) {
+    // Static AST rule, once per run. In ty mode t is a state coordinate, not an independent time.
+    this.hasEquilibriumStop = !mentionsTime(sys.spec);
+  }
 
   /** Evaluates the field; null when it is undefined or infinite there (a singular point). */
   rhs(p: Vec2, t: number): Vec2 | null {
@@ -233,7 +239,7 @@ class Run {
     // start happens to be slow. Rescaling the equation rescales both, so the verdict is invariant.
     const reference = Math.max(Math.hypot(v.x, v.y), this.o.scale / this.o.tSpan);
     this.equilibriumSpeed = this.o.equilibriumTol * reference;
-    if (Math.hypot(v.x, v.y) <= this.equilibriumSpeed) {
+    if (this.hasEquilibriumStop && Math.hypot(v.x, v.y) <= this.equilibriumSpeed) {
       this.status = "reached_equilibrium";
       return false;
     }
@@ -281,7 +287,7 @@ class Run {
       this.status = "singular";
       return false;
     }
-    if (Math.hypot(v.x, v.y) <= this.equilibriumSpeed) {
+    if (this.hasEquilibriumStop && Math.hypot(v.x, v.y) <= this.equilibriumSpeed) {
       this.status = "reached_equilibrium";
       return false;
     }

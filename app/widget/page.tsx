@@ -19,6 +19,7 @@ import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useCoarsePointer } from "@/components/useCoarsePointer";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
+import { sceneEquationText } from "@/lib/export-footer";
 import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
 import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
@@ -113,7 +114,7 @@ export default function WidgetPage() {
   const interactive = useInteractiveScene({
     sys: local.sys,
     spec: scene?.system ?? null,
-    firstOrder: scene?.firstOrder?.spec ?? null,
+    firstOrder: scene?.firstOrderSpec ?? scene?.firstOrder?.spec ?? null,
     homeBox: scene?.box ?? null,
     width,
     height: canvasHeight,
@@ -259,7 +260,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
   // A second-order scene shows the reduction step (the equation the student gave, then x' = y, y' = g).
   if (scene.secondOrder) items.push(fill(L.tool.secondOrderReduced, { equation: scene.secondOrder.equation, g: scene.secondOrder.reduced.g }));
   if (scene.system) {
-    items.push(scene.kind === "analyze_first_order" && scene.firstOrder ? scene.firstOrder.expr : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
+    items.push(scene.firstOrderSpec || scene.firstOrder ? sceneEquationText(scene, scene.locale ?? "en") : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
   items.push(...equilibriaNotices(L, scene));

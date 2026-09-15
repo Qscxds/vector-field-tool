@@ -8,6 +8,19 @@ import type { Scene } from "./scene";
 
 const ORIGIN = "https://example.org";
 
+describe("sceneEquationText for a first-order query", () => {
+  it("keeps explicit and differential equations in student notation in either locale without feature results", () => {
+    const forms: FirstOrderSpec[] = [{ kind: "explicit", g: "a*y", params: { a: 1 } }, { kind: "differential", M: "-a*y", N: "1", params: { a: 1 } }];
+    for (const locale of ["en", "zh"] as const) {
+      for (const firstOrderSpec of forms) {
+        const scene: Scene = { kind: "query_solution", locale, system: toSystem(firstOrderSpec), firstOrderSpec };
+        const expected = firstOrderSpec.kind === "explicit" ? "dy/dt = a*y" : "(-a*y) dt + (1) dy = 0";
+        expect(sceneEquationText(scene, locale)).toBe(expected);
+      }
+    }
+  });
+});
+
 /** The logistic preset as the web shell builds it: features from lib/interactive, the entered box, equal-scale viewport. */
 function logisticScene(): { scene: Scene; viewport: ReturnType<typeof fitViewport> } {
   const spec: FirstOrderSpec = { kind: "explicit", g: "y*(1 - y)" };

@@ -238,6 +238,8 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       equilibria: features.equilibria,
       warning: features.warning,
       truncated: features.truncated,
+      singularPoints: features.singularPoints,
+      underflowPlateau: features.underflowPlateau,
       // The sign-change quadtree's cap (lib/interactive computeFeatures): the shells print the
       // same notice as the tool (equilibriaNotices).
       refineCapped: features.refineCapped,
@@ -245,12 +247,13 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       // snapshot time whenever the field changes with t.
       timeDependent,
       firstOrder: features.firstOrder,
+      firstOrderSpec: firstOrder ?? undefined,
       trajectories,
       start,
       query: queryShown,
       secondOrder,
     };
-  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent, queryShown, secondOrder]);
+  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent, queryShown, secondOrder, firstOrder]);
 
   // Refs so the handlers stay referentially stable (the canvas binds its wheel listener once).
   const viewportRef = useRef(viewport);

@@ -1345,6 +1345,37 @@ describe("Phase J results are exposed in the Scene and the summary, in both loca
 });
 
 describe("query_solution (round N)", () => {
+  it("preserves the first-order query equation and parameters for the widget in both locales", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      for (const form of [
+        { args: { mode: "first", expr: "a*y" }, spec: { kind: "explicit", g: "a*y", params: { a: 1 } }, equation: "dy/dt = a*y", style: "arrows" },
+        { args: { mode: "diff", M: "-a*y", N: "1" }, spec: { kind: "differential", M: "-a*y", N: "1", params: { a: 1 } }, equation: "(-a*y) dt + (1) dy = 0", style: "segments" },
+      ]) {
+        const r = await call("query_solution", { ...form.args, params: { a: 1 }, t0: 0, y0: 1, tSpan: 1, target: { kind: "t", value: 0.5 }, locale });
+        expect(r.isError).toBeFalsy();
+        expect(r.scene.firstOrderSpec).toEqual(form.spec);
+        expect(r.scene.firstOrder).toBeUndefined(); // A query has no constant-solution analysis to report.
+        expect(r.scene.system?.variables).toBe("ty");
+        expect(r.scene.fieldStyle).toBe(form.style);
+        expect(r.scene.locale).toBe(locale);
+        expect(r.text).toContain(form.equation);
+        expect(r.scene.query!.hits[0].y).toBeCloseTo(Math.exp(0.5), 5);
+      }
+    }
+  });
+
+  it("flags first-order query curves through sqrt(y)'s non-unique line even outside the viewing box", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      for (const form of [{ mode: "first", expr: "sqrt(y)" }, { mode: "diff", M: "-sqrt(y)", N: "1" }]) {
+        const r = await call("query_solution", { ...form, t0: 0, y0: 2, xMin: -1, xMax: 1, yMin: 1, yMax: 4, tSpan: 4, target: { kind: "t", value: -3 }, locale });
+        expect(r.isError).toBeFalsy();
+        expect(r.scene.trajectories!.find((t) => t.direction === "backward")?.nonUnique).toBe(true);
+        expect(r.scene.trajectories!.find((t) => t.direction === "forward")?.nonUnique).toBeUndefined();
+        expect(r.text).toContain(labels(locale).tool.nonUniqueTrajectory);
+      }
+    }
+  });
+
   it("its description starts with the call-first rule and names the value-at / time-when questions", async () => {
     const { tools } = await client.listTools();
     const q = tools.find((t) => t.name === "query_solution")!;
@@ -1489,33 +1520,48 @@ describe("query_solution (round N)", () => {
     expect(d.text).toMatch(/^Solution of \(y\) dt \+ \(-t\) dy = 0 through \(t, y\) = \(1, 1\), asked for y = 2\./);
   });
 
-  it("a non-autonomous system words a stop by low speed neutrally, never as an equilibrium (N.3 b)", async () => {
-    // x' = 0, y' = cos(t) from (0, 0): y = sin t, whose speed |cos t| falls to 0 at t = pi/2; the
-    // integrator may report reached_equilibrium there, which for a time-dependent field is not one.
-    const r = await call("query_solution", { mode: "system", f: "0", g: "cos(t)", x0: 0, y0: 0, tSpan: Math.PI / 2, target: { kind: "t", value: 1 } });
+  it("a non-autonomous query continues through zero speed to the requested time", async () => {
+    // y = sin t keeps moving after its turning point t = pi/2.
+    const r = await call("query_solution", { mode: "system", f: "0", g: "cos(t)", x0: 0, y0: 0, tSpan: Math.PI, target: { kind: "t", value: 2 } });
     expect(r.isError).toBeFalsy();
     expect(r.scene.timeDependent).toBeTruthy();
     expect(r.text).not.toMatch(/approaching an equilibrium/);
     expect(r.text).toContain(labels("en").tool.timeDependentTrajectory.slice(0, 30));
-    expect(Math.abs(r.scene.query!.hits[0].y - Math.sin(1))).toBeLessThan(1e-6);
+    expect(Math.abs(r.scene.query!.hits[0].y - Math.sin(2))).toBeLessThan(1e-6);
+    for (const leg of r.scene.trajectories!) {
+      expect(leg.status).toBe("completed");
+      expect(Math.abs(leg.tEnd)).toBeCloseTo(Math.PI, 12);
+      expect(leg.points.at(-1)!.y).toBeCloseTo(0, 5);
+    }
+  });
+
+  it("queries a non-autonomous solution starting at zero speed: x'=0, y'=t gives y(1)=0.5", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("query_solution", { mode: "system", f: "0", g: "t", x0: 0, y0: 0, tSpan: 2, target: { kind: "t", value: 1 }, locale });
+      expect(r.isError).toBeFalsy();
+      expect(r.scene.query!.hits).toHaveLength(1);
+      expect(r.scene.query!.hits[0].y).toBeCloseTo(0.5, 7);
+      expect(r.scene.query!.reached).toBe(true);
+      expect(r.scene.trajectories!.every((leg) => leg.status === "completed" && leg.steps > 0)).toBe(true);
+      expect(r.text).not.toContain(labels(locale).status.reached_equilibrium);
+    }
   });
 });
 
 describe("trace_trajectory over a non-autonomous system (round N.3 b)", () => {
-  it("x' = 0, y' = cos(t) from (0, 0) to t = pi/2 stops by low speed and is worded neutrally, never as an equilibrium", async () => {
-    // y = sin t. The last adaptive step lands exactly on tEnd = pi/2 (integrate.ts cuts the final
-    // step to the remaining time), where the speed |cos(pi/2)| = 6e-17 is below 1e-8 x the
-    // reference speed max(|v(0)| = 1, 6 / (pi/2)): the integrator says reached_equilibrium. For a
-    // time-dependent field that is not an equilibrium, and the summary must not say it is.
+  it("x' = 0, y' = cos(t) completes at its turning point and continues beyond it", async () => {
     for (const locale of ["en", "zh"] as const) {
-      const r = await call("trace_trajectory", { f: "0", g: "cos(t)", x0: 0, y0: 0, direction: "forward", tSpan: Math.PI / 2, locale });
-      expect(r.isError, locale).toBeFalsy();
-      expect(r.scene.timeDependent).toBeTruthy();
-      expect(r.scene.trajectories![0].status).toBe("reached_equilibrium");
-      expect(r.scene.trajectories![0].tEnd).toBeCloseTo(Math.PI / 2, 12);
-      const L = labels(locale);
-      expect(r.text).toContain(L.tool.stoppedNonAutonomous);
-      expect(r.text).not.toContain(L.status.reached_equilibrium);
+      for (const tSpan of [Math.PI / 2, Math.PI]) {
+        const r = await call("trace_trajectory", { f: "0", g: "cos(t)", x0: 0, y0: 0, direction: "forward", tSpan, locale });
+        expect(r.isError, locale).toBeFalsy();
+        expect(r.scene.timeDependent).toBeTruthy();
+        const leg = r.scene.trajectories![0];
+        expect(leg.status).toBe("completed");
+        expect(leg.tEnd).toBeCloseTo(tSpan, 12);
+        expect(leg.points.at(-1)!.y).toBeCloseTo(Math.sin(tSpan), 5);
+        expect(r.text).not.toContain(labels(locale).tool.stoppedNonAutonomous);
+        expect(r.text).not.toContain(labels(locale).status.reached_equilibrium);
+      }
     }
   });
 });

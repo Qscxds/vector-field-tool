@@ -18,6 +18,10 @@ reorganized /help, the kernel freeze below; trajectory removal / undo / long-pre
 initial-value inputs, solution queries and the `query_solution` tool; widget o-1).
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
+The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
+2026-09-10 fixes and validation, and all 16 original docs in full. Historical entries retain their
+then-current status; use the current section for superseding decisions. Widget version is now o-2.
+
 ## Module map
 
 - `lib/core/` pure math kernel: `parse` (mathjs AST whitelist -> compiled system, eval never throws;
@@ -29,7 +33,8 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   bound of each component from the expression's OWN terms plus an underflow flag, the yardstick for
   "this residual is zero as far as floating point can tell"),
   `field` (grid sampling), `integrate` (RK4 + adaptive Dormand-Prince, shared stop rules; blow-up
-  is decided by the POSITION only, never by speed; 'reached_equilibrium' is relative to the
+  is decided by the POSITION only, never by speed; 'reached_equilibrium' applies only to autonomous
+  systems (including the ty coordinate mode), relative to the
   problem's reference speed; the adaptive step is capped at h*L <= 1 so sinks are actually
   reached; box exits and arc-length stops are cut exactly; statuses completed / left_box /
   reached_equilibrium / blew_up / singular / domain_edge / arc_length / max_steps; optional
@@ -74,7 +79,8 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
   `resetViewport`), `arrows`, `ticks`, `axis-names` (where the axis names go without covering the
   tick numbers), `color`, `contours` (marching squares).
 - `lib/scene.ts` the data contract: every visual tool returns a `Scene` as structuredContent (with
-  `locale`, `system`, `firstOrder.spec` so clients can recompute); the widget and the web shell only
+  `locale`, `system`, `firstOrder.spec` for analysis and `firstOrderSpec` for queries so clients can
+  recompute without fabricating an analysis); the widget and the web shell only
   ever consume a Scene.
 - `lib/labels.ts` ALL student/user-facing text as keyed tables `LABELS.zh` / `LABELS.en` with an
   identical key set (tested), `labels(locale)`, `fill()`, number formatting
@@ -143,7 +149,7 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION` (o-1 since round O); `app/mcp/tools.ts` the six analysis tools
+  resource + ping + `WIDGET_VERSION` (o-2 since the 2026-09-10 fixes); `app/mcp/tools.ts` the six analysis tools
   (`locale` is optional and defaults to en since round M; analyze_first_order keeps the parameter
   names xMin/xMax but they are the t range, and its expressions use t and y only; `query_solution`
   since round N: mode first / diff / system / second, t0 for first-order pictures, x0 (t0 accepted as
@@ -222,6 +228,10 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
    form evidence) in BOTH languages. No hard-coded Chinese or English in tools, pages or components.
 
 ## Kernel freeze (decided 2026-09-09, round M)
+
+2026-09-10 narrow exception explicitly authorized by the user: fix the non-autonomous zero-speed
+stop using the existing static `mentionsTime` rule, with derived integration and query regressions.
+No numerical threshold is changed; the freeze continues for unrelated numerical mechanisms.
 
 `lib/core` gets NO new numerical machinery and NO threshold changes. The constants below were chosen
 by agents during the J rounds (equilibria / uniqueness / non-autonomous / second-order and the three

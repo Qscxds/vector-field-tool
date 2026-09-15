@@ -849,6 +849,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         let spec: SystemSpec;
         let equation: string;
         let secondOrder: Scene["secondOrder"];
+        let firstOrderSpec: FirstOrderSpec | undefined;
         let fieldStyle: Scene["fieldStyle"];
         if (input.mode === "first" || input.mode === "diff") {
           const fo: FirstOrderSpec =
@@ -856,6 +857,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
               ? { kind: "explicit", g: need("expr"), ...(input.params ? { params: input.params } : {}) }
               : { kind: "differential", M: need("M"), N: need("N"), ...(input.params ? { params: input.params } : {}) };
           spec = toSystem(fo);
+          firstOrderSpec = fo;
           compileOrExplainFirstOrder(fo, spec);
           equation = fo.kind === "explicit" ? `dy/dt = ${fo.g}` : `(${fo.M}) dt + (${fo.N}) dy = 0`;
           fieldStyle = fo.kind === "differential" ? "segments" : "arrows";
@@ -904,9 +906,11 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const timeDependent = td?.dependsOnT ? { snapshotT: 0, maxRelDeviation: td.maxRelDeviation } : undefined;
         // A curve through a point where uniqueness fails is one of many (as trace_trajectory does).
         const trajectories =
-          firstOrder || timeDependent
-            ? traced
-            : markNonUnique(traced, { equilibria: withUniqueness(sys, findEquilibria(sys, box, { checkpoint }).points, box, checkpoint) }, box);
+          firstOrderSpec
+            ? markNonUnique(traced, {}, box, { sys, firstOrder: firstOrderSpec, checkpoint })
+            : timeDependent
+              ? traced
+              : markNonUnique(traced, { equilibria: withUniqueness(sys, findEquilibria(sys, box, { checkpoint }).points, box, checkpoint) }, box);
         const scene: Scene = {
           kind: "query_solution",
           locale: input.locale,
@@ -915,6 +919,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           start,
           trajectories,
           ...(fieldStyle ? { fieldStyle } : {}),
+          ...(firstOrderSpec ? { firstOrderSpec } : {}),
           ...(secondOrder ? { secondOrder } : {}),
           ...(timeDependent ? { timeDependent } : {}),
           query: { target: input.target, hits: result.hits, note: result.note, reached: result.reached },

@@ -74,7 +74,7 @@ Requires Node >= 20.9 (24 recommended; Vercel's default).
 ```bash
 npm install
 npm run dev          # http://localhost:3000 (the app is at /vector-field)
-npm test             # vitest: 885 tests (883 pass, 2 marked it.fails with derived expectations)
+npm test             # vitest: 906 tests (904 pass, 2 marked it.fails with derived expectations)
 npm run typecheck    # tsc --noEmit
 npm run build        # production build
 npm run smoke        # HTTP smoke test against a running server (default http://localhost:3000/mcp)
@@ -136,7 +136,7 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
   every user must **disconnect and reconnect the connector** in Claude (it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `o-1`.
+  the old resource URI; the widget silently goes blank otherwise). The current version is `o-2`.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
   y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "use ping
   with hello" tests the transport alone. Inside the widget a kept trajectory can be removed by
@@ -184,6 +184,9 @@ questions, review rounds; code, comments and commit messages are English). Archi
 (`lib/core`, `lib/render`), one data contract (`lib/scene.ts`), two shells (the web page and the
 MCP Apps widget) sharing the same components and interaction hook; all user-facing text lives in
 `lib/labels.ts` and `lib/site-text.ts` in both languages.
+
+The consolidated [engineering record](docs/ENGINEERING-RECORD.md) contains the current architecture,
+the latest fixes and validation, and the full text of all 16 earlier stage records with source hashes.
 
 ## License
 
