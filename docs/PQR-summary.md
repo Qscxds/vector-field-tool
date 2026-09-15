@@ -1,8 +1,8 @@
 # PQR 轮总结（2026-09-15）
 
-**做到哪**：P0 勘察、P1 教授两点、P2 同类漏洞普查、Q 时间序列视图全部完成并实测；R 运维进行中（本文件随段落推进更新）。
-**最后一个良好 tag**：`q-timeseries-done`（之前的：`p1-secondorder-done`、`p2-audit-done`）。
-**我需要你手动做的**：`git push origin main --tags`（Vercel 自动部署）→ `npm run smoke -- https://tools.studycase.net/mcp` → 在 Claude 里**断开并重新连接**连接器（widget `o-1` → `p-1`；Codex 的 `o-2` 从未部署，直接跳过）。
+**做到哪**：P0 勘察、P1 教授两点、P2 同类漏洞普查、Q 时间序列视图、R 运维（上限 / widget Clear / 范围重追踪 / 命中精度 / 计算中 / CI / 报告问题）全部完成并实测；只有 Q.3 共振响应曲线未做（open-questions #7）。
+**最后一个良好 tag**：`r-ops-done`（之前的：`p1-secondorder-done`、`p2-audit-done`、`q-timeseries-done`）。
+**我需要你手动做的**：`git push origin main --tags`（Vercel 自动部署；GitHub Actions 的 CI 第一次跑）→ `npm run smoke -- https://tools.studycase.net/mcp`（24/24，URI `?v=p-2`）→ 在 Claude 里**断开并重新连接**连接器（widget `o-1` → `p-2`）→ 按第 6 节清单逐步验证。
 
 > **P1 完成，可以部署回复教授了。** 部署后教授看到的：类型叫「二阶方程 x'' = F(t, x, x')」，右端可含 t（`x'' = -x + cos(t)` 直接可用），范围框是 `x' min / x' max`，纵轴标 `x'`，平衡点写 `(x, x') = (0, 0)`，输入 `x'' = y` 得到「y 在这里没有含义」的提示。
 
@@ -85,7 +85,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 | 帮助/README/CLAUDE.md | 控件一节加「视图」条目，记号一节加「时间序列视图」段落；README 加一条；CLAUDE.md 模块图加 `lib/time-series.ts` 与 url-state 的 view/timeRange |
 | 不做 | widget 无时间序列（工具结果不带 times）→ open-questions #8；「同时画 x'(t)」不进 URL → #9；曲线跨度固定 t₀ ± 50，超出常驻说明 → #10 |
 
-提交：``f766bba`（代码）、`6e1741e`（帮助/README/CLAUDE.md）`（代码）+ docs 提交。决策细节在 `docs/PQR-decisions.md` §4。
+提交：`f766bba`（代码）、`6e1741e`（帮助/README/CLAUDE.md）、`e613abd`（docs）。决策细节在 `docs/PQR-decisions.md` §4。
 
 ### Q 验证
 
@@ -97,6 +97,47 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 | 浏览器 · 网页 | 拍频预设（en，`traj=0,0`）：打开即时间序列，x(t) 的拍频包络清晰；切「相平面」URL 变 `view=phase`，切回 `view=time`；勾「同时画 x'(t)」出现橙色曲线与图例；「t 止」改 60 → URL `tmax=60`、出现「曲线只算到 t ∈ [-50, 50]」说明；填 `abc` → 红字「t 范围无效…仍用上一个有效范围」；等比复选框置灰未勾选、灰色常驻说明；查询 t = 5 → 结果行 `t = 5.000000, x = -0.768759, x' = 0.708666` 且曲线上出现菱形标记。Van der Pol 平面系统（zh，`view=time&traj=0.1,0;3,3`）：两条曲线各画 x(t)、y(t)，图例 x(t)/y(t)，「t ∈ [0, 20]，x, y ∈ [-4, 4]（时间序列）」，平衡点列表照常。帮助页（zh）：控件「视图」条目与记号「时间序列视图」段落可见 |
 | widget / MCP | 未改（`p-1`）；`lib/scene.ts` 只加了可选字段 `times` |
 
-## 5. 验证清单（按「最快发现问题」排序）
+## 5. R：运维
 
-（全部段落结束后给出，每步注明失败回滚到哪个 tag。）
+| 要求 | 做了什么 |
+|---|---|
+| R.1 上限 20 条 + 提示，拒绝第 21 条 | 上限进纯 store（`MAX_TRAJECTORIES`，链接的上限从它读）；满了「添加」置灰、初值框下常驻提示、画布悬停提示「已达上限：点击已有曲线可删除」，点击空白不加；widget 共用 |
+| R.1 `/embed` 的 Help 链接 | 顶栏「使用说明」，新标签打开 |
+| R.1 widget 的 Clear 只清自己加的 | 「Clear my curves (n)」，工具画的曲线保留；`WIDGET_VERSION` `p-1 → p-2`（**要重连**） |
+| R.1 改输入范围时重追踪 | `retraceKey` 加入输入范围 |
+| R.1 最终命中从起点重积分一次 | `lib/core/query.ts`：Brent 定 t*，位置用一次从起点到 t* 的重积分；时间误差不变 |
+| R.1 删 `t0` 别名 | P1 已做，确认 |
+| R.1 删 `localeFromLanguageTag` | 函数、测试、CLAUDE.md 一句 |
+| R.1 「计算中」 | `useDeferredValue(form)`：输入立刻显示，图右上角浮「计算中…」，算完消失；内核未解冻 |
+| R.2 CI | `.github/workflows/ci.yml`（Node 24：npm ci → typecheck → test → build，不部署）+ README 徽章 |
+| R.3 报告问题 | `lib/report-issue.ts`（GitHub 新 issue，预填链接、浏览器、三行提示；只有 title/body 两个参数）+ 页面底部与 `/embed` 的链接 + 帮助页一条 |
+
+提交：`11798ec`（store + hook + widget p-2）、`6bc9a23`（query 内核）、`d50c4df`（report-issue）、`341c473`（网页壳 + 帮助）、`c830845`（CI + README）+ docs 提交。决策细节在 `docs/PQR-decisions.md` §5。
+
+### R 验证
+
+| 检查 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | 0 错误 |
+| `npm test` | 41 个文件，956 个测试 = 954 通过 + 2 既有预期失败（Q 时 953；新增 store 上限 2、report-issue 2，历史上限测试改为不超上限的写法） |
+| `npm run build` | 通过（`BASE_URL=http://localhost:3510`） |
+| `npm run smoke` | 生产构建 24/24，URI `?v=p-2` |
+| 浏览器 · 网页 | 20 个起点的链接：提示「20 curves kept (the limit)…」、「Add」置灰、下拉 20 项；输入 `x' = xy, y' = x² − y` 时「Computing…」在 input 事件后立即出现、第一帧（rAF 12 ms）仍可见（已绘制）、算完消失；「Report a problem」点击时 href 变为 `https://github.com/Qscxds/vector-field-tool/issues/new?title=Problem+report&body=Page: …/vector-field?f=x*y&g=…\nBrowser: Mozilla/5.0 …\n\nWhat I did:\n\nWhat I expected:\n\nWhat I saw instead:`；`/embed`（zh）：顶栏「使用说明」`/help?loc=zh` 新标签、底部「报告问题」 |
+| 浏览器 · widget（mock host，生产构建） | `trajectory` 场景：工具画的橙色曲线 + 「Undo」「Clear my curves (0)」置灰；点画布加一条 → 「Clear my curves (1)」；点它 → 自己加的没了，工具的曲线还在 |
+
+## 6. 验证清单（按「最快发现问题」排序）
+
+回滚方法：还没推送时 `git reset --hard <tag>`（tag 之后的提交全退）；已推送就 `git revert` 对应提交再推。每步注明失败时退到哪个 tag。
+
+1. **本地三绿（1 分钟）**：`npm ci && npm run typecheck && npm test && npm run build`。失败 → `git reset --hard q-timeseries-done`（退掉 R）；仍失败 → `p2-audit-done`。
+2. **推送 + CI（3 分钟）**：`git push origin main --tags` → GitHub 仓库 Actions 页 CI 变绿，README 徽章 passing。失败 → 看日志；Node/Linux 差异改 `.github/workflows/ci.yml` 即可，不影响线上。
+3. **线上 smoke（1 分钟）**：Vercel 部署完成后 `npm run smoke -- https://tools.studycase.net/mcp` → 24/24，URI `?v=p-2`。失败 → Vercel 里回滚到上一个部署，本地 `git revert` R 段提交（或 `reset --hard q-timeseries-done` 后强推——不推荐）。
+4. **拍频链接（1 分钟）**：打开 `https://tools.studycase.net/vector-field?m=second&eq=x''+%3D+-x+%2B+0.5*cos(1.2*t)&traj=0,0` → 直接是时间序列视图，x(t) 拍频包络可见；切「相平面」再切回；勾「同时画 x'(t)」出现橙线；「t 止」改 60 出现「曲线只算到 t ∈ [-50, 50]」说明。失败 → `p2-audit-done`（退掉 Q + R）。
+5. **教授的例子（1 分钟）**：类型「二阶方程」输入 `x'' = y` → 「y 在这里没有含义」；`x'' = -x + cos(t)` → 非自治说明、范围框 `x' min/max`、纵轴 `x'`。失败 → `p0-verified`（退掉 P1）。
+6. **一阶回归（1 分钟）**：Logistic 预设：没有视图切换；添加解曲线、查询 `t = 3`；帮助页记号一节四条 + 时间序列段落。失败 → `p2-audit-done`。
+7. **报告问题（1 分钟）**：页面底部「报告问题」→ GitHub 新 issue 表单预填「页面：…」「浏览器：…」三行提示（不必真的提交）。失败 → `q-timeseries-done`。
+8. **上限（2 分钟）**：打开带 20 个起点的链接（`…&traj=0.1,0;0.2,0;…;2,0`）→ 「添加」置灰、提示「已保留 20 条曲线（上限）」，悬停画布提示上限，点击空白不加；删一条后能再加。失败 → `q-timeseries-done`。
+9. **计算中（1 分钟）**：平面系统输入 `f = x*y`，`g = x^2 - y` → 输入时右上角「计算中…」随后消失，平衡点列表更新。失败 → `q-timeseries-done`。
+10. **重连连接器 + widget（5 分钟）**：Claude 里断开并重新连接连接器 → 「use trace_trajectory on x' = y, y' = -x from (1, 0)」→ widget 出现工具画的曲线，点画布加一条 → 「Clear my curves (1)」→ 点它只清自己加的。失败 → `q-timeseries-done`（widget 回到 p-1，需再重连）。
+11. **查询精度（2 分钟）**：Claude 里「dy/dt = y, y(0) = 1, when does y reach 2?」→ t = 0.693147 (ln 2)，y = 2.000000；网页里简谐振子查询 `x = 0` 命中在 ±1e-5 内。失败 → `q-timeseries-done`（撤销 query.ts 的从起点重积分）。
+12. **`/embed`（1 分钟）**：Google Sites 里的嵌入页顶栏有「使用说明」（新标签）、底部「报告问题」；`controls=0` 时仍显示方程与结果。失败 → `q-timeseries-done`。

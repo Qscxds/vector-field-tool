@@ -20,7 +20,7 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
 2026-09-10 fixes and validation, and all 16 original docs in full. Historical entries retain their
-then-current status; use the current section for superseding decisions. Widget version is now p-1 (round P).
+then-current status; use the current section for superseding decisions. Widget version is now p-2 (round R).
 
 ## Module map
 
@@ -83,9 +83,9 @@ then-current status; use the current section for superseding decisions. Widget v
   recompute without fabricating an analysis); the widget and the web shell only
   ever consume a Scene.
 - `lib/labels.ts` ALL student/user-facing text as keyed tables `LABELS.zh` / `LABELS.en` with an
-  identical key set (tested), `labels(locale)`, `fill()`, number formatting
-  (`localeFromLanguageTag()` is still exported and tested but no shell uses it since round M:
-  the language never comes from the browser). English is American spelling. The kernel returns keys; presentation looks them up.
+  identical key set (tested), `labels(locale)`, `fill()`, number formatting (the language never
+  comes from the browser: the old `localeFromLanguageTag()` was deleted in round R). English is
+  American spelling. The kernel returns keys; presentation looks them up.
   Placeholder convention `{hv}`: the range templates (`shownRange*`, `featuresBox` /
   `featuresBoxDetail`, `xRangeError`, `equalScaleDetail`) take `{hv}`, the student-facing name of the horizontal coordinate: "x" for a planar
   system, "t" for a first-order scene (`system.variables === "ty"`); both shells fill it via
@@ -124,8 +124,11 @@ then-current status; use the current section for superseding decisions. Widget v
   problem domain, never at the view edge).
 - `lib/trajectory-store.ts` the kept trajectories as a pure store: the STARTS are the single source
   of truth, curves are derived by an injected trace; add / delete / clear with an undo history of
-  `HISTORY_LIMIT` 20; a system change or a new seed array resets to the seeds, a `retraceKey`
-  change (the web shell passes the snapshot t) re-traces the CURRENT starts, so a cleared start never
+  `HISTORY_LIMIT` 20; at most `MAX_TRAJECTORIES` 20 curves (round R: `addTrajectory` refuses the
+  21st, `atCapacity` says so, and lib/url-state's `MAX_TRAJECTORY_STARTS` is this same constant so
+  a page and a link always hold each other); a system change or a new seed array resets to the
+  seeds, a `retraceKey` change (the web shell passes the snapshot t AND the entered range, round R,
+  because the far stop box is 20x that range) re-traces the CURRENT starts, so a cleared start never
   comes back (the N.1 bug).
 - `lib/trajectory-hit.ts` point-to-polyline distance in SCREEN pixels (`HIT_THRESHOLD_PX` 8,
   zoom-independent), `nearestFixedTrajectory`, `clickAction` (a click within the threshold removes
@@ -161,14 +164,16 @@ then-current status; use the current section for superseding decisions. Widget v
   hover preview, click-to-keep / click-to-remove through `lib/trajectory-store` and
   `lib/trajectory-hit`; inputs `retraceKey`, `query` + `queryStart` (the query is kept on the scene
   only while a kept trajectory still starts there), `secondOrder` pass-through; outputs `highlight`,
-  `cursor`, `addTrajectory`, `deleteTrajectory`, `clearTrajectories`, `undo`, `canUndo`). Features-box rule: at the home view (not zoomed or panned) the
+  `cursor`, `addTrajectory`, `deleteTrajectory`, `clearTrajectories`, `clearOwnTrajectories` (round R: the
+  widget's Clear, keeps a tool's own curves), `ownCount`, `atCapacity` (the hover hint then says the
+  cap instead of previewing), `undo`, `canUndo`). Features-box rule: at the home view (not zoomed or panned) the
   features are computed for the ENTERED range in both equal-scale modes, so the toggle or a canvas
   of another aspect ratio never changes what is listed (the equal-scale margin only carries
   arrows); after a zoom or pan they are computed for the visible box. `Scene.featuresBox` says which.
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION` (p-1 since round P); `app/mcp/tools.ts` the six analysis tools
+  resource + ping + `WIDGET_VERSION` (p-2 since round R); `app/mcp/tools.ts` the six analysis tools
   (`locale` is optional and defaults to en since round M; analyze_first_order's t range is
   tMin/tMax since round P2 (xMin/xMax still read as the same), and its expressions use t and y
   only; analyze_second_order's x' range is xpMin/xpMax; `query_solution`
@@ -200,9 +205,18 @@ then-current status; use the current section for superseding decisions. Widget v
   one `<optgroup>` per chapter, fixed trajectory starts passed to the hook as
   `initialTrajectoryStarts` (the hook exposes `trajectoryStarts`), a vf- prefixed `<style>` layout
   (two columns, one column below 800 px) and a container-sized canvas (ResizeObserver, width
-  clamped 300..900, height = round(width * 0.72)).
+  clamped 300..900, height = round(width * 0.72)). Round R: the picture follows the form through
+  `useDeferredValue` (`shown`): the inputs read `form`, everything computed reads `shown`, and a
+  "Computing…" note floats over the picture while they differ (a slow equilibria search no longer
+  hides the typed text; the kernel is not faster). The cap notice and the disabled Add button at
+  `MAX_TRAJECTORIES`; the "Report a problem" link at the bottom (`lib/report-issue.ts`: a GitHub
+  new-issue URL with title + body only, the body = page link, browser name, three prompt lines in
+  the student's language, computed at click time; nothing is tracked).
 - `app/embed/` the embeddable route for the course site (Google Sites iframes): same parameters,
-  compact top bar (language + "Open full page"), `controls=0` hides the form, robots noindex.
+  compact top bar (language + Help in a new tab + "Open full page"), `controls=0` hides the form, robots noindex.
+- `.github/workflows/ci.yml` (round R) runs the three gates (typecheck, test, build) on Node 24 for
+  every push to main and every pull request; no deploy step (Vercel builds main itself). The README
+  badge points at it.
   HEADERS RULE: `next.config.ts` sends `Content-Security-Policy: frame-ancestors *` for source
   `/embed` ONLY. Never add X-Frame-Options or frame-ancestors to any other route: `/widget` is
   rendered inside the MCP host sandbox and any such header blanks it.

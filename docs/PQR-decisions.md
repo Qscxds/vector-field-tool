@@ -155,3 +155,50 @@ Codex 的改动以一个 `[P0]` 提交原样固化（作者标注为 Codex 的�
 ### 4.9 时间序列视图下的交互
 
 - 画布无交互（点击定不了初速度；缩放/平移不做，t 范围由输入框定）。曲线用「初值」添加；空图时提示这一点。
+
+## 5. R 决策：运维
+
+### 5.1 上限 20 条曲线（R.1）
+
+- 上限放在纯 store 里：`lib/trajectory-store.ts` 的 `MAX_TRAJECTORIES = 20`，`addTrajectory` 满了就原样返回（不记历史）。链接的 `MAX_TRAJECTORY_STARTS` 从它读——两个数永远相同，页面上有的链接装得下，链接里有的页面装得下。链接解码规则不变（前 20 个保留、其余报 `tooMany`）。
+- 网页：满了「添加」置灰，初值框下常驻提示「已保留 20 条曲线（上限）…」；画布悬停不再预览，提示「已达 20 条上限：点击已有曲线可删除」，点击空白不加。widget 共用 hook，悬停提示相同（widget 没有添加按钮）。
+
+### 5.2 widget 的 Clear（R.1）
+
+- 只清学生自己加的（store），工具画的曲线（`external`，`trace_trajectory` 的结果）保留：它们是回答的一部分，没有起点、不可点击删除、不进撤销历史。按钮「Clear my curves (n)」带数量，0 时置灰；网页壳的「清除」不变（网页没有工具曲线）。
+- widget 变了 → `WIDGET_VERSION` `p-1 → p-2`，部署后必须断开重连。
+
+### 5.3 输入范围变化时重追踪（R.1）
+
+- `retraceKey` 加入输入范围：远停框是 20 × 输入范围，范围一变曲线的停止规则就变了；同一批起点重追踪，历史保留（与快照时刻同一机制）。
+
+### 5.4 命中位置从起点重积分一次（R.1，上轮 open question「e² 的精度」）
+
+- Brent 仍从括号左端的已存状态求 t*（决定「何时」）；**报告的位置**改为从轨线起点到 t* 的一次重积分（决定「何处」），与时间目标走同一条路；时间误差仍是最终括号宽度。不是新的数值机制：同一个积分器、同一种调用，只多一次。`query.test.ts` 的 e² / ln 2 推导测试仍在误差估计内；`lib/core/query.ts` 头注释同步。
+
+### 5.5 `/embed` 顶栏加「使用说明」（R.1）
+
+- 在 iframe 里，新标签打开（`target="_blank"`）。
+
+### 5.6 「计算中」提示（R.1，内核未解冻）
+
+- `useDeferredValue(form)`：输入框读 `form`，编译、场景、词语读 `shown`；两者不同的那段时间在图右上角浮一条「计算中…」。慢的仍然慢（x' = xy, y' = x² − y 的平衡点搜索），只是学生先看到自己敲的字和提示，再看到新图。
+- 表单里的输入标签（x'/y、t₀ 的名字）跟 `form` 立即变；其余词语（查询面板、图下说明）跟算出来的图。
+- 浏览器验证：input 事件后 DOM 立即有 `[data-computing]`，第一帧 rAF（12 ms）时仍可见——即已绘制——完成后消失。
+
+### 5.7 删除 `localeFromLanguageTag`（R.1）
+
+- 函数、测试、CLAUDE.md 里的那句一起删；语言只来自 URL。
+
+### 5.8 `t0` 别名（R.1）
+
+- P1 已改为起始时刻，本轮只确认。
+
+### 5.9 CI（R.2）
+
+- `.github/workflows/ci.yml`：push main / pull_request；ubuntu-latest，Node 24（与本机同一大版本），`npm ci` → `typecheck` → `test` → `build`；不部署（Vercel 自己构建 main）。README 标题下加徽章。未推送之前它从未在 GitHub 上跑过（open-questions）。
+
+### 5.10 「报告问题」（R.3）
+
+- 纯函数 `lib/report-issue.ts` `reportIssueUrl({ pageUrl, userAgent, locale })`：GitHub 新 issue 表单，标题「问题报告」，正文「页面：…」「浏览器：…」加三行提示（我做了什么 / 我期望看到 / 实际看到），按学生语言；参数只有 title 和 body（测试断言），不收集任何东西。
+- 链接在页面底部（`/embed` 也有），点击时才用 `location.href` 与 `navigator.userAgent` 现算 href（链接会随状态变，写死会过期）。帮助页控件一节加一条，说明没有 GitHub 账号时把链接和三行发给老师。
