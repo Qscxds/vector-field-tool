@@ -4,6 +4,7 @@
  * no React. It is shared by VectorFieldCanvas (the screen) and exportScenePng (the PNG file), so
  * the picture a student downloads is the picture on the screen.
  */
+import { coordinateNames } from "@/lib/coordinate-names";
 import type { Equilibrium } from "@/lib/core/equilibria";
 import type { Vec2 } from "@/lib/core/types";
 import { arrowPolygon, scaleArrows, type ArrowMode } from "@/lib/render/arrows";
@@ -65,9 +66,11 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewpo
   if (scene.trajectories) drawTrajectories(ctx, v, scene);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
   if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
-  // Last, so the names stay legible over the field. Data-driven: a first-order scene (system in
-  // variable mode "ty") calls its horizontal coordinate t, a planar system calls it x.
-  drawAxisNames(ctx, v, scene.system?.variables === "ty" ? "t" : "x", "y");
+  // Last, so the names stay legible over the field. Data-driven (lib/coordinate-names): a
+  // first-order scene calls its horizontal coordinate t, a planar system x; the vertical one is y,
+  // or x' (the velocity) on a second-order scene.
+  const names = coordinateNames(scene);
+  drawAxisNames(ctx, v, names.hv, names.vv);
   // Data-driven: a non-autonomous scene says which instant the field was sampled at.
   if (scene.timeDependent) drawSnapshotTime(ctx, v, scene.timeDependent.snapshotT);
 }

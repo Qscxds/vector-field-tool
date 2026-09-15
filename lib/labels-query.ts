@@ -3,23 +3,25 @@
  * summary and the widget: one line per hit, the note sentence (a key worded here), the accuracy
  * sentence. Pure and React-free. On a first-order picture (system.variables "ty") a hit's
  * horizontal coordinate x IS the student's t, so the line shows t = x and y; on a planar picture
- * it shows the time t and the point (x, y).
+ * it shows the time t and the point (x, y); on a second-order picture (scene.secondOrder) the
+ * point is (x, x'), the kernel's y being the velocity (round P).
  */
 import { timeUncertainty, type QueryNote } from "./core/query";
 import { fill, formatNumber, type LabelTable } from "./labels";
 import type { QueryView, Scene } from "./scene";
 
-/** The target as the student reads it: "t = 2", "x = 0", "y = 0.5". */
-export function queryTargetText(query: QueryView, L: LabelTable): string {
-  const key = query.target.kind === "t" ? "queryTargetT" : query.target.kind === "x" ? "queryTargetX" : "queryTargetY";
+/** The target as the student reads it: "t = 2", "x = 0", "y = 0.5", and "x' = 0.5" on a second-order picture. */
+export function queryTargetText(query: QueryView, L: LabelTable, secondOrder = false): string {
+  const key = query.target.kind === "t" ? "queryTargetT" : query.target.kind === "x" ? "queryTargetX" : secondOrder ? "queryTargetXp" : "queryTargetY";
   return fill(L.tool[key], { value: formatNumber(query.target.value) });
 }
 
 /** One line per hit, then the note (when there is one) and the accuracy sentence. */
-export function queryLines(scene: Pick<Scene, "system" | "query">, L: LabelTable): string[] {
+export function queryLines(scene: Pick<Scene, "system" | "query" | "secondOrder">, L: LabelTable): string[] {
   const query = scene.query;
   if (!query) return [];
   const firstOrder = scene.system?.variables === "ty";
+  const hitTemplate = scene.secondOrder ? L.tool.queryHitSecond : L.tool.queryHitSystem;
   const lines: string[] = query.hits.map((hit) => {
     const error = formatNumber(hit.error.position, 2);
     // The displayed time uncertainty: at least the position error over the speed (never the bare
@@ -27,7 +29,7 @@ export function queryLines(scene: Pick<Scene, "system" | "query">, L: LabelTable
     const tError = formatNumber(timeUncertainty(hit), 2);
     return firstOrder
       ? fill(L.tool.queryHitFirst, { t: formatNumber(hit.x, 6), tError, y: formatNumber(hit.y, 6), error })
-      : fill(L.tool.queryHitSystem, { t: formatNumber(hit.t, 6), tError, x: formatNumber(hit.x, 6), y: formatNumber(hit.y, 6), error });
+      : fill(hitTemplate, { t: formatNumber(hit.t, 6), tError, x: formatNumber(hit.x, 6), y: formatNumber(hit.y, 6), error });
   });
   const note = queryNoteText(query.note, L);
   if (note) lines.push(note);

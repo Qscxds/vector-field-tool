@@ -13,17 +13,18 @@ import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useDocumentLang } from "@/components/useDocumentLang";
 import { exportScenePng } from "@/components/exportScenePng";
 import { exportFileName, exportFooterText } from "@/lib/export-footer";
+import { coordinateNamesForMode, type CoordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
 import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, timeDependentFolded, type LabelTable, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type LabelTable, type Locale } from "@/lib/labels";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
-import { kernelQueryKind, parseQueryValue, queryHitText, queryKindsFor, selectedTrajectoryIndex, trajectoryOptionText, type PanelVariables, type UiQueryKind } from "@/lib/query-panel";
+import { kernelQueryKind, parseQueryValue, queryHitText, queryKindName, queryKindsFor, selectedTrajectoryIndex, trajectoryOptionText, type PanelVariables, type UiQueryKind } from "@/lib/query-panel";
 import type { ArrowMode } from "@/lib/render/arrows";
 import type { QueryView, Scene, TrajectoryView } from "@/lib/scene";
 import { siteText } from "@/lib/site-text";
@@ -207,17 +208,22 @@ function fromPreset(p: Preset, density: number, arrowMode: ArrowMode): Form {
   return { ...fromAppState(presetState(p)), density, arrowMode };
 }
 
-/** Student-facing name of the horizontal coordinate: x for a planar system or a second-order equation, t for a first-order equation. */
-function horizontalName(mode: PresetMode): "x" | "t" {
-  return mode === "system" || mode === "second" ? "x" : "t";
+/**
+ * Student-facing names of the two coordinates for a form mode (lib/coordinate-names): (x, y) for a
+ * planar system, (t, y) for a first-order equation, (x, x') for a second-order equation, whose
+ * vertical coordinate is the velocity and never a y of its own (round P).
+ */
+function namesFor(mode: PresetMode): CoordinateNames {
+  return coordinateNamesForMode(FORM_TO_APP_MODE[mode]);
 }
 
 function parseBox(form: Form, L: LabelTable): Box {
   const nums = [form.xMin, form.xMax, form.yMin, form.yMax].map((s) => Number(s.trim()));
   if (nums.some((n) => !Number.isFinite(n))) throw new RangeError(L.ui.rangeError);
   const [xMin, xMax, yMin, yMax] = nums;
-  if (!(xMin < xMax)) throw new RangeError(fill(L.ui.xRangeError, { hv: horizontalName(form.mode), min: xMin, max: xMax }));
-  if (!(yMin < yMax)) throw new RangeError(fill(L.ui.yRangeError, { min: yMin, max: yMax }));
+  const { hv, vv } = namesFor(form.mode);
+  if (!(xMin < xMax)) throw new RangeError(fill(L.ui.xRangeError, { hv, min: xMin, max: xMax }));
+  if (!(yMin < yMax)) throw new RangeError(fill(L.ui.yRangeError, { vv, min: yMin, max: yMax }));
   return { x: { min: xMin, max: xMax }, y: { min: yMin, max: yMax } };
 }
 
@@ -334,6 +340,13 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     return snapshotTText.trim() !== "" && Number.isFinite(v) ? v : 0;
   }, [snapshotTText]);
   const compiled = useMemo(() => compile(form, L), [form, L]);
+  // The reduction of a second-order equation travels into the Scene (Scene.secondOrder), so the
+  // canvas names its vertical axis x', the PNG footer prints the student's equation and the
+  // x' range, and every summary line speaks of (x, x'); memoized so the scene is not rebuilt per render.
+  const secondOrderView = useMemo<Scene["secondOrder"]>(
+    () => (compiled.secondOrder ? { equation: compiled.secondOrder.equation, reduced: compiled.secondOrder.reduced } : undefined),
+    [compiled],
+  );
 
   // Solution query (lib/core/query on the kept trajectory the student picked): the result is kept
   // with the key of the picture it was computed under, so an equation, range or snapshot-time
@@ -374,6 +387,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     retraceKey: String(snapshotT),
     query: queryView,
     queryStart: queryRun?.start,
+    secondOrder: secondOrderView,
   });
   const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers } = interactive;
 
@@ -391,7 +405,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     addTrajectory(r.point);
   };
 
-  const variables: PanelVariables = form.mode === "system" || form.mode === "second" ? "xy" : "ty";
+  const variables: PanelVariables = form.mode === "system" ? "xy" : form.mode === "second" ? "second" : "ty";
   const queryKinds = queryKindsFor(variables);
   const queryKindShown = queryKinds.includes(queryKind) ? queryKind : queryKinds[0];
   const selectedIndex = selectedTrajectoryIndex(trajectoryStarts, queryPick);
@@ -400,7 +414,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     if (!selectedStart || !compiled.sys || !compiled.box) return;
     const parsed = parseQueryValue(queryValueText);
     if (!parsed.ok) {
-      setQueryError(fill(L.ui[INITIAL_VALUE_ERROR[parsed.reason]], { name: queryKindShown, max: String(MAX_ABS_VALUE) }));
+      setQueryError(fill(L.ui[INITIAL_VALUE_ERROR[parsed.reason]], { name: queryKindName(variables, queryKindShown), max: String(MAX_ABS_VALUE) }));
       return;
     }
     // The SAME rule as the curve on screen: 20x the entered range, CLICK_TSPAN per direction,
@@ -548,8 +562,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : undefined;
   const groups = groupTrajectories(trajectories);
   const lastGroup = groups.length ? groups[groups.length - 1] : null;
-  const hv = horizontalName(form.mode);
-  const ivNames = initialValueNames(hv === "t" ? "ty" : "xy");
+  const { hv, vv } = namesFor(form.mode);
+  const second = form.mode === "second";
+  const ivNames = initialValueNames(second ? "second" : hv === "t" ? "ty" : "xy");
   const addOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key !== "Enter") return;
     e.preventDefault();
@@ -698,17 +713,18 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <input value={form.xMax} onChange={(e) => update({ xMax: e.target.value })} style={inputStyle} name="xMax" />
             </label>
             <label style={labelStyle}>
-              <span>{L.ui.yMin}</span>
+              <span>{second ? L.ui.xpMin : L.ui.yMin}</span>
               <input value={form.yMin} onChange={(e) => update({ yMin: e.target.value })} style={inputStyle} name="yMin" />
             </label>
             <label style={labelStyle}>
-              <span>{L.ui.yMax}</span>
+              <span>{second ? L.ui.xpMax : L.ui.yMax}</span>
               <input value={form.yMax} onChange={(e) => update({ yMax: e.target.value })} style={inputStyle} name="yMax" />
             </label>
           </div>
           {scene?.timeDependent ? (
             <label style={labelStyle}>
-              <span>{L.ui.snapshotT}</span>
+              {/* A second-order equation calls it t₀: the initial values x(t₀), x'(t₀) are given at this instant. */}
+              <span>{second ? L.ui.snapshotTSecond : L.ui.snapshotT}</span>
               <input value={snapshotTText} onChange={(e) => setSnapshotTText(e.target.value)} style={inputStyle} name="snapshotT" inputMode="decimal" />
             </label>
           ) : null}
@@ -731,7 +747,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <span>{L.ui.equalScale}</span>
             </label>{" "}
             <Info label={L.ui.details} data-info="equal-scale">
-              {fill(L.ui.equalScaleDetail, { hv })}
+              {fill(L.ui.equalScaleDetail, { hv, vv })}
             </Info>
           </div>
           {/* Initial value: (t0, y0) on a first-order picture, (x0, y0) on a planar one; Enter in either field adds too. */}
@@ -786,13 +802,13 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                 <select value={queryKindShown} onChange={(e) => setQueryKind(e.target.value as UiQueryKind)} style={inputStyle} name="queryKind" data-query-kind>
                   {queryKinds.map((k) => (
                     <option key={k} value={k}>
-                      {k} =
+                      {queryKindName(variables, k)} =
                     </option>
                   ))}
                 </select>
               </label>
               <label style={labelStyle}>
-                <span>{queryKindShown}</span>
+                <span>{queryKindName(variables, queryKindShown)}</span>
                 <input value={queryValueText} onChange={(e) => setQueryValueText(e.target.value)} onKeyDown={queryOnEnter} style={inputStyle} inputMode="decimal" name="queryValue" data-query-value />
               </label>
               <button type="button" onClick={runQuery} style={buttonStyle} disabled={compiled.error !== null || selectedStart === null} data-query-run>
@@ -877,6 +893,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
                 {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
                   hv,
+                  vv,
                   xMin: formatNumber(viewport.box.x.min, 3),
                   xMax: formatNumber(viewport.box.x.max, 3),
                   yMin: formatNumber(viewport.box.y.min, 3),
@@ -897,13 +914,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               equilibria list give way to the snapshot note. */}
           {scene?.timeDependent ? (
             <p role="status" data-time-dependent style={{ margin: "12px 0 0", color: "#92400e" }}>
-              <FoldedLine {...timeDependentFolded(L, scene.timeDependent.snapshotT)} label={L.ui.details} data-info="time-dependent" />
+              <FoldedLine {...timeDependentFolded(L, scene.timeDependent.snapshotT, second)} label={L.ui.details} data-info="time-dependent" />
             </p>
           ) : null}
           {scene?.box && !scene.timeDependent ? (
             <p style={{ margin: "12px 0 0", color: "#52606d", fontSize: 12 }} data-features-box>
               {fill(L.ui.featuresBox, {
                 hv,
+                vv,
                 xMin: formatNumber((scene.featuresBox ?? scene.box).x.min, 3),
                 xMax: formatNumber((scene.featuresBox ?? scene.box).x.max, 3),
                 yMin: formatNumber((scene.featuresBox ?? scene.box).y.min, 3),
@@ -914,7 +932,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </Info>
             </p>
           ) : null}
-          {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} /> : null}
+          {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} /> : null}
           {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
           {scene && lastGroup ? (
             <p style={{ margin: "8px 0 0", color: "#52606d" }} data-last-trajectory>
@@ -946,10 +964,13 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
     ...(run.nonUnique ? { nonUnique: true } : {}),
   }));
   const note = queryNoteText(view.note, L);
+  // A second-order picture names its coordinates: the start is (x, x') = (…) and a target on the
+  // vertical coordinate reads x' = … (the kernel's y is the velocity).
+  const second = variables === "second";
   return (
     <section style={{ marginTop: 14 }} data-query-result data-query-note={view.note}>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.querySolution}</h2>
-      <p style={{ margin: "0 0 6px" }}>{fill(L.ui.queryHeader, { start: formatPoint(run.start), target: queryTargetText(view, L) })}</p>
+      <p style={{ margin: "0 0 6px" }}>{fill(L.ui.queryHeader, { start: pointText(L, run.start, second), target: queryTargetText(view, L, second) })}</p>
       {view.hits.length ? (
         <ul style={{ margin: "0 0 6px", paddingLeft: 20 }}>
           {view.hits.map((hit, i) => (
@@ -974,7 +995,8 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
   );
 }
 
-function EquilibriaList({ scene, L }: { scene: Scene; L: LabelTable }) {
+/** The equilibria of a planar picture; on a second-order one (`second`) every point reads (x, x') = (…). */
+function EquilibriaList({ scene, L, second }: { scene: Scene; L: LabelTable; second: boolean }) {
   const eq = scene.equilibria ?? [];
   return (
     <section style={{ marginTop: 14 }}>
@@ -991,10 +1013,10 @@ function EquilibriaList({ scene, L }: { scene: Scene; L: LabelTable }) {
             <FoldedLine
               short={
                 <>
-                  <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}
+                  <strong>{pointText(L, p.at, second)}</strong> {L.classification[p.classification]}
                 </>
               }
-              detail={equilibriumDetail(L, p)}
+              detail={equilibriumDetail(L, p, second)}
               label={L.ui.details}
               data-info="equilibrium"
             >

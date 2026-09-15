@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { QueryHit, QueryNote } from "./core/query";
 import { labels } from "./labels";
 import { queryNoteText } from "./labels-query";
-import { errorDigits, kernelQueryKind, parseQueryValue, queryHitText, queryKindsFor, roundToError, selectedTrajectoryIndex, trajectoryOptionText } from "./query-panel";
+import { errorDigits, kernelQueryKind, parseQueryValue, queryHitText, queryKindName, queryKindsFor, roundToError, selectedTrajectoryIndex, trajectoryOptionText } from "./query-panel";
 
 describe("student kind -> kernel kind", () => {
   it("first-order picture: t is the horizontal coordinate (kernel x), y is y, x does not exist", () => {
@@ -17,6 +17,16 @@ describe("student kind -> kernel kind", () => {
     expect(kernelQueryKind("xy", "t")).toBe("time");
     expect(kernelQueryKind("xy", "x")).toBe("x");
     expect(kernelQueryKind("xy", "y")).toBe("y");
+  });
+
+  it("[P1] second-order picture: the kinds are t, x and the velocity, shown as x' and mapped to the kernel's y", () => {
+    expect(queryKindsFor("second")).toEqual(["t", "x", "y"]);
+    expect(queryKindsFor("second").map((k) => queryKindName("second", k))).toEqual(["t", "x", "x'"]);
+    expect(kernelQueryKind("second", "t")).toBe("time");
+    expect(kernelQueryKind("second", "x")).toBe("x");
+    expect(kernelQueryKind("second", "y")).toBe("y");
+    // The other pictures show the kind as it is.
+    for (const v of ["xy", "ty"] as const) for (const k of queryKindsFor(v)) expect(queryKindName(v, k)).toBe(k);
   });
 });
 
@@ -98,6 +108,16 @@ describe("queryHitText", () => {
     const h = hit(2, 2, 7.389056, 0, 0.00074);
     expect(queryHitText(h, "ty", labels("en"))).toBe("t = 2.00000, y = 7.38906 (±7.4e-4)");
     expect(queryHitText(h, "ty", labels("zh"))).toBe("t = 2.00000，y = 7.38906（±7.4e-4）");
+  });
+
+  it("[P1] second-order picture: the same numbers as a planar hit, but the second coordinate is named x', never y", () => {
+    // A time target (time error 0): x = cos(pi) = -1 and x' = -sin(pi) ~ 0 for x'' + x = 0 from (1, 0).
+    // Position error 1.1e-5: below 1e-3 it prints in exponent form, and its last digit is the 6th decimal.
+    const h = hit(3.141593, -1, 0.0000002, 0, 1.1e-5);
+    expect(queryHitText(h, "second", labels("en"))).toBe("t = 3.141593, x = -1.000000, x' = 0.000000 (±1.1e-5)");
+    expect(queryHitText(h, "second", labels("zh"))).toBe("t = 3.141593，x = -1.000000，x' = 0.000000（±1.1e-5）");
+    expect(queryHitText(h, "xy", labels("en"))).toBe("t = 3.141593, x = -1.000000, y = 0.000000 (±1.1e-5)");
+    for (const locale of ["en", "zh"] as const) expect(queryHitText(h, "second", labels(locale))).not.toMatch(/(^|[^A-Za-z'])y/);
   });
 });
 

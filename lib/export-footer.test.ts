@@ -93,15 +93,21 @@ describe("exportFooterText", () => {
     expect(exportFooterText({ ...scene, timeDependent: { snapshotT: 1.5, maxRelDeviation: 1 } }, viewport, "en", ORIGIN)).toContain("t = 1.5");
   });
 
-  it("a second-order scene shows the student's equation, not the reduced system", () => {
+  it("a second-order scene shows the student's equation, not the reduced system, and names its ranges x and x' (round P)", () => {
     const scene: Scene = {
       kind: "analyze_system",
       locale: "en",
-      system: { f: "y", g: "-x" },
-      secondOrder: { equation: "y'' + y = 0", reduced: { f: "y", g: "-x" } },
-      box: { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } },
+      system: { f: "y", g: "-x - 0.5 * y" },
+      secondOrder: { equation: "x'' + 0.5*x' + x = 0", reduced: { f: "v", g: "-x - 0.5 * v" } },
+      box: { x: { min: -2, max: 2 }, y: { min: -1, max: 1 } },
     };
-    expect(sceneEquationText(scene, "en")).toBe("y'' + y = 0");
+    expect(sceneEquationText(scene, "en")).toBe("x'' + 0.5*x' + x = 0");
+    const viewport = { box: scene.box!, width: 400, height: 200 };
+    const text = exportFooterText(scene, viewport, "en", ORIGIN);
+    expect(text).toBe(`x'' + 0.5*x' + x = 0${FOOTER_SEPARATOR}x ∈ [-2, 2], x' ∈ [-1, 1]${FOOTER_SEPARATOR}${ORIGIN}`);
+    expect(exportFooterText(scene, viewport, "zh", ORIGIN)).toBe(`x'' + 0.5*x' + x = 0${FOOTER_SEPARATOR}x ∈ [-2, 2]，x' ∈ [-1, 1]${FOOTER_SEPARATOR}${ORIGIN}`);
+    // Nothing the student did not write: no lone y anywhere in the footer.
+    for (const locale of ["en", "zh"] as const) expect(exportFooterText(scene, viewport, locale, ORIGIN)).not.toMatch(/(^|[^A-Za-z'])y(?![A-Za-z])/);
   });
 
   it("an empty origin is left out rather than leaving a dangling separator", () => {

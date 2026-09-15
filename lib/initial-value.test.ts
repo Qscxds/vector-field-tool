@@ -39,4 +39,9 @@ describe("initialValueNames", () => {
     expect(initialValueNames("ty")).toEqual({ first: "t₀", second: "y₀" });
     expect(initialValueNames("xy")).toEqual({ first: "x₀", second: "y₀" });
   });
+
+  it("[P1] reads x(t₀), x'(t₀) on a second-order picture: the second value is the initial velocity, never a y", () => {
+    expect(initialValueNames("second")).toEqual({ first: "x(t₀)", second: "x'(t₀)" });
+    for (const name of Object.values(initialValueNames("second"))) expect(name).not.toMatch(/y/);
+  });
 });

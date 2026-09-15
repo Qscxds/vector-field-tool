@@ -39,6 +39,14 @@ describe("encodeState", () => {
     expect(encodeState(s)).toBe("m=second&eq=x''+%2B+0.5*x'+%2B+x+%3D+0");
   });
 
+  it("[P1] second order: the vertical range is the x' range and is written xpmin/xpmax, never ymin/ymax", () => {
+    const s = withDefaults({ mode: "second", eq: "x'' = -sin(x)", box: { xMin: -7, xMax: 7, yMin: -3.5, yMax: 3.5 } });
+    expect(encodeState(s)).toBe("m=second&eq=x''+%3D+-sin(x)&xmin=-7&xmax=7&xpmin=-3.5&xpmax=3.5");
+    // The other modes keep ymin/ymax.
+    expect(encodeState(withDefaults({ box: { xMin: -3, xMax: 3, yMin: -1, yMax: 1 } }))).toBe("ymin=-1&ymax=1");
+    expect(encodeState(withDefaults({ mode: "first", g: "y", box: { xMin: -3, xMax: 3, yMin: -1, yMax: 1 } }))).toBe("m=first&g=y&ymin=-1&ymax=1");
+  });
+
   it("view options only when they differ from the defaults", () => {
     expect(encodeState(withDefaults({ equalScale: false }))).toBe("eqs=0");
     expect(encodeState(withDefaults({ density: 30 }))).toBe("d=30");
@@ -144,6 +152,28 @@ describe("decodeState validation (a public link is an attack surface)", () => {
   it("a second-order eq must reduce; x'' must appear linearly", () => {
     expect(reasons(decodeState("m=second&eq=x''^2+%3D+x", D).problems)).toEqual(["eq:invalidExpression"]);
     expect(decodeState("m=second&eq=-sin(x)", D).state.eq).toBe("-sin(x)");
+  });
+
+  it("[P1] second order reads xpmin/xpmax, still reads a pre-P link's ymin/ymax silently, and prefers the new names; other modes report xpmin/xpmax as unused", () => {
+    const fresh = decodeState("m=second&eq=-sin(x)&xpmin=-3.5&xpmax=3.5", D);
+    expect(fresh.problems).toEqual([]);
+    expect(fresh.state.box).toEqual({ xMin: -3, xMax: 3, yMin: -3.5, yMax: 3.5 });
+    const old = decodeState("m=second&eq=-sin(x)&ymin=-2&ymax=2", D);
+    expect(old.problems).toEqual([]);
+    expect(old.state.box).toEqual({ xMin: -3, xMax: 3, yMin: -2, yMax: 2 });
+    // Both given: the new names win, no notice (the old ones are simply ignored).
+    const both = decodeState("m=second&eq=-sin(x)&xpmin=-1&xpmax=1&ymin=-2&ymax=2", D);
+    expect(both.problems).toEqual([]);
+    expect(both.state.box).toEqual({ xMin: -3, xMax: 3, yMin: -1, yMax: 1 });
+    // A bad value under the new name is reported under that name; an inverted range too.
+    expect(reasons(decodeState("m=second&eq=-sin(x)&xpmin=abc", D).problems)).toEqual(["xpmin:notANumber"]);
+    expect(reasons(decodeState("m=second&eq=-sin(x)&xpmin=2&xpmax=1", D).problems)).toEqual(["xpmin:invertedRange", "xpmax:invertedRange"]);
+    // Re-encoding a pre-P link writes the new names.
+    expect(encodeState(old.state)).toBe("m=second&eq=-sin(x)&xpmin=-2&xpmax=2");
+    // Elsewhere the x' range does not exist.
+    expect(reasons(decodeState("xpmin=-1&xpmax=1", D).problems)).toEqual(["xpmin:unusedInMode", "xpmax:unusedInMode"]);
+    expect(reasons(decodeState("m=first&g=y&xpmin=-1", D).problems)).toEqual(["xpmin:unusedInMode"]);
+    expect(decodeState("xpmin=-1&xpmax=1", D).state.box).toEqual(D.box);
   });
 
   it("an expression over 200 chars is too long; a query over 4096 chars is ignored as a whole", () => {

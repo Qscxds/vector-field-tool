@@ -8,7 +8,9 @@
  * Student's kind -> kernel kind: on a first-order picture (variables "ty") the student's t is the
  * horizontal coordinate of the reduced planar system, so "t =" is the kernel's coordinate kind
  * "x" and there is no time kind at all ("x =" is not offered and rejected here); on a planar
- * picture "t =" is the kernel's absolute time and "x =", "y =" are the coordinates.
+ * picture "t =" is the kernel's absolute time and "x =", "y =" are the coordinates. A
+ * second-order picture (variables "second") is a planar one whose second coordinate is x': the
+ * kind is still the kernel's "y", but the student reads and types it as x' (round P).
  */
 import { timeUncertainty, type QueryHit, type QueryKind } from "./core/query";
 import type { Vec2 } from "./core/types";
@@ -16,11 +18,16 @@ import { parseDecimal, type InitialValueReason } from "./initial-value";
 import { fill, formatNumber, type LabelTable } from "./labels";
 
 export type UiQueryKind = "t" | "x" | "y";
-export type PanelVariables = "xy" | "ty";
+export type PanelVariables = "xy" | "ty" | "second";
 
-/** The constraint kinds the panel offers, in display order. */
+/** The constraint kinds the panel offers, in display order (the kind "y" of a second-order picture is shown as x'). */
 export function queryKindsFor(variables: PanelVariables): UiQueryKind[] {
   return variables === "ty" ? ["t", "y"] : ["t", "x", "y"];
+}
+
+/** The name the student sees for a kind: the kind itself, except the velocity x' of a second-order picture. */
+export function queryKindName(variables: PanelVariables, kind: UiQueryKind): string {
+  return variables === "second" && kind === "y" ? "x'" : kind;
 }
 
 /** The kernel's kind for the student's; throws RangeError for "x" on a first-order picture (not offered). */
@@ -71,11 +78,12 @@ export function roundToError(value: number, error: number): string {
 
 /**
  * One hit as the student reads it. First-order picture: "t = <x>, y = <y> (±<position>)" (the
- * hit's horizontal coordinate IS t); planar: "t = <t>, x = <x>, y = <y> (±<position>)". The time
- * carries its own bracket " (±<t error>)" when it is not exact (a coordinate crossing); a time
- * target lands on t exactly and shows none. Coordinates are rounded to the position error, the
- * time to its DISPLAYED uncertainty (lib/core/query timeUncertainty: at least the position error
- * over the speed, never the bare Brent bracket).
+ * hit's horizontal coordinate IS t); planar: "t = <t>, x = <x>, y = <y> (±<position>)";
+ * second order: "t = <t>, x = <x>, x' = <y> (±<position>)". The time carries its own bracket
+ * " (±<t error>)" when it is not exact (a coordinate crossing); a time target lands on t exactly
+ * and shows none. Coordinates are rounded to the position error, the time to its DISPLAYED
+ * uncertainty (lib/core/query timeUncertainty: at least the position error over the speed, never
+ * the bare Brent bracket).
  */
 export function queryHitText(hit: QueryHit, variables: PanelVariables, L: LabelTable): string {
   const position = errorDigits(hit.error.position);
@@ -85,7 +93,7 @@ export function queryHitText(hit: QueryHit, variables: PanelVariables, L: LabelT
   const tUncertainty = timeUncertainty(hit);
   const tError = errorDigits(tUncertainty);
   const t = tUncertainty > 0 ? `${roundToError(hit.t, tUncertainty)}${fill(L.ui.queryTimeError, { error: tError.text })}` : roundToError(hit.t, hit.error.position);
-  return fill(L.ui.queryHitSystem, { t, x, y, error: position.text });
+  return fill(variables === "second" ? L.ui.queryHitSecond : L.ui.queryHitSystem, { t, x, y, error: position.text });
 }
 
 /** The option text of a kept trajectory in the panel's <select>: its start point. */

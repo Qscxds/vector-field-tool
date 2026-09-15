@@ -73,11 +73,11 @@ const calls = [
     "analyze_second_order",
     { equation: "x'' + 0.5*x' + x = 0" },
     (r) =>
-      r.structuredContent?.secondOrder?.reduced?.f === "y" &&
+      r.structuredContent?.secondOrder?.reduced?.f === "v" &&
       r.structuredContent.system?.f === "y" &&
       r.structuredContent.equilibria?.length === 1 &&
       r.structuredContent.equilibria[0].classification === "stable_spiral" &&
-      /^Second-order equation x'' \+ 0\.5\*x' \+ x = 0: with y = x' it becomes the system x' = y, y' = /.test(r.content?.[0]?.text ?? ""),
+      /^Second-order equation x'' \+ 0\.5\*x' \+ x = 0: let v = x'\. Then x' = v, v' = /.test(r.content?.[0]?.text ?? ""),
   ],
   // dy/dt = y from (0, 1): y(2) = e^2 = 7.389056 from the numerical solution, one hit, note ok.
   [

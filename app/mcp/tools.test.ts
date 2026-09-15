@@ -440,8 +440,7 @@ describe("analyze_second_order", () => {
     expect(r.scene.system?.f).toBe("y");
     expect(r.scene.system?.variables).toBeUndefined();
     expect(r.scene.secondOrder).toEqual({ equation: "x'' + x = 0", reduced: { f: "v", g: r.scene.system!.g } });
-    expect(r.text.startsWith(`Second-order equation x'' + x = 0: with y = x' it becomes the system x' = y, y' = ${r.scene.system!.g}.`)).toBe(true);
-    expect(r.text.split("\n")[1]).toMatch(/^System x' = y, y' = /);
+    expect(r.text.startsWith(`Second-order equation x'' + x = 0: let v = x'. Then x' = v, v' = ${r.scene.system!.g}.`)).toBe(true);
     expect(r.scene.equilibria).toHaveLength(1);
     const [origin] = r.scene.equilibria!;
     expect(Math.hypot(origin.at.x, origin.at.y)).toBeLessThan(1e-9);
@@ -506,7 +505,7 @@ describe("analyze_second_order", () => {
     const r = await call("analyze_second_order", { equation: "x'' + x = 0", locale: "zh" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.locale).toBe("zh");
-    expect(r.text.startsWith(`二阶方程 x'' + x = 0：令 y = x'，降阶为系统 x' = y，y' = ${r.scene.secondOrder!.reduced.g}。`)).toBe(true);
+    expect(r.text.startsWith(`二阶方程 x'' + x = 0：令 v = x'，则 x' = v，v' = ${r.scene.secondOrder!.reduced.g}。`)).toBe(true);
     expect(r.text).toContain("中心或弱螺旋");
   });
 
@@ -592,7 +591,7 @@ describe("analyze_second_order", () => {
     expect(at0.scene.equilibria).toBeUndefined();
     expect(at0.scene.timeDependent?.snapshotT).toBe(0);
     expect(at0.scene.timeDependent!.maxRelDeviation).toBeGreaterThan(0.19);
-    expect(at0.text.startsWith("Second-order equation x'' = -x + sin(t): with y = x' it becomes the system x' = y, y' = ")).toBe(true);
+    expect(at0.text.startsWith("Second-order equation x'' = -x + sin(t): let v = x'. Then x' = v, v' = ")).toBe(true);
     expect(at0.text).toContain(labels("en").tool.timeDependent.slice(0, 20));
     expect(at0.text).not.toMatch(/\n1\. /);
     expect(at0.text).not.toMatch(/eigenvalue/i);

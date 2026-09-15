@@ -77,6 +77,41 @@ describe("label tables", () => {
     for (const locale of LOCALES) expect(LABELS[locale].ui.lhsInExpression, locale).toMatch(/dy\/dt/);
   });
 
+  it("[P1] second-order labels speak of t, x and x' only: no lone y (the kernel's name for x') in either language", () => {
+    const secondOrderOnly = (L: (typeof LABELS)["zh"]) => [
+      L.ui.typeSecond, L.ui.secondOrderLabel, L.ui.secondOrderReduced, L.ui.secondOrderUnknownSymbol,
+      L.ui.secondOrderOtherPrime, L.ui.secondOrderNotAffine, L.ui.secondOrderZeroCoefficient, L.ui.secondOrderNoEquation,
+      L.ui.xpMin, L.ui.xpMax, L.ui.snapshotTSecond, L.ui.queryHitSecond, L.ui.timeDependentNoteSecond, L.ui.timeDependentShortSecond,
+      L.tool.secondOrderReduced, L.tool.secondOrderHeader, L.tool.timeDependentSecond, L.tool.pointSecond, L.tool.queryHeaderSecond,
+      L.tool.queryTargetXp, L.tool.queryHitSecond,
+    ];
+    for (const locale of LOCALES) {
+      for (const text of secondOrderOnly(LABELS[locale])) {
+        // Placeholders such as {y} are internal names; "dy/dt" is not a y variable either.
+        const bare = text.replace(/\{\w+\}/g, "").replace(/dy\/dt/g, "");
+        expect(bare, `${locale}: ${text}`).not.toMatch(/(^|[^A-Za-z0-9_一-鿿])y(?![A-Za-z0-9_])/);
+      }
+      // The reduction names v = x' and the axes x and x'.
+      expect(LABELS[locale].ui.secondOrderReduced).toMatch(/v = x'/);
+      expect(LABELS[locale].tool.secondOrderReduced).toMatch(/v = x'/);
+      expect(LABELS[locale].ui.typeSecond).toContain("F(t, x, x')");
+      // The two labels that name y do so to say it has no meaning here.
+      expect(LABELS[locale].ui.secondOrderYSymbol).toMatch(/y/);
+      expect(LABELS[locale].ui.syntaxHintSecondOrder).toMatch(/F\(t, x, x'\)|cos\(t\)/);
+    }
+    expect(LABELS.en.ui.secondOrderYSymbol).toContain("y has no meaning here");
+    expect(LABELS.zh.ui.secondOrderYSymbol).toContain("y 在这里没有含义");
+    expect(LABELS.en.ui.syntaxHintSecondOrder).toContain("y has no meaning here");
+    expect(LABELS.zh.ui.syntaxHintSecondOrder).toContain("y 在这里没有含义");
+    // The vertical-name placeholder {vv} exists wherever a range or an axis pair is named.
+    for (const locale of LOCALES) {
+      const L = LABELS[locale];
+      for (const key of ["yRangeError", "featuresBox", "equalScaleDetail", "shownRangeEqual", "shownRangeFilled", "exportRange"] as const) {
+        expect(L.ui[key], `${locale}.${key}`).toContain("{vv}");
+      }
+    }
+  });
+
   it("the features-box line is the range only; its detail (behind the info toggle) names both the entered range (home view) and the visible range (after zoom/pan) [M]", () => {
     for (const locale of LOCALES) {
       const L = LABELS[locale];

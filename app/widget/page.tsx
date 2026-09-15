@@ -17,10 +17,11 @@ import { FoldedLine, Info } from "@/components/Info";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useCoarsePointer } from "@/components/useCoarsePointer";
+import { coordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { sceneEquationText } from "@/lib/export-footer";
-import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
 import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
@@ -198,7 +199,7 @@ export default function WidgetPage() {
           ) : null}
           <p style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }} data-shown-range>
             {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
-              hv: horizontalName(live.scene),
+              ...coordinateNames(live.scene),
               xMin: formatNumber(live.viewport.box.x.min, 3),
               xMax: formatNumber(live.viewport.box.x.max, 3),
               yMin: formatNumber(live.viewport.box.y.min, 3),
@@ -212,7 +213,7 @@ export default function WidgetPage() {
               <span>{L.ui.equalScale}</span>
             </label>{" "}
             <Info label={L.ui.details} data-info="equal-scale">
-              {fill(L.ui.equalScaleDetail, { hv: horizontalName(live.scene) })}
+              {fill(L.ui.equalScaleDetail, coordinateNames(live.scene))}
             </Info>
           </div>
           {/* Undo the last trajectory action (a click that kept or removed a curve), as in the web shell. */}
@@ -241,25 +242,23 @@ export default function WidgetPage() {
   );
 }
 
-/** Student-facing name of the horizontal coordinate: t for first-order scenes (system.variables "ty"), else x. */
-function horizontalName(scene: Scene): "x" | "t" {
-  return scene.system?.variables === "ty" ? "t" : "x";
-}
-
 function SceneSummary({ scene }: { scene: Scene }) {
   const L = labels(scene.locale ?? "en");
+  // A second-order scene: the kernel's y is the velocity x' and never shows (round P).
+  const second = Boolean(scene.secondOrder);
   // Every line is a short text with optional detail behind the info toggle (display only: the
   // Scene and the tool summary keep the full sentences).
   const items: (string | Folded)[] = [];
   // Non-autonomous: the snapshot note replaces the features-box line (nothing was computed for a range).
-  if (scene.timeDependent) items.push(timeDependentFolded(L, scene.timeDependent.snapshotT));
+  if (scene.timeDependent) items.push(timeDependentFolded(L, scene.timeDependent.snapshotT, second));
   const fb = scene.box && !scene.timeDependent && (scene.kind === "analyze_system" || scene.kind === "analyze_first_order") ? scene.featuresBox ?? scene.box : null;
   const featuresBoxLine = fb
-    ? fill(L.ui.featuresBox, { hv: horizontalName(scene), xMin: formatNumber(fb.x.min, 3), xMax: formatNumber(fb.x.max, 3), yMin: formatNumber(fb.y.min, 3), yMax: formatNumber(fb.y.max, 3) })
+    ? fill(L.ui.featuresBox, { ...coordinateNames(scene), xMin: formatNumber(fb.x.min, 3), xMax: formatNumber(fb.x.max, 3), yMin: formatNumber(fb.y.min, 3), yMax: formatNumber(fb.y.max, 3) })
     : null;
-  // A second-order scene shows the reduction step (the equation the student gave, then x' = y, y' = g).
+  // A second-order scene shows the reduction step (the equation the student gave, then let v = x':
+  // x' = v, v' = g); the kernel's x' = y, y' = g form is never printed for it.
   if (scene.secondOrder) items.push(fill(L.tool.secondOrderReduced, { equation: scene.secondOrder.equation, g: scene.secondOrder.reduced.g }));
-  if (scene.system) {
+  else if (scene.system) {
     items.push(scene.firstOrderSpec || scene.firstOrder ? sceneEquationText(scene, scene.locale ?? "en") : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
@@ -328,10 +327,10 @@ function SceneSummary({ scene }: { scene: Scene }) {
               <FoldedLine
                 short={
                   <>
-                    <strong>{formatPoint(p.at)}</strong> {L.classification[p.classification]}
+                    <strong>{pointText(L, p.at, second)}</strong> {L.classification[p.classification]}
                   </>
                 }
-                detail={equilibriumDetail(L, p)}
+                detail={equilibriumDetail(L, p, second)}
                 label={L.ui.details}
                 data-info="equilibrium"
               >

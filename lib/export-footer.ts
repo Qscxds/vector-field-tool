@@ -7,6 +7,7 @@
  * entered range differs from what the viewport shows (equal-scale margin, zoom, pan) BOTH are
  * printed, labelled: "entered t ∈ [0, 6], y ∈ [-0.5, 2] · shown t ∈ [-0.3, 6.3], y ∈ [-0.5, 2]".
  */
+import { coordinateNames } from "@/lib/coordinate-names";
 import type { Box } from "@/lib/core/types";
 import { fill, labels, type Locale } from "@/lib/labels";
 import type { Viewport } from "@/lib/render/viewport";
@@ -39,13 +40,15 @@ export function sceneEquationText(scene: Scene, locale: Locale): string {
  */
 export function exportFooterText(scene: Scene, viewport: Viewport, locale: Locale, origin: string, enteredBox?: Box): string {
   const L = labels(locale);
-  const hv = scene.system?.variables === "ty" ? "t" : "x";
+  // (t, y) on a first-order picture, (x, y) on a planar one, (x, x') on a second-order one.
+  const { hv, vv } = coordinateNames(scene);
   const parts: string[] = [];
   const equation = sceneEquationText(scene, locale);
   if (equation) parts.push(equation);
   const range = (box: Box) =>
     fill(L.ui.exportRange, {
       hv,
+      vv,
       xMin: formatSignificant(box.x.min),
       xMax: formatSignificant(box.x.max),
       yMin: formatSignificant(box.y.min),

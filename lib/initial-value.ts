@@ -12,8 +12,14 @@ export type InitialValueReason = "empty" | "notANumber" | "outOfRange";
 
 export type InitialValueResult = { ok: true; point: Vec2 } | { ok: false; reason: InitialValueReason; field: "first" | "second" };
 
-/** Names of the two coordinates as the student reads them: (t₀, y₀) for a first-order picture, (x₀, y₀) for a planar one. */
-export function initialValueNames(variables: "xy" | "ty"): { first: string; second: string } {
+/**
+ * Names of the two coordinates as the student reads them: (t₀, y₀) for a first-order picture,
+ * (x₀, y₀) for a planar one, and x(t₀), x'(t₀) for a second-order equation (round P: the second
+ * value is the initial velocity, and t₀ is the picture's snapshot time, which matters when the
+ * equation is non-autonomous).
+ */
+export function initialValueNames(variables: "xy" | "ty" | "second"): { first: string; second: string } {
+  if (variables === "second") return { first: "x(t₀)", second: "x'(t₀)" };
   return variables === "ty" ? { first: "t₀", second: "y₀" } : { first: "x₀", second: "y₀" };
 }
 

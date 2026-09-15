@@ -57,7 +57,9 @@ export type LabelTable = {
     | "identicallyZero"
     | "queryHeaderFirst" | "queryHeaderSystem" | "queryTargetT" | "queryTargetX" | "queryTargetY"
     | "queryHitFirst" | "queryHitSystem" | "queryAccuracy" | "queryNotReached" | "queryStoppedBefore"
-    | "queryMoreBeyond" | "queryTargetIsStart" | "queryLeg" | "stoppedNonAutonomous" | "refineCapped",
+    | "queryMoreBeyond" | "queryTargetIsStart" | "queryLeg" | "stoppedNonAutonomous" | "refineCapped"
+    // Second-order mode (round P): the student's problem has t, x and x'; the kernel's y never shows.
+    | "secondOrderHeader" | "timeDependentSecond" | "pointSecond" | "queryHeaderSecond" | "queryTargetXp" | "queryHitSecond",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -93,7 +95,9 @@ export type LabelTable = {
     | "clickToRemove" | "holdToRemove" | "undo"
     | "initialValue" | "addSolution" | "initialValueEmpty" | "initialValueNotANumber" | "initialValueOutOfRange"
     | "querySolution" | "queryTrajectory" | "queryNoTrajectory" | "queryCondition" | "queryRun" | "queryHeader"
-    | "queryHitFirst" | "queryHitSystem" | "queryTimeError" | "queryTooLong",
+    | "queryHitFirst" | "queryHitSystem" | "queryTimeError" | "queryTooLong"
+    // Second-order mode (round P): the vertical coordinate is x', the start time t₀ is real.
+    | "xpMin" | "xpMax" | "secondOrderYSymbol" | "snapshotTSecond" | "queryHitSecond" | "timeDependentNoteSecond" | "timeDependentShortSecond",
     string
   >;
 };
@@ -207,7 +211,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
       timeDependent: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}采样场是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场本工具不做这项分析，因此没有给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
       timeDependentTrajectory: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}{traced}从同一点在另一个时刻出发会得到不同的曲线。",
-      secondOrderReduced: "二阶方程 {equation}：令 y = x'，降阶为系统 x' = y，y' = {g}。",
+      secondOrderReduced: "二阶方程 {equation}：令 v = x'，则 x' = v，v' = {g}。",
       timeDependenceMeasured: "在观察范围内取若干时刻采样，向量场的最大相对变化为 {deviation}。",
       timeDependenceNoChange: "在观察范围内取若干时刻采样时没有测到变化（含 t 的项可能在这些时刻恰好为零或相互抵消），但 t 确实出现在方程中，因此仍按非自治系统处理。",
       timeDependenceDomainMoves: "向量场在部分采样时刻有定义、在其他时刻无定义：它的定义域随 t 变化。",
@@ -239,6 +243,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryLeg: "{direction}：积到 t = {tEnd}，终点 {end}，{status}。",
       stoppedNonAutonomous: "在该时刻速度降到接近零（低于起始速度的 1e-8）后停止；这是非自治系统，这里不是平衡点：向量场在这一点会随 t 变化",
       refineCapped: "变号搜索达到了单元数上限：有些 f 和 g 同时变号的单元没有搜索，可能漏掉平衡点。",
+      secondOrderHeader: "相平面：横轴 x ∈ [{xMin}, {xMax}]，纵轴 x' ∈ [{xpMin}, {xpMax}]。",
+      timeDependentSecond: "这是非自治方程：右端 F 含 t，相平面里的方向场随 t 变化。{evidence}图上画的是 t = {t} 时刻的快照。平衡点（即常数解 x ≡ c，物体静止）与线性化稳定性只对自治方程有定义，因此这里不给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
+      pointSecond: "(x, x') = {point}",
+      queryHeaderSecond: "方程 {equation}，初值 x({t0}) = {x0}、x'({t0}) = {xp0}，求 {target}。",
+      queryTargetXp: "x' = {value}",
+      queryHitSecond: "t = {t}（±{tError}）：(x, x') = ({x}, {y})（±{error}）",
     },
     ui: {
       title: "向量场 / 相图",
@@ -285,9 +295,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       localComputeUnavailable: "本地重算不可用（表达式无法在此环境编译），显示服务器给出的静态图；缩放、平移和悬停已禁用。",
       rangeError: "范围必须是四个有限的数字。",
       xRangeError: "{hv} 范围无效：左端 {min} 必须小于右端 {max}。",
-      yRangeError: "y 范围无效：下端 {min} 必须小于上端 {max}。",
+      yRangeError: "{vv} 范围无效：下端 {min} 必须小于上端 {max}。",
       exprError: "表达式「{expr}」有问题：{message}",
-      featuresBox: "以下结果按 {hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}] 计算",
+      featuresBox: "以下结果按 {hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}] 计算",
       featuresBoxDetail: "复位时这是输入范围，缩放或平移后是可见范围。平衡点、常数解和方程类型都只在这个范围内扫描；结论依赖于所考察的范围。",
       leftFarBox: "轨线跑到输入范围的 20 倍以外后停止",
       tMin: "t 最小",
@@ -296,10 +306,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       xInFirstOrder: "一阶方程的自变量是 t（dy/dt = g(t, y)），请把 x 写成 t。",
       lhsInExpression: "只需输入方程的右端，「dy/dt =」这一部分是默认的。",
       equalScale: "等比",
-      equalScaleDetail: "{hv} 与 y 每单位像素相同，斜率可以从图上读出；范围会向一个方向扩大以填满画布。取消勾选后输入范围填满画布，两个方向的比例不同，图上的角度不再是真实斜率。",
+      equalScaleDetail: "{hv} 与 {vv} 每单位像素相同，斜率可以从图上读出；范围会向一个方向扩大以填满画布。取消勾选后输入范围填满画布，两个方向的比例不同，图上的角度不再是真实斜率。",
       equalScaleWarning: "横纵比例不同，图上的角度不代表真实斜率。",
-      shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}]（等比）",
-      shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}]（填满）",
+      shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}]（等比）",
+      shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}]（填满）",
       lhsInExpressionSystem: "只需输入方程的右端，「x' =」「y' =」这一部分是默认的。",
       towardT: "到 t = {t}，{status}",
       trajectorySides: "一侧：{first}；另一侧：{second}",
@@ -309,21 +319,28 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependentNote: "这是非自治系统：右端出现了 t，向量场随 t 变化，图上显示的是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场这里不做这项分析。悬停和点击得到的解曲线从 t = {t} 出发。",
       timeDependentShort: "非自治系统：t = {t} 时刻的快照，不做平衡点分析",
       snapshotT: "快照时刻 t",
-      typeSecond: "二阶方程 x'' = F(x, x')",
-      secondOrderLabel: "x'' = F(x, x')，或写成完整方程，例如 x'' + 0.5*x' + x = 0",
-      secondOrderReduced: "令 y = x'，降阶为系统 x' = y，y' = {g}。横轴是 x（位置），纵轴是 y = x'（速度）。",
-      syntaxHintSecondOrder: "语法：未知函数是 x，t 是时间；导数用直引号写成 x' 和 x''（例如 x'' + 0.5*x' + x = 0，或只写 x'' = F 的右端 F）。x'' 必须线性出现；这一点以及 x'' 的系数不为零，是在观察范围和一个固定方块内的若干采样点、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段 x''^2 项）检查不到。乘号要写出来（x*x'，不是 xx'），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
+      typeSecond: "二阶方程 x'' = F(t, x, x')",
+      secondOrderLabel: "x'' = F(t, x, x')，或写成完整方程，例如 x'' + 0.5*x' + x = 0",
+      secondOrderReduced: "令 v = x'，则 x' = v，v' = {g}。横轴是 x（位置），纵轴是 x'（速度）。",
+      syntaxHintSecondOrder: "语法：t 是自变量，未知函数是 x(t)，导数用直引号写成 x' 和 x''（x' 也可写成 v）；右端可以含 t，例如 x'' = -x + cos(t)。写完整方程（x'' + 0.5*x' + x = 0）或只写 x'' = F 的右端 F。y 在这里没有含义，会被拒绝。x'' 必须线性出现；这一点以及 x'' 的系数不为零，是在观察范围和一个固定方块内的若干采样点、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段 x''^2 项）检查不到。乘号要写出来（x*x'，不是 xx'），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
       singularitiesContinuum: "找到的方向场奇点排成一条线或一条曲线：方向很可能在整条曲线上都无定义，而不只是在孤立的点上；列表只给出其中的代表点。",
       secondOrderNotAffine: "x'' 必须线性出现，例如 x'' + 0.5*x' + x = 0 或 x'' = -sin(x)；x''^2、sin(x'') 之类无法降阶。",
       secondOrderZeroCoefficient: "x'' 的系数为零（至少在部分采样点和时刻上），方程无法解出 x''。请检查 x'' 是否真的出现，以及它的系数是否恒不为零。",
       secondOrderNoEquation: "请写成带 = 的方程（x'' + x = 0），或只写 x'' = F 的右端 F。",
       secondOrderDoubleEquals: "方程两边之间只用一个「=」（== 是比较运算）。",
       secondOrderTooManyEquals: "方程必须恰好包含一个「=」。",
-      secondOrderOtherPrime: "只有未知函数 x 可以带撇号：x' 表示 dx/dt，x'' 表示二阶导数。未知函数是 x，t 是时间。",
+      secondOrderOtherPrime: "只有未知函数 x 可以带撇号：x' 表示 dx/dt，x'' 表示二阶导数。未知函数是 x，t 是自变量。",
       secondOrderHigherDerivative: "只支持一阶和二阶导数 x' 与 x''；x''' 及更高阶导数无法降阶为平面系统。",
       secondOrderPlaceholderTyped: "xd 和 xdd 是内部名称；请用 x' 和 x'' 表示 x 的导数。",
       secondOrderUndefinedAtSamples: "方程在大多数用于检验的采样点上无定义（不是有限数），无法安全地降阶。",
-      secondOrderUnknownSymbol: "未知符号「{name}」。未知函数是 x，它的导数是 x'（dx/dt），二阶导数是 x''；t 是时间。允许的符号：x、x'、x''、t、pi、e。",
+      secondOrderUnknownSymbol: "未知符号「{name}」。未知函数是 x，它的导数是 x'（dx/dt，也可写成 v），二阶导数是 x''；t 是自变量。允许的符号：t、x、x'、x''、pi、e。",
+      secondOrderYSymbol: "二阶方程的变量是 t（自变量）、x 和 x'（dx/dt，也可写成 v）；y 在这里没有含义。请把 x 的导数写成 x'。",
+      xpMin: "x' 最小",
+      xpMax: "x' 最大",
+      snapshotTSecond: "t₀（快照时刻；初值和解曲线从这一时刻出发）",
+      queryHitSecond: "t = {t}，x = {x}，x' = {y}（±{error}）",
+      timeDependentNoteSecond: "这是非自治方程：右端 F 含 t，相平面里的方向场随 t 变化，图上显示的是 t = {t} 时刻的快照。平衡点（即常数解 x ≡ c，物体静止）与线性化稳定性只对自治方程有定义，这里不做这项分析。悬停和点击得到的解曲线从 t = {t} 出发。",
+      timeDependentShortSecond: "非自治方程：t = {t} 时刻的快照，不做平衡点分析",
       copyLink: "复制链接",
       copied: "已复制",
       copyLinkFallback: "无法访问剪贴板，请手动复制下面的链接：",
@@ -349,7 +366,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       secondOrderImplicitProduct: "「{name}」缺少乘号；乘号要写出来，例如 x*x'' 或 t*x''。",
       downloadPng: "下载 PNG",
       downloadFailed: "生成图片失败，请重试。",
-      exportRange: "{hv} ∈ [{xMin}, {xMax}]，y ∈ [{yMin}, {yMax}]",
+      exportRange: "{hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}]",
       exportSnapshot: "t = {t}",
       exportEntered: "输入范围 {range}",
       exportShown: "显示范围 {range}",
@@ -482,7 +499,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
       timeDependent: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} The sampled field is a snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; this tool does not attempt them for a time-dependent field, so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
       timeDependentTrajectory: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} {traced} Starting from the same point at another time would give a different curve.",
-      secondOrderReduced: "Second-order equation {equation}: with y = x' it becomes the system x' = y, y' = {g}.",
+      secondOrderReduced: "Second-order equation {equation}: let v = x'. Then x' = v, v' = {g}.",
       timeDependenceMeasured: "Sampled at several times inside the viewing box, its largest relative change is {deviation}.",
       timeDependenceNoChange: "At the several times sampled inside the viewing box no change was measured (the t term may vanish or cancel there), but t is present, so the system is treated as non-autonomous all the same.",
       timeDependenceDomainMoves: "The field is defined at some of the sampled times and undefined at others: its domain moves with t.",
@@ -514,6 +531,12 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryLeg: "{direction}: reached t = {tEnd}, end point {end}, {status}.",
       stoppedNonAutonomous: "stopped after the speed fell close to zero at that time (below 1e-8 of its initial value); for a non-autonomous system this is not an equilibrium: the field at that point changes with t",
       refineCapped: "The sign-change search hit its cell cap: some cells where both f and g change sign were not searched, so equilibria may be missing.",
+      secondOrderHeader: "Phase plane: x ∈ [{xMin}, {xMax}] horizontally, x' ∈ [{xpMin}, {xpMax}] vertically.",
+      timeDependentSecond: "This is a non-autonomous equation: t appears in F, so the direction field of the phase plane changes with t. {evidence} The picture is a snapshot at t = {t}. Equilibrium points (the constant solutions x ≡ c, the body at rest) and linearized stability are defined for autonomous equations only, so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
+      pointSecond: "(x, x') = {point}",
+      queryHeaderSecond: "Solution of {equation} with x({t0}) = {x0}, x'({t0}) = {xp0}, asked for {target}.",
+      queryTargetXp: "x' = {value}",
+      queryHitSecond: "t = {t} (±{tError}): (x, x') = ({x}, {y}) (±{error})",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -560,9 +583,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       localComputeUnavailable: "Local recomputation is unavailable (the expression could not be compiled here); showing the server's static picture. Zoom, pan and hover are disabled.",
       rangeError: "The range must be four finite numbers.",
       xRangeError: "Invalid {hv} range: the left end {min} must be smaller than the right end {max}.",
-      yRangeError: "Invalid y range: the lower end {min} must be smaller than the upper end {max}.",
+      yRangeError: "Invalid {vv} range: the lower end {min} must be smaller than the upper end {max}.",
       exprError: "Problem in the expression “{expr}”: {message}",
-      featuresBox: "Results for {hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
+      featuresBox: "Results for {hv} ∈ [{xMin}, {xMax}], {vv} ∈ [{yMin}, {yMax}]",
       featuresBoxDetail: "This is the entered range at the home view and the visible range after zooming or panning. Equilibria, constant solutions and equation types are scanned inside this range only; conclusions depend on the range examined.",
       leftFarBox: "stopped after running 20 times beyond the entered range",
       tMin: "t min",
@@ -571,10 +594,10 @@ export const LABELS: Record<Locale, LabelTable> = {
       xInFirstOrder: "In a first-order equation the independent variable is t (dy/dt = g(t, y)); write t instead of x.",
       lhsInExpression: "Enter only the right-hand side of the equation; the “dy/dt =” part is implied.",
       equalScale: "Equal scale",
-      equalScaleDetail: "The same pixels per unit for {hv} and y, so slopes can be read from the picture; the range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas, the two directions are scaled differently, and angles in the picture are no longer true slopes.",
+      equalScaleDetail: "The same pixels per unit for {hv} and {vv}, so slopes can be read from the picture; the range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas, the two directions are scaled differently, and angles in the picture are no longer true slopes.",
       equalScaleWarning: "Axes are not to the same scale: angles in the picture do not represent true slopes.",
-      shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}] (equal scale)",
-      shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}] (filled)",
+      shownRangeEqual: "{hv} ∈ [{xMin}, {xMax}], {vv} ∈ [{yMin}, {yMax}] (equal scale)",
+      shownRangeFilled: "{hv} ∈ [{xMin}, {xMax}], {vv} ∈ [{yMin}, {yMax}] (filled)",
       lhsInExpressionSystem: "Enter only the right-hand side of each equation; the “x' =” / “y' =” part is implied.",
       towardT: "to t = {t}, {status}",
       trajectorySides: "one side: {first}; other side: {second}",
@@ -584,21 +607,28 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependentNote: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t, and the picture shows the snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; they are not attempted for a time-dependent field. The solution curves you get by hovering and clicking start at t = {t}.",
       timeDependentShort: "Non-autonomous: snapshot at t = {t}, no equilibrium analysis",
       snapshotT: "Snapshot time t",
-      typeSecond: "Second-order equation x'' = F(x, x')",
-      secondOrderLabel: "x'' = F(x, x'), or a full equation such as x'' + 0.5*x' + x = 0",
-      secondOrderReduced: "With y = x' this becomes the system x' = y, y' = {g}. The horizontal axis is x (position), the vertical axis is y = x' (velocity).",
-      syntaxHintSecondOrder: "Syntax: the unknown is x and t is the time; write the derivatives as x' and x'' with straight apostrophes (x'' + 0.5*x' + x = 0, or just the right-hand side F of x'' = F). x'' must appear linearly; this, and that its coefficient never vanishes, is checked numerically at sample points spread over the viewing box and a fixed square, at several times, so a term that is only active away from every sample point (a piecewise x''^2 branch outside the box) cannot be detected. Write multiplication explicitly (x*x', not xx'), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
+      typeSecond: "Second-order equation x'' = F(t, x, x')",
+      secondOrderLabel: "x'' = F(t, x, x'), or a full equation such as x'' + 0.5*x' + x = 0",
+      secondOrderReduced: "Let v = x'. Then x' = v, v' = {g}. The horizontal axis is x (position), the vertical axis is x' (velocity).",
+      syntaxHintSecondOrder: "Syntax: t is the independent variable, the unknown is x(t), and its derivatives are written x' and x'' with straight apostrophes (x' may also be written v); the right-hand side may contain t, e.g. x'' = -x + cos(t). Write a full equation (x'' + 0.5*x' + x = 0) or just the right-hand side F of x'' = F. y has no meaning here and is rejected. x'' must appear linearly; this, and that its coefficient never vanishes, is checked numerically at sample points spread over the viewing box and a fixed square, at several times, so a term that is only active away from every sample point (a piecewise x''^2 branch outside the box) cannot be detected. Write multiplication explicitly (x*x', not xx'), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
       singularitiesContinuum: "The singular points found line up along a line or a curve: the direction is most likely undefined on a whole curve, not just at isolated points; the list shows representative points only.",
       secondOrderNotAffine: "x'' must appear linearly, e.g. x'' + 0.5*x' + x = 0 or x'' = -sin(x); x''^2, sin(x'') and the like cannot be reduced.",
       secondOrderZeroCoefficient: "The coefficient of x'' vanishes (at least at some of the sample points and times), so the equation cannot be solved for x''. Check that x'' really appears and that its coefficient is never zero.",
       secondOrderNoEquation: "Write an equation with = (x'' + x = 0) or just the right-hand side F of x'' = F.",
       secondOrderDoubleEquals: "Use a single “=” between the two sides of the equation (== is a comparison).",
       secondOrderTooManyEquals: "The equation must contain exactly one “=”.",
-      secondOrderOtherPrime: "Only the unknown x may carry primes: write x' for dx/dt and x'' for the second derivative. The unknown function is x and t is the time.",
+      secondOrderOtherPrime: "Only the unknown x may carry primes: write x' for dx/dt and x'' for the second derivative. The unknown function is x and t is the independent variable.",
       secondOrderHigherDerivative: "Only the first and second derivatives x' and x'' are supported; x''' and higher cannot be reduced to a planar system.",
       secondOrderPlaceholderTyped: "xd and xdd are internal names; write x' and x'' for the derivatives of x.",
       secondOrderUndefinedAtSamples: "The equation is undefined (not a finite number) at most of the sample points used to check it, so it cannot be reduced safely.",
-      secondOrderUnknownSymbol: "Unknown symbol “{name}”. The unknown function is x, its derivative is x' (dx/dt) and its second derivative is x''; t is the time. Allowed symbols: x, x', x'', t, pi, e.",
+      secondOrderUnknownSymbol: "Unknown symbol “{name}”. The unknown function is x, its derivative is x' (dx/dt, also written v) and its second derivative is x''; t is the independent variable. Allowed symbols: t, x, x', x'', pi, e.",
+      secondOrderYSymbol: "In a second-order equation the variables are t (the independent variable), x and x' (dx/dt, also written v); y has no meaning here. Write x' for the derivative of x.",
+      xpMin: "x' min",
+      xpMax: "x' max",
+      snapshotTSecond: "t₀ (snapshot time; initial values and solution curves start here)",
+      queryHitSecond: "t = {t}, x = {x}, x' = {y} (±{error})",
+      timeDependentNoteSecond: "This is a non-autonomous equation: t appears in F, so the direction field of the phase plane changes with t, and the picture shows the snapshot at t = {t}. Equilibrium points (the constant solutions x ≡ c, the body at rest) and linearized stability are defined for autonomous equations only; they are not attempted here. The solution curves you get by hovering and clicking start at t = {t}.",
+      timeDependentShortSecond: "Non-autonomous equation: snapshot at t = {t}, no equilibrium analysis",
       copyLink: "Copy link",
       copied: "Copied",
       copyLinkFallback: "The clipboard is not available; copy the link below by hand:",
@@ -624,7 +654,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       secondOrderImplicitProduct: "“{name}” is missing a multiplication sign; write the multiplication explicitly, e.g. x*x'' or t*x''.",
       downloadPng: "Download PNG",
       downloadFailed: "The picture could not be generated; please try again.",
-      exportRange: "{hv} ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}]",
+      exportRange: "{hv} ∈ [{xMin}, {xMax}], {vv} ∈ [{yMin}, {yMax}]",
       exportSnapshot: "t = {t}",
       exportEntered: "entered {range}",
       exportShown: "shown {range}",
@@ -670,12 +700,22 @@ export function fill(template: string, values: Record<string, string | number>):
 export function uniquenessSentence(
   L: LabelTable,
   u: { verdict: UniquenessVerdict; exponent: number } | undefined,
-  subject: { y: number } | { point: { x: number; y: number } },
+  subject: { y: number } | { point: { x: number; y: number }; secondOrder?: boolean },
 ): string | null {
   if (!u || (u.verdict !== "unbounded" && u.verdict !== "borderline")) return null;
   const alpha = formatNumber(u.exponent, 2);
   if ("y" in subject) return fill(u.verdict === "unbounded" ? L.uniqueness.unbounded : L.uniqueness.borderline, { y: formatNumber(subject.y, 6), alpha });
-  return fill(u.verdict === "unbounded" ? L.uniqueness.unboundedPoint : L.uniqueness.borderlinePoint, { point: formatPoint(subject.point), alpha });
+  return fill(u.verdict === "unbounded" ? L.uniqueness.unboundedPoint : L.uniqueness.borderlinePoint, { point: pointText(L, subject.point, subject.secondOrder), alpha });
+}
+
+/**
+ * A point of the phase plane as the student reads it: "(1, 0)" on a planar picture, and
+ * "(x, x') = (1, 0)" on a second-order one (round P: the second coordinate is the velocity x',
+ * never a y of its own, and the coordinates are named so the student sees which is which).
+ */
+export function pointText(L: LabelTable, p: { x: number; y: number }, secondOrder = false, digits = 4): string {
+  const point = formatPoint(p, digits);
+  return secondOrder ? fill(L.tool.pointSecond, { point }) : point;
 }
 
 /**
@@ -838,10 +878,10 @@ export type Folded = { short: string; detail: string[] };
  * honest on its own: "center or weak spiral (linearization cannot tell)"); the detail is the
  * caveat sentence and the uniqueness sentence when they speak. Display only.
  */
-export function equilibriumDetail(L: LabelTable, p: { at: { x: number; y: number }; caveat?: CaveatKey | null; uniqueness?: { verdict: UniquenessVerdict; exponent: number } }): string[] {
+export function equilibriumDetail(L: LabelTable, p: { at: { x: number; y: number }; caveat?: CaveatKey | null; uniqueness?: { verdict: UniquenessVerdict; exponent: number } }, secondOrder = false): string[] {
   const lines: string[] = [];
   if (p.caveat) lines.push(L.caveat[p.caveat]);
-  const u = uniquenessSentence(L, p.uniqueness, { point: p.at });
+  const u = uniquenessSentence(L, p.uniqueness, { point: p.at, secondOrder });
   if (u) lines.push(u);
   return lines;
 }
@@ -859,10 +899,15 @@ export function constantSolutionFolded(L: LabelTable, s: EquilibriumSolution, sp
   };
 }
 
-/** The non-autonomous notice folded: the snapshot time on the line, the full sentence behind it. */
-export function timeDependentFolded(L: LabelTable, snapshotT: number): Folded {
+/**
+ * The non-autonomous notice folded: the snapshot time on the line, the full sentence behind it.
+ * A second-order picture speaks of the equation and its F, not of a "system" (round P).
+ */
+export function timeDependentFolded(L: LabelTable, snapshotT: number, secondOrder = false): Folded {
   const t = formatNumber(snapshotT, 4);
-  return { short: fill(L.ui.timeDependentShort, { t }), detail: [fill(L.ui.timeDependentNote, { t })] };
+  return secondOrder
+    ? { short: fill(L.ui.timeDependentShortSecond, { t }), detail: [fill(L.ui.timeDependentNoteSecond, { t })] }
+    : { short: fill(L.ui.timeDependentShort, { t }), detail: [fill(L.ui.timeDependentNote, { t })] };
 }
 
 /**

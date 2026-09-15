@@ -17,7 +17,10 @@
  *   eq     second-order equation text (second)
  *   tmin, tmax   horizontal range of a first-order picture (first, diff): the t range
  *   xmin, xmax   horizontal range of a planar picture (system, second)
- *   ymin, ymax   vertical range
+ *   ymin, ymax   vertical range of a first-order or planar picture (first, diff, system): the y range
+ *   xpmin, xpmax vertical range of a second-order picture (second): the x' range (round P; links
+ *                written before it used ymin/ymax there, which are still read, silently, and
+ *                never written again)
  *   loc    zh | en (omitted: English)
  *   eqs    0 = equal scale off (omitted when on)
  *   d      grid density 5..40 (omitted at 20)
@@ -119,6 +122,11 @@ export function horizontalIsT(mode: AppMode): boolean {
   return mode === "first" || mode === "diff";
 }
 
+/** Whether the vertical coordinate is the velocity x' (a second-order picture) or y. */
+export function verticalIsXp(mode: AppMode): boolean {
+  return mode === "second";
+}
+
 /** Which expression fields a mode uses; the others are never encoded and are ignored when decoding. */
 export function expressionKeysOf(mode: AppMode): ReadonlyArray<"g" | "f" | "M" | "N" | "eq"> {
   switch (mode) {
@@ -185,10 +193,11 @@ export function encodeState(state: AppState): string {
     if (state[key] !== d[key]) q.set(key, state[key]);
   }
   const [hMin, hMax] = horizontalIsT(state.mode) ? ["tmin", "tmax"] : ["xmin", "xmax"];
+  const [vMin, vMax] = verticalIsXp(state.mode) ? ["xpmin", "xpmax"] : ["ymin", "ymax"];
   if (state.box.xMin !== d.box.xMin) q.set(hMin, formatExact(state.box.xMin));
   if (state.box.xMax !== d.box.xMax) q.set(hMax, formatExact(state.box.xMax));
-  if (state.box.yMin !== d.box.yMin) q.set("ymin", formatExact(state.box.yMin));
-  if (state.box.yMax !== d.box.yMax) q.set("ymax", formatExact(state.box.yMax));
+  if (state.box.yMin !== d.box.yMin) q.set(vMin, formatExact(state.box.yMin));
+  if (state.box.yMax !== d.box.yMax) q.set(vMax, formatExact(state.box.yMax));
   if (state.locale !== null) q.set("loc", state.locale);
   if (!state.equalScale) q.set("eqs", "0");
   if (state.density !== d.density) q.set("d", String(state.density));
@@ -286,6 +295,12 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
   const horizontalT = horizontalIsT(mode);
   const [hMin, hMax, otherMin, otherMax] = horizontalT ? ["tmin", "tmax", "xmin", "xmax"] : ["xmin", "xmax", "tmin", "tmax"];
   for (const key of [otherMin, otherMax]) if (q.get(key) !== null) problem(key, "unusedInMode");
+  // The vertical range: xpmin/xpmax on a second-order picture (ymin/ymax still read there, for
+  // links written before round P, without a notice); ymin/ymax elsewhere, where xpmin/xpmax are unused.
+  const verticalXp = verticalIsXp(mode);
+  if (!verticalXp) for (const key of ["xpmin", "xpmax"]) if (q.get(key) !== null) problem(key, "unusedInMode");
+  const vMin = verticalXp && q.get("xpmin") === null && q.get("ymin") !== null ? "ymin" : verticalXp ? "xpmin" : "ymin";
+  const vMax = verticalXp && q.get("xpmax") === null && q.get("ymax") !== null ? "ymax" : verticalXp ? "xpmax" : "ymax";
 
   const readSide = (param: string, current: number): number => {
     const value = q.get(param);
@@ -304,7 +319,7 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
     return [fallbackMin, fallbackMax];
   };
   [state.box.xMin, state.box.xMax] = checkPair(hMin, hMax, readSide(hMin, state.box.xMin), readSide(hMax, state.box.xMax), fallback.box.xMin, fallback.box.xMax);
-  [state.box.yMin, state.box.yMax] = checkPair("ymin", "ymax", readSide("ymin", state.box.yMin), readSide("ymax", state.box.yMax), fallback.box.yMin, fallback.box.yMax);
+  [state.box.yMin, state.box.yMax] = checkPair(vMin, vMax, readSide(vMin, state.box.yMin), readSide(vMax, state.box.yMax), fallback.box.yMin, fallback.box.yMax);
 
   const loc = q.get("loc");
   if (loc !== null) {
