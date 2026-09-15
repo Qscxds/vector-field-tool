@@ -23,8 +23,13 @@
 | `npm test` | 42 个文件，960 个测试 = 958 通过 + 2 既有预期失败（新增 `lib/changelog.test.ts` 4 个） |
 | `npm run build` | 通过 |
 | `npm run smoke`（生产构建） | 24/24，URI `?v=p-2`（未变） |
-| GitHub Actions（首次真实运行） | 推送 `s-changelog-done` 后第一次运行**失败**：`lib/core/equilibria.test.ts` 的两个测试（J.2 SI 模型、J-fix2.1）在 2 vCPU 的 runner 上超过 vitest 默认 5 s 超时（本机 2–4 s）。修法：`vitest.config.mts` 全局 `testTimeout: 20_000`（内核未动；commit `00de271`）→ run 35028983127 **绿**。随后把 `actions/checkout` / `setup-node` 升到 v5（去掉 Node 20 弃用警告） |
-| 线上 | `git push origin main --tags` 已由我执行（这次没有被拦）；Vercel 部署后跑 `npm run smoke -- https://tools.studycase.net/mcp`，结果见本文末尾 |
+| GitHub Actions（首次真实运行） | 推送 `s-changelog-done` 后第一次运行**失败**：`lib/core/equilibria.test.ts` 的两个测试（J.2 SI 模型、J-fix2.1）在 2 vCPU 的 runner 上超过 vitest 默认 5 s 超时（本机 2–4 s）。修法：`vitest.config.mts` 全局 `testTimeout: 20_000`（内核未动；commit `00de271`）→ run 35028983127 **绿**。随后把 `actions/checkout` / `setup-node` 升到 v5（去掉 Node 20 弃用警告）→ run 35029208257 也**绿** |
+| 线上 | `git push origin main --tags` 已由我执行（这次没有被拦）；Vercel 部署上线后 `npm run smoke -- https://tools.studycase.net/mcp` **24/24**，URI `?v=p-2`；线上首页已有 `data-news-entry="2026-09-15"` 的更新说明，`/help?loc=zh` 已有提示框 |
+
+## 线上状态（2026-09-15 晚）
+
+- origin/main = `s-changelog-done` 之后再加两个 CI 提交（`00de271` 超时、actions v5）；Vercel 已部署，线上 smoke 24/24。
+- 你只剩一件事：在 Claude 里**删除连接器再重新添加** `https://tools.studycase.net/mcp`（widget `p-2`），然后按 `docs/PQR-summary.md` 第 6 节第 10–11 步验证 widget。
 | 浏览器 · 首页 en / zh | 「What's new / 更新说明」一条：日期 `2026-09-15`、标题、6 个要点、琥珀色 action 框；MCP 段落开头的提示框在「这个工具也可以接到 Claude 上…」之前；标题顺序 Examples → What's new → What it can do → Its limits |
 | 浏览器 · `/help` zh | `#claude` 标题的下一个元素就是提示框；控件一节含「报告问题」条目 |
 | 浏览器 · 拍频预设 | 打开即时间序列：无「Grid density」「Arrows」，有「t from / t to」「Also draw x'(t)」；切「Phase plane」：两个控件出现，值 12 / Scaled，URL `d=12&arrows=scaled`；切回：再次隐藏，URL 仍含两个值 |
