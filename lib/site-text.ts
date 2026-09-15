@@ -80,9 +80,14 @@ export type SiteText = {
     };
     notation: {
       heading: string;
+      /** One entry per input mode (round P2.9): its variables, its independent variable, its axes, and the words used for its picture. */
       items: string[];
       firstOrderLine: string;
       secondOrderLine: string;
+      /** The three terms that differ by mode (equilibrium point / constant solution / singular point) and the two words for a kept curve. */
+      termsLine: string;
+      /** What "equal scale" means in each picture. */
+      equalScaleLine: string;
       functionsLead: string;
       constantsLine: string;
       piecewiseLine: string;
@@ -174,15 +179,15 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         heading: "操作",
         formHeading: "左侧表单",
         form: [
-          "预设：按章节分组的例子；选中后方程、范围和固定的轨线一起载入，预设的说明显示成一行，点旁边的 ⓘ 看全文。",
+          "预设：按章节分组的例子；选中后方程、范围和固定的曲线一起载入，预设的说明显示成一行，点旁边的 ⓘ 看全文。",
           "类型：二维系统 x' = f, y' = g；一阶方程 dy/dt = g(t, y)；一阶方程 M dt + N dy = 0；二阶方程 x'' = F(t, x, x')。切换类型会换成对应的输入框。",
-          "范围：横轴（x 或 t）和 y 的输入范围。平衡点、常数解和方程类型都在这个范围内扫描。",
+          "范围：横轴（x 或 t）和纵轴（y，二阶方程为 x'）的输入范围。平衡点、常数解和方程类型都在这个范围内扫描。",
           "网格密度：每个方向上箭头的个数。",
           "箭头：「等长」把每个箭头画成一样长、用颜色表示模长（方向一目了然，快慢看颜色）；「按模长」让箭头长度随模长变化（快的地方箭头长，慢的地方几乎看不见）。",
-          "等比：勾选时 x（或 t）与 y 每单位的像素相同，图上的角度就是真实斜率，为此显示范围会向一个方向扩大以填满画布；取消勾选时输入范围正好填满画布，两个方向比例不同，图上会一直显示「横纵比例不同」的提醒。图下方那一行给出实际显示范围，并注明「等比」或「填满」。",
-          "快照时刻 t：只在方程右端含 t（非自治）时出现，图画的是这一时刻的向量场。",
-          "清除轨线：删掉所有固定下来的解曲线。",
-          "复制链接：当前方程、范围、语言、视图选项和固定轨线的起点都编在链接里，打开链接就是同一张图。",
+          "等比：勾选时横轴与纵轴每单位的像素相同，图上的角度就是真实的（一阶方程里是斜率 dy/dt，相平面里是箭头和轨线的真实方向），为此显示范围会向一个方向扩大以填满画布；取消勾选时输入范围正好填满画布，两个方向比例不同，图上会一直显示「横纵比例不同」的提醒。图下方那一行给出实际显示范围，并注明「等比」或「填满」。",
+          "快照时刻 t：只在平面系统或二阶方程的右端含 t（非自治）时出现，图画的是这一时刻的向量场；二阶方程里这个输入框叫 t₀，初值 x(t₀)、x'(t₀) 和解曲线都从这一时刻出发。一阶方程 dy/dt = g(t, y) 不需要它：t 就是横轴，画的是整张斜率场。",
+          "清除解曲线 / 清除轨线（按钮名随图而变）：删掉所有固定下来的曲线。",
+          "复制链接：当前方程、范围、语言、视图选项和固定曲线的起点都编在链接里，打开链接就是同一张图。",
           "下载 PNG：把当前画面存成两倍分辨率的图片，底部一行写明方程和范围。",
         ],
         mouseHeading: "鼠标",
@@ -205,14 +210,16 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       notation: {
         heading: "记号",
         items: [
-          "一阶方程写成 dy/dt = g(t, y)，或者微分形式 M(t, y) dt + N(t, y) dy = 0；t 是自变量，横轴是 t，纵轴是 y。",
-          "平面系统写成 x' = f(x, y)，y' = g(x, y)；横轴是 x，纵轴是 y。",
-          "二阶方程写成 x'' = F(t, x, x')，或者直接写整条方程，例如 x'' + 0.5*x' + x = 0；t 是自变量，未知函数是 x(t)。工具令 v = x' 把它化为系统 x' = v，v' = F(t, x, v)，横轴是 x（位置），纵轴是 x'（速度）；这个问题里没有 y。",
-          "输入的是等号右边的表达式，不要连同「dy/dt =」或「x' =」一起输入。",
+          "一阶方程 dy/dt = g(t, y)：t 是自变量，y 是未知函数；横轴是 t，纵轴是 y。图上画的是解 y(t) 的图像（解曲线）和斜率场；常数解 y = c 是水平线。只输入等号右边的 g(t, y)。",
+          "微分形式 M(t, y) dt + N(t, y) dy = 0：同样是一阶方程，t 是自变量，横轴 t、纵轴 y。它没有方向（M dt + N dy = 0 和 −M dt − N dy = 0 是同一个方程），所以方向场画成无向线段，固定的解曲线只有一种颜色。M = N = 0 的点是方向场奇点：那里方向无定义，谈不上稳定性。工具是沿曲线自身的参数走的，这个参数不是 t，所以停止说明只报终点的坐标 (t, y)，不报「积到 t = 多少」。",
+          "平面系统 x' = f(x, y)，y' = g(x, y)：t 是时间，x、y 是两个未知函数；横轴 x、纵轴 y，画的是相平面里的轨线（不是 x(t) 或 y(t) 的图像）。平衡点是 f = g = 0 的点，按线性化分类。右端含 t 时系统非自治，图上只是 t 时刻的快照，不做平衡点分析。只输入等号右边。",
+          "二阶方程 x'' = F(t, x, x')：t 是自变量，x(t) 是未知函数，x' 可以写成 v。可以写整条方程（x'' + 0.5*x' + x = 0），也可以只写右端 F。工具令 v = x' 把它化为系统 x' = v，v' = F(t, x, v)，画相平面：横轴 x（位置），纵轴 x'（速度）；这个问题里没有 y，写 y 会被拒绝。相平面里的平衡点 (x, x') = (c, 0) 就是常数解 x ≡ c（物体静止）。右端含 t 时方程非自治，图上只是 t₀ 时刻的快照，初值 x(t₀)、x'(t₀) 从这一时刻出发。",
           "乘法必须写出来：写 t*y，不能写 ty；幂用 ^，例如 y^2。",
         ],
         firstOrderLine: "一阶方程里只有 t 和 y 两个变量，写 x 会被拒绝（提示会请你把 x 写成 t）。",
-        secondOrderLine: "二阶方程里未知函数是 x，t 是时间；导数用直引号写成 x' 和 x''。x'' 必须线性出现（x''^2、sin(x'') 之类无法降阶），而且它的系数不能为零：这两点是在观察范围和一个固定方块内的若干采样点、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段项）检查不到。",
+        secondOrderLine: "二阶方程里 x'' 必须线性出现（x''^2、sin(x'') 之类无法降阶），而且它的系数不能为零：这两点是在观察范围内的采样点和原点附近几个固定点上、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段项）检查不到。",
+        termsLine: "术语按模式区分：平面系统和二阶方程的相平面里说「平衡点」（f = g = 0 的点，有稳定性分类；二阶时它就是常数解 x ≡ c）；一阶方程说「常数解」y = c（它是一个解，不是一个点，稳定性指两侧的解是趋向它还是离开它）；微分形式说「方向场奇点」（M = N = 0，方向无定义，没有稳定性可言）。固定下来的曲线在一阶方程里叫「解曲线」，在相平面里叫「轨线」。",
+        equalScaleLine: "「等比」在各模式下的含义：一阶方程里，图上曲线的倾角就是斜率 dy/dt；平面系统里，箭头和轨线的方向是相平面里的真实方向（沿轨线的斜率是 dy/dx，不是随时间的变化率）；二阶方程里同理，沿轨线的斜率是 dx'/dx。",
         functionsLead: "可以使用的函数：",
         constantsLine: "常数：pi 和 e。",
         piecewiseLine: "分段表达式用「条件 ? 值 : 值」，例如 y > 0 ? y : -y。",
@@ -232,7 +239,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "标记旁的「!」徽章：该点处唯一性可能失效。",
           "一阶方程的常数解画成横线：实线稳定，虚线不稳定，点线半稳定或随 t 变化；定义域边界上的常数解用点划线。",
           "橙色空心圆加中心小点：微分形式的方向场奇点（M = N = 0，此处方向无定义）。",
-          "蓝色曲线向前（t 增大），橙色曲线向后；经过唯一性失效点的曲线画成虚线。恰当方程的紫色曲线是势函数的等值线。",
+          "蓝色曲线向前（t 增大），橙色曲线向后；微分形式 M dt + N dy = 0 的固定曲线只有一种颜色，因为这种形式没有方向。经过唯一性失效点的曲线画成虚线。恰当方程的紫色曲线是势函数的等值线。",
           "灰色小圆环：向量场在该采样点无定义或无穷大。",
         ],
         centerNote: "为什么「中心或弱螺旋」从不写成「中心」：线性化只给出一对纯虚特征值，真正的中心和极缓慢的螺旋在线性化下无法区分，判定需要守恒量或更高阶的非线性分析，工具不替你猜。",
@@ -244,10 +251,10 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         ],
         notProof: "每一档的测得偏差和阈值都在 ⓘ 里。数值证据不是证明：它只说明「在这些采样点上一致」。",
         uniqueness: "唯一性：在某个常数解或平衡点处，如果差商随着靠近而无界增长，工具会说 Lipschitz 条件失效、唯一性没有保证；「有界」的结果不会写成一句话，因为在测试尺度上有界并不能证明 Lipschitz 条件。",
-        snapshot: "非自治系统（右端含 t）：图上画的是某一时刻 t 的快照，不给平衡点和稳定性分类；悬停和点击得到的解曲线从快照时刻出发。",
+        snapshot: "非自治系统或非自治二阶方程（右端含 t）：图上画的是某一时刻 t 的快照，不给平衡点和稳定性分类；悬停和点击得到的轨线从快照时刻出发。",
         domainEdge: "定义域边界上的常数解（例如 dy/dt = sqrt(y) 的 y = 0）：向量场只在一侧有定义，那里没有线性化，工具只描述有定义一侧解的走向。",
         truncated: "平衡点或奇点太多时列表会截断，并注明只列出前几个；是否构成连续平衡点集是按全部找到的点判断的。",
-        scan: "「最近一条轨线」说明每条固定曲线在哪里停下（到达指定时间、离开观察范围、趋近平衡点、发散、遇到奇点或定义域边界）。",
+        scan: "「最近一条解曲线」或「最近一条轨线」说明每条固定曲线在哪里停下（走完了指定的跨度——一阶方程和相平面里是时间 t，微分形式里是曲线自身的参数——、离开观察范围、趋近平衡点、发散、遇到奇点或定义域边界）。",
       },
       limits: {
         heading: "已知限制",
@@ -351,15 +358,15 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         heading: "Controls",
         formHeading: "The form on the left",
         form: [
-          "Presets: worked examples grouped by chapter. Choosing one loads the equation, the range and any fixed trajectories; the preset's note is shown on one line, and the ⓘ next to it opens the full text.",
+          "Presets: worked examples grouped by chapter. Choosing one loads the equation, the range and any fixed curves; the preset's note is shown on one line, and the ⓘ next to it opens the full text.",
           "Type: a planar system x' = f, y' = g; a first-order equation dy/dt = g(t, y); a first-order equation M dt + N dy = 0; or a second-order equation x'' = F(t, x, x'). Switching the type switches the input fields.",
-          "Range: the entered range of the horizontal coordinate (x or t) and of y. Equilibria, constant solutions and equation types are scanned inside it.",
+          "Range: the entered range of the horizontal coordinate (x or t) and of the vertical one (y, or x' for a second-order equation). Equilibria, constant solutions and equation types are scanned inside it.",
           "Grid density: the number of arrows in each direction.",
           "Arrows: Uniform draws every arrow at the same length and encodes the magnitude in the color (the direction is easy to read, the speed is in the color); Scaled makes the length follow the magnitude (long where the field is fast, almost invisible where it is slow).",
-          "Equal scale: when checked, x (or t) and y have the same pixels per unit, so an angle in the picture is a true slope; to achieve that the displayed range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas exactly, the two directions are scaled differently, and a persistent warning says that the axes are not to the same scale. The line under the picture gives the displayed range with \"(equal scale)\" or \"(filled)\".",
-          "Snapshot time t: shown only when the right-hand side contains t (a non-autonomous equation); the picture is the field at that instant.",
-          "Clear trajectories: removes every kept solution curve.",
-          "Copy link: the equation, the range, the language, the view options and the starting points of the kept trajectories are all encoded in the link; opening it shows the same picture.",
+          "Equal scale: when checked, the horizontal and vertical coordinates have the same pixels per unit, so an angle in the picture is true (the slope dy/dt on a first-order picture, the true direction of arrows and trajectories on a phase plane); to achieve that the displayed range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas exactly, the two directions are scaled differently, and a persistent warning says that the axes are not to the same scale. The line under the picture gives the displayed range with \"(equal scale)\" or \"(filled)\".",
+          "Snapshot time t: shown only for a planar system or a second-order equation whose right-hand side contains t (non-autonomous); the picture is then the field at that instant. For a second-order equation the field is called t₀: the initial values x(t₀), x'(t₀) and the solution curves start at that instant. A first-order equation dy/dt = g(t, y) never needs one: t is its horizontal axis and the whole slope field is drawn.",
+          "Clear solution curves / Clear trajectories (the button's name follows the picture): removes every kept curve.",
+          "Copy link: the equation, the range, the language, the view options and the starting points of the kept curves are all encoded in the link; opening it shows the same picture.",
           "Download PNG: saves the current picture at twice the resolution, with one footer line naming the equation and the range.",
         ],
         mouseHeading: "Mouse",
@@ -382,14 +389,16 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       notation: {
         heading: "Notation",
         items: [
-          "A first-order equation is written dy/dt = g(t, y), or in differential form M(t, y) dt + N(t, y) dy = 0; t is the independent variable, the horizontal axis is t and the vertical axis is y.",
-          "A planar system is written x' = f(x, y), y' = g(x, y); the horizontal axis is x and the vertical axis is y.",
-          "A second-order equation is written x'' = F(t, x, x'), or as a full equation such as x'' + 0.5*x' + x = 0; t is the independent variable and the unknown is x(t). The tool sets v = x' and reduces it to the system x' = v, v' = F(t, x, v), with x (position) on the horizontal axis and x' (velocity) on the vertical axis; there is no y in this problem.",
-          "Enter only the right-hand side of the equation, never the \"dy/dt =\" or \"x' =\" part.",
+          "First-order equation dy/dt = g(t, y): t is the independent variable and y the unknown function; the horizontal axis is t, the vertical axis y. The picture shows the graphs of solutions y(t) (solution curves) and the slope field; a constant solution y = c is a horizontal line. Enter only the right-hand side g(t, y).",
+          "Differential form M(t, y) dt + N(t, y) dy = 0: also a first-order equation, t the independent variable, horizontal axis t, vertical axis y. It has no direction (M dt + N dy = 0 and −M dt − N dy = 0 are the same equation), so the direction field is drawn as undirected segments and a kept solution curve is one color. A point where M = N = 0 is a singular point of the direction field: the direction is undefined there, and stability is not a meaningful question. The tool follows the curve by a parameter of its own, which is not t, so a stop is reported by the end point's coordinates (t, y), never as \"reached t = …\".",
+          "Planar system x' = f(x, y), y' = g(x, y): t is the time and x, y are two unknown functions; horizontal axis x, vertical axis y, and the picture shows the trajectories of the phase plane (not the graphs of x(t) or y(t)). An equilibrium point is a point where f = g = 0, classified by linearization. If t appears in f or g the system is non-autonomous: the picture is only the snapshot at time t and no equilibrium analysis is made. Enter only the right-hand sides.",
+          "Second-order equation x'' = F(t, x, x'): t is the independent variable and x(t) the unknown; x' may also be written v. Type a full equation (x'' + 0.5*x' + x = 0) or just the right-hand side F. The tool sets v = x' and reduces it to the system x' = v, v' = F(t, x, v) and draws the phase plane: horizontal axis x (position), vertical axis x' (velocity); there is no y in this problem and y is rejected. An equilibrium (x, x') = (c, 0) of the phase plane is the constant solution x ≡ c (the body at rest). If t appears in the equation it is non-autonomous: the picture is only the snapshot at t₀, and the initial values x(t₀), x'(t₀) start at that instant.",
           "Multiplication must be written out: t*y, not ty; powers use ^, for example y^2.",
         ],
         firstOrderLine: "A first-order equation has only the two variables t and y; x is rejected (the message asks you to write t instead).",
-        secondOrderLine: "In a second-order equation the unknown is x and t is the time; write the derivatives as x' and x'' with straight apostrophes. x'' must appear linearly (x''^2, sin(x'') and the like cannot be reduced) and its coefficient must never vanish; both are checked numerically at sample points spread over the viewing box and a fixed square, at several times, so a term that is only active away from every sample point (a piecewise branch outside the box) cannot be detected.",
+        secondOrderLine: "In a second-order equation x'' must appear linearly (x''^2, sin(x'') and the like cannot be reduced) and its coefficient must never vanish; both are checked numerically at sample points inside the entered range and at a few fixed points near the origin, at several times, so a term that is only active away from every sample point (a piecewise branch outside the box) cannot be detected.",
+        termsLine: "Terms by mode: on the phase plane of a planar system or a second-order equation the tool says \"equilibrium point\" (a point where f = g = 0, with a stability classification; for a second-order equation it is the constant solution x ≡ c); for a first-order equation it says \"constant solution\" y = c (a solution, not a point; its stability is whether the solutions on either side approach or leave it); for a differential form it says \"singular point of the direction field\" (M = N = 0, direction undefined, no stability to speak of). A kept curve is a \"solution curve\" on a first-order picture and a \"trajectory\" on a phase plane.",
+        equalScaleLine: "What \"equal scale\" means in each picture: for a first-order equation the angle of a curve is its slope dy/dt; for a planar system the directions of arrows and trajectories are their true directions in the phase plane (the slope along a trajectory is dy/dx, not a rate of change in time); for a second-order equation likewise, the slope along a trajectory being dx'/dx.",
         functionsLead: "Functions you may use:",
         constantsLine: "Constants: pi and e.",
         piecewiseLine: "Piecewise expressions use \"condition ? value : value\", for example y > 0 ? y : -y.",
@@ -409,7 +418,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "A \"!\" badge beside a marker: uniqueness may fail at that point.",
           "Constant solutions of a first-order equation are horizontal lines: solid stable, dashed unstable, dotted semi-stable or varying with t; a constant solution on the domain edge uses a dash-dot pattern.",
           "Hollow orange circle with a center dot: a singular point of the direction field in differential form (M = N = 0, direction undefined there).",
-          "Blue curves run forward (t increasing), orange curves backward; a curve through a point where uniqueness fails is dashed. The violet curves of an exact equation are level curves of the potential.",
+          "Blue curves run forward (t increasing), orange curves backward; on a differential form M dt + N dy = 0 a kept curve is one color, because the form has no direction. A curve through a point where uniqueness fails is dashed. The violet curves of an exact equation are level curves of the potential.",
           "Small gray rings: sample points where the vector field is undefined or infinite.",
         ],
         centerNote: "Why \"center or weak spiral\" never says \"center\": the linearization only gives a purely imaginary pair of eigenvalues, and a true center cannot be told from an extremely slow spiral by linearization; deciding needs a conserved quantity or a higher-order nonlinear analysis, and the tool does not guess for you.",
@@ -421,10 +430,10 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         ],
         notProof: "The measured deviation and the threshold of every tier are behind the ⓘ. Numerical evidence is not a proof: it only says that the equation is consistent at those sample points.",
         uniqueness: "Uniqueness: at a constant solution or an equilibrium where the difference quotients grow without bound as the point is approached, the tool says that the Lipschitz condition fails and uniqueness is not guaranteed; a \"bounded\" result is never turned into a sentence, because bounded at the tested scales does not prove the Lipschitz condition.",
-        snapshot: "Non-autonomous systems (t on the right-hand side): the picture is a snapshot at one time t, and no equilibria or stability classification are given; the solution curves you get by hovering and clicking start at the snapshot time.",
+        snapshot: "Non-autonomous systems and non-autonomous second-order equations (t on the right-hand side): the picture is a snapshot at one time t, and no equilibria or stability classification are given; the trajectories you get by hovering and clicking start at the snapshot time.",
         domainEdge: "A constant solution on the domain edge (for example y = 0 of dy/dt = sqrt(y)): the field is defined on one side only, there is no linearization there, and the tool only describes the behavior of the solutions on the side where the field is defined.",
         truncated: "When there are too many equilibria or singular points the list is truncated and says that only the first few are listed; whether they form a continuum is judged from all the points found.",
-        scan: "\"Last trajectory\" says where each kept curve stopped (the requested time, the edge of the viewing box, an equilibrium, a blow-up, a singular point or the edge of the domain).",
+        scan: "\"Last solution curve\" or \"Last trajectory\" says where each kept curve stopped (the end of the requested span, which is the time t on a first-order picture or a phase plane and the curve's own parameter on a differential form; the edge of the viewing box; an equilibrium; a blow-up; a singular point or the edge of the domain).",
       },
       limits: {
         heading: "Known limits",

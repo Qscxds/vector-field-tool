@@ -17,18 +17,22 @@ parameters and results to explanations. The site is English by default; Chinese 
 - **Phase portraits** of a planar system `x' = f(x, y), y' = g(x, y)`: arrows, hover to preview the
   solution curve through a point, click to keep a trajectory (it extends by the solution's own rule
   to 20 times the entered range, never cut at the view edge).
-- **Trajectory management**: click a kept trajectory (within 8 screen pixels; it highlights on
-  hover) to remove it, `Undo` / Ctrl+Z for the last 20 add / remove / clear steps, "Clear
-  trajectories" for all, long press on touch. Every change is written into the link's `traj`
-  parameter.
-- **Initial-value inputs**: enter `t₀, y₀` (first-order) or `x₀, y₀` (system, second-order) and
-  press "Add solution" to keep the trajectory through an exact point instead of clicking near it.
-- **Solution queries**: pick a kept trajectory and ask for its value at `t = 2.5`, or for every time
-  it reaches `y = 0.5` (`x = …` too for a system). Each crossing is solved in time by re-integrating
-  the numerical solution, never by interpolating the drawn polyline; every hit carries an error
-  estimate and is marked on the canvas. A target that is never reached says so, with where and why
-  each direction stopped (left the box, blew up, span ended); a periodic-looking solution says more
-  crossings may exist beyond the integrated span.
+- **Curve management** (a kept curve is a "solution curve" on a first-order picture and a
+  "trajectory" on a phase plane; the buttons follow the picture): click a kept curve (within 8
+  screen pixels; it highlights on hover) to remove it, `Undo` / Ctrl+Z for the last 20 add / remove /
+  clear steps, "Clear …" for all, long press on touch. Every change is written into the link's
+  `traj` parameter.
+- **Initial-value inputs**: enter `t₀, y₀` (first-order), `x₀, y₀` (system) or `x(t₀), x'(t₀)`
+  (second-order) and press "Add …" to keep the curve through an exact point instead of clicking
+  near it.
+- **Solution queries**: pick a kept curve and ask for its value at `t = 2.5`, or for every point
+  where it reaches `y = 0.5` (`x = …` too for a system, `x' = …` for a second-order equation).
+  Each crossing is solved along the numerical solution by re-integration (in time for a system,
+  along the curve's own parameter for a differential form), never by interpolating the drawn
+  polyline; every hit carries an error estimate and is marked on the canvas. A target that is
+  never reached says so, with where and why each direction (each side of the start, for a
+  differential form) stopped (left the box, blew up, span ended); a periodic-looking solution says
+  more crossings may exist beyond the integrated span.
 - **Second-order equations** `x'' = F(t, x, x')` (t is the independent variable), entered as a full equation (`x'' + 0.5*x' + x = 0`) or
   as the right-hand side: reduced with `v = x'` to the planar system `x' = v, v' = F(t, x, v)` and analyzed as one; the phase plane is (x, x').
 - **Equilibria with honest classification**: Jacobian, eigenvalues, trace/determinant class, and a
@@ -124,13 +128,17 @@ cloudflared tunnel --url http://localhost:3000
 $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; restart when the tunnel URL changes
 ```
 
-- Tools: `analyze_system`, `trace_trajectory`, `sample_field`, `analyze_first_order` (`expr` or
-  `M` + `N`), `analyze_second_order` (`equation`), `query_solution` (an initial point plus a target
+- Tools: `analyze_system`, `trace_trajectory` (planar systems only), `sample_field`,
+  `analyze_first_order` (`expr` or `M` + `N`; the t range is `tMin` / `tMax`), `analyze_second_order`
+  (`equation`; the x' range is `xpMin` / `xpMax`), `query_solution` (an initial point plus a target
   `{ kind: "t" | "x" | "y", value }`: the numerical solution's value at a time, or every time it
-  reaches a coordinate value, with error estimates and the stop status of both directions), plus
-  `ping` for the transport. Every description starts with the call-first rule ("call this tool
-  before answering"); `query_solution`'s says that "value at a time" and "when does it reach"
-  questions must call it and are never answered from a closed form.
+  reaches a coordinate value, with error estimates and the stop status of both directions; in mode
+  `second` the kind `y` means the velocity x' and the result names it x'), plus `ping` for the
+  transport. Every description starts with the call-first rule ("call this tool before
+  answering"); `query_solution`'s says that "value at a time" and "when does it reach" questions
+  must call it and are never answered from a closed form. Every Scene in `structuredContent`
+  carries `axes` (what the kernel's `.x` / `.y` / `t` fields mean on that picture) and every
+  description tells the model to relay the text summary, never the kernel names.
 - Locale rule: `locale` is optional and defaults to `en`; the description asks the model for `zh`
   when the student writes in Chinese. Error messages (parameter bounds, unparsable expressions, the
   2 s budget, the rate limit) are always English: they are for the model.

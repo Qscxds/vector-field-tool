@@ -55,6 +55,8 @@ export function HelpContent({ initialLocale }: { initialLocale: Locale | null })
       <List items={H.notation.items} />
       <p>{H.notation.firstOrderLine}</p>
       <p>{H.notation.secondOrderLine}</p>
+      <p>{H.notation.termsLine}</p>
+      <p>{H.notation.equalScaleLine}</p>
       <p>
         {H.notation.functionsLead}{" "}
         <span data-help-functions>
