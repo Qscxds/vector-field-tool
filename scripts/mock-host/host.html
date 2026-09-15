@@ -91,6 +91,9 @@
         first_order_sqrt_en: ["analyze_first_order", { expr: "sqrt(y)", xMin: -3, xMax: 3, yMin: -0.3, yMax: 1.5, locale: "en" }],
         system_non_autonomous: ["analyze_system", { f: "y", g: "-x + sin(t)", t: 1.5, locale: "zh" }],
         second_order_damped: ["analyze_second_order", { equation: "x'' + 0.5*x' + x = 0", locale: "en" }],
+        // Round P: x' on the vertical axis and in every line; a forced equation is a snapshot; a second-order query.
+        second_order_forced: ["analyze_second_order", { equation: "x'' = -x + 0.5*cos(1.2*t)", xpMin: -2, xpMax: 2, t: 1, locale: "zh" }],
+        query_second: ["query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, target: { kind: "y", value: 0.5 }, tSpan: 4, locale: "en" }],
         exact_form: ["analyze_first_order", { M: "2*t*y", N: "t^2 + y^2", xMin: -2, xMax: 2, yMin: -2, yMax: 2, locale: "zh" }],
         lotka_volterra: ["analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "en" }],
         trajectory: ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 6.283185307179586, locale: "en" }],

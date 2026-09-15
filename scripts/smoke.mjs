@@ -77,7 +77,31 @@ const calls = [
       r.structuredContent.system?.f === "y" &&
       r.structuredContent.equilibria?.length === 1 &&
       r.structuredContent.equilibria[0].classification === "stable_spiral" &&
-      /^Second-order equation x'' \+ 0\.5\*x' \+ x = 0: let v = x'\. Then x' = v, v' = /.test(r.content?.[0]?.text ?? ""),
+      /^Second-order equation x'' \+ 0\.5\*x' \+ x = 0: let v = x'\. Then x' = v, v' = /.test(r.content?.[0]?.text ?? "") &&
+      /\(x, x'\) = \(0, 0\)/.test(r.content?.[0]?.text ?? ""),
+  ],
+  // Round P: the x' range is xpMin / xpMax, a forced equation is a snapshot with no equilibria, and the
+  // summary never shows a lone y (the kernel's name for x').
+  [
+    "analyze_second_order",
+    { equation: "x'' = -x + cos(t)", xpMin: -2, xpMax: 2, t: 1, density: 5 },
+    (r) =>
+      r.structuredContent?.timeDependent?.snapshotT === 1 &&
+      r.structuredContent.equilibria === undefined &&
+      r.structuredContent.box?.y?.min === -2 &&
+      /x' ∈ \[-2, 2\]/.test(r.content?.[0]?.text ?? "") &&
+      !/(^|[^A-Za-z0-9_'])y(?![A-Za-z0-9_])/.test(r.content?.[0]?.text ?? ""),
+  ],
+  // x'' + x = 0 from x(0) = 1, x'(0) = 0: x = cos t, so at t = pi the point is (x, x') = (-1, 0).
+  [
+    "query_solution",
+    { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, tSpan: 4, target: { kind: "t", value: Math.PI } },
+    (r) =>
+      r.structuredContent?.query?.hits?.length === 1 &&
+      Math.abs(r.structuredContent.query.hits[0].x + 1) < 1e-4 &&
+      Math.abs(r.structuredContent.query.hits[0].y) < 1e-4 &&
+      /with x\(0\) = 1, x'\(0\) = 0/.test(r.content?.[0]?.text ?? "") &&
+      /\(x, x'\) = \(-1/.test(r.content?.[0]?.text ?? ""),
   ],
   // dy/dt = y from (0, 1): y(2) = e^2 = 7.389056 from the numerical solution, one hit, note ok.
   [
@@ -125,7 +149,7 @@ if (widget) {
   const csp = c?._meta?.ui?.csp ?? {};
   // The widget version (app/mcp/server.ts WIDGET_VERSION): a stale build would still answer with
   // the previous URI, and Claude caches the URI per connection (reconnect after a bump).
-  const WIDGET_VERSION = "o-2";
+  const WIDGET_VERSION = "p-1";
   check(`resources/list and resources/read carry the ${WIDGET_VERSION} widget URI`, widget.uri.endsWith(`?v=${WIDGET_VERSION}`) && c?.uri === widget.uri, `${widget.uri} / ${c?.uri}`);
   check("resources/read returns widget HTML", html.toLowerCase().startsWith("<!doctype html") && html.includes("<base href="), JSON.stringify(read.msg).slice(0, 300));
   check("resources/read CSP declares connect/resource/baseUri domains", ["connectDomains", "resourceDomains", "baseUriDomains"].every((k) => Array.isArray(csp[k]) && csp[k].length > 0), JSON.stringify(csp));

@@ -20,7 +20,7 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
 2026-09-10 fixes and validation, and all 16 original docs in full. Historical entries retain their
-then-current status; use the current section for superseding decisions. Widget version is now o-2.
+then-current status; use the current section for superseding decisions. Widget version is now p-1 (round P).
 
 ## Module map
 
@@ -149,11 +149,13 @@ then-current status; use the current section for superseding decisions. Widget v
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION` (o-2 since the 2026-09-10 fixes); `app/mcp/tools.ts` the six analysis tools
+  resource + ping + `WIDGET_VERSION` (p-1 since round P); `app/mcp/tools.ts` the six analysis tools
   (`locale` is optional and defaults to en since round M; analyze_first_order keeps the parameter
   names xMin/xMax but they are the t range, and its expressions use t and y only; `query_solution`
-  since round N: mode first / diff / system / second, t0 for first-order pictures, x0 (t0 accepted as
-  an alias) for planar ones, y0, `target { kind: "t" | "x" | "y", value }`, tSpan default 20 max 1000,
+  since round N: mode first / diff / system / second, t0 for first-order pictures; for planar ones x0,
+  y0 and t0 = the START TIME (default 0, no alias since round P); for second x0 = x(t0), xp0 = x'(t0),
+  xpMin/xpMax for the x' range, `target { kind: "t" | "x" | "y", value }` (kind y is the velocity x' in
+  mode second), tSpan default 20 max 1000,
   stop box 20x the view like the shells, Scene kind "query_solution" + `Scene.query`; its description
   says value-at-time / time-of-value questions must call it, never a closed form); `app/mcp/budget.ts` (2 s wall-clock budget per call via kernel checkpoints) and
   `app/mcp/rate-limit.ts` (per-process sliding window, best effort only on serverless).

@@ -477,7 +477,7 @@ describe("analyze_second_order", () => {
   });
 
   it("Van der Pol x'' - (1 - x^2)*x' + x = 0: unstable spiral at the origin, λ = 1/2 ± i sqrt(3)/2", async () => {
-    const r = await call("analyze_second_order", { equation: "x'' - (1 - x^2)*x' + x = 0", xMin: -4, xMax: 4, yMin: -4, yMax: 4, locale: "en" });
+    const r = await call("analyze_second_order", { equation: "x'' - (1 - x^2)*x' + x = 0", xMin: -4, xMax: 4, xpMin: -4, xpMax: 4, locale: "en" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.equilibria).toHaveLength(1);
     const [origin] = r.scene.equilibria!;
@@ -490,7 +490,7 @@ describe("analyze_second_order", () => {
   });
 
   it("pendulum x'' = -sin(x) on [-4, 4] x [-3, 3]: (0, 0) center-or-weak-spiral, (±π, 0) saddles", async () => {
-    const r = await call("analyze_second_order", { equation: "x'' = -sin(x)", xMin: -4, xMax: 4, yMin: -3, yMax: 3, locale: "en" });
+    const r = await call("analyze_second_order", { equation: "x'' = -sin(x)", xMin: -4, xMax: 4, xpMin: -3, xpMax: 3, locale: "en" });
     expect(r.isError).toBeFalsy();
     expect(r.scene.secondOrder?.equation).toBe("x'' = -sin(x)");
     const eq = r.scene.equilibria!;
@@ -612,14 +612,14 @@ describe("analyze_second_order", () => {
   it("describes itself: when to use it, the notation, and that it shows the reduction", async () => {
     const { tools } = await client.listTools();
     const t = tools.find((t) => t.name === "analyze_second_order")!;
-    expect(t.description).toMatch(/x'' = F\(x, x'\)/);
+    expect(t.description).toMatch(/x'' = F\(t, x, x'\)/);
     expect(t.description).toMatch(/x'' \+ 0\.5\*x' \+ x = 0/);
     expect(t.description).toMatch(/Van der Pol/);
     expect(t.description).toMatch(/pendulum/);
     expect(t.description).toMatch(/straight apostrophes/);
     expect(t.description).toMatch(/reduction/);
     const props = t.inputSchema.properties as Record<string, unknown>;
-    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "t", "xMin", "xMax", "yMin", "yMax"].sort());
+    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "t", "xMin", "xMax", "xpMin", "xpMax"].sort());
     expect(t.inputSchema.required).toContain("equation");
   });
 });
@@ -1500,14 +1500,24 @@ describe("query_solution (round N)", () => {
     expect(far.scene.query!.hits).toEqual([]);
     expect(far.text).toContain(labels("en").tool.queryStoppedBefore);
     expect(far.text).toMatch(/Forward \(t increasing\): reached t = 10, /);
-    // The brief's alias: t0 stands for x0 on a planar system when x0 is absent.
-    const alias = await call("query_solution", { mode: "system", f: "y", g: "-x", t0: 1, y0: 0, tSpan: 10, target: { kind: "t", value: Math.PI } });
-    expect(alias.scene.start).toEqual({ x: 1, y: 0 });
+    // Round P: t0 is never an alias of x0 (R.1 of the brief); without x0 a planar query is refused readably.
+    const noX0 = await call("query_solution", { mode: "system", f: "y", g: "-x", t0: 1, y0: 0, tSpan: 10, target: { kind: "t", value: Math.PI } });
+    expect(noX0.isError).toBe(true);
+    expect(noX0.text).toMatch(/needs `x0`/);
+    expect(noX0.text).toMatch(/t0 is the start time/);
+    // t0 is the START TIME of a planar query: x' = 0, y' = t from (0, 0) at t0 = 1 has y(t) = (t^2 - 1)/2, so y(2) = 3/2.
+    const late = await call("query_solution", { mode: "system", f: "0", g: "t", x0: 0, y0: 0, t0: 1, tSpan: 2, target: { kind: "t", value: 2 } });
+    expect(late.isError).toBeFalsy();
+    expect(late.scene.query!.hits).toHaveLength(1);
+    expect(late.scene.query!.hits[0].t).toBe(2);
+    expect(late.scene.query!.hits[0].y).toBeCloseTo(1.5, 8);
+    expect(late.scene.timeDependent?.snapshotT).toBe(1);
+    expect(late.text).toContain("(at t = 1)");
   });
 
   it("mode second reduces the equation first and mode diff takes M and N", async () => {
     // x'' + x = 0 from x = 1, x' = 0: x = cos t, so x = 0 first at t = pi/2 (forward).
-    const r = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, y0: 0, tSpan: 2, target: { kind: "x", value: 0 } });
+    const r = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, tSpan: 2, target: { kind: "x", value: 0 } });
     expect(r.isError).toBeFalsy();
     expect(r.scene.secondOrder?.reduced.f).toBe("v");
     expect(r.text).toMatch(/^Second-order equation x'' \+ x = 0: /);
@@ -1564,5 +1574,131 @@ describe("trace_trajectory over a non-autonomous system (round N.3 b)", () => {
         expect(r.text).not.toContain(labels(locale).status.reached_equilibrium);
       }
     }
+  });
+});
+
+describe("[P1] second-order notation in the tools (the professor's correction: t is the independent variable, the second coordinate is x')", () => {
+  /** A lone y (not part of a longer name and not the y of dy/dt) anywhere in a summary. */
+  const loneY = (text: string) => /(^|[^A-Za-z0-9_'一-鿿])y(?![A-Za-z0-9_])/.test(text.replace(/dy\/dt/g, ""));
+
+  it("analyze_second_order: the box is xMin/xMax/xpMin/xpMax, and the description says F(t, x, x'), (x, x'), no y, with the brief's examples", async () => {
+    const { tools } = await client.listTools();
+    const t = tools.find((t) => t.name === "analyze_second_order")!;
+    const props = t.inputSchema.properties as Record<string, { description?: string }>;
+    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "t", "xMax", "xMin", "xpMax", "xpMin"]);
+    expect(props.xpMin.description).toMatch(/x' range/);
+    expect(props.equation.description).toMatch(/F\(t, x, x'\)/);
+    expect(props.equation.description).toMatch(/t is the independent variable/);
+    expect(t.title).toBe("Analyze a second-order equation x'' = F(t, x, x')");
+    expect(t.description).toMatch(/independent variable is t/);
+    expect(t.description).toMatch(/F\(t, x, x'\)/);
+    expect(t.description).toMatch(/vertical axis is x' \(velocity\)/);
+    expect(t.description).toMatch(/every point in the result is \(x, x'\)/);
+    expect(t.description).toMatch(/never speak of y to the student/);
+    expect(t.description).toMatch(/x'' = -x \+ cos\(t\)/);
+    expect(t.description).toMatch(/x'' = \(1 - x\^2\)\*x' - x/);
+    expect(t.description).toMatch(/snapshot at t = /);
+    expect(t.description).not.toMatch(/F\(x, x'\)/);
+    expect(t.description).not.toMatch(/y = x'/);
+  });
+
+  it("analyze_second_order: the summary names the ranges x and x', the points (x, x') = (...), and never a lone y, in both locales", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_second_order", { equation: "x'' + 0.5*x' + x = 0", xpMin: -2, xpMax: 2, locale });
+      expect(r.isError, locale).toBeFalsy();
+      const L = labels(locale);
+      const lines = r.text.split("\n");
+      expect(lines[0], locale).toBe(fill(L.tool.secondOrderReduced, { equation: "x'' + 0.5*x' + x = 0", g: "-(0.5 * v + x)" }));
+      expect(lines[1], locale).toBe(fill(L.tool.secondOrderHeader, { xMin: "-3", xMax: "3", xpMin: "-2", xpMax: "2" }));
+      expect(r.text, locale).toContain(fill(L.tool.pointSecond, { point: "(0, 0)" }));
+      expect(r.scene.box, locale).toEqual({ x: { min: -3, max: 3 }, y: { min: -2, max: 2 } });
+      expect(r.scene.secondOrder, locale).toEqual({ equation: "x'' + 0.5*x' + x = 0", reduced: { f: "v", g: "-(0.5 * v + x)" } });
+      expect(loneY(r.text), `${locale}: ${r.text}`).toBe(false);
+    }
+    const inverted = await call("analyze_second_order", { equation: "x'' + x = 0", xpMin: 1, xpMax: -1 });
+    expect(inverted.isError).toBe(true);
+    expect(inverted.text).toMatch(/xpMin \(1\) must be smaller than xpMax \(-1\)/);
+  });
+
+  it("analyze_second_order: a forced equation x'' = -x + cos(t) is a snapshot with the equation-flavored note, the field (v, F) and no equilibria, in both locales", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const r = await call("analyze_second_order", { equation: "x'' = -x + cos(t)", t: 1, density: 5, locale });
+      expect(r.isError, locale).toBeFalsy();
+      const L = labels(locale);
+      expect(r.scene.timeDependent?.snapshotT, locale).toBe(1);
+      expect(r.scene.equilibria, locale).toBeUndefined();
+      expect(r.scene.secondOrder?.equation, locale).toBe("x'' = -x + cos(t)");
+      expect(r.text, locale).toContain(L.tool.timeDependentSecond.slice(0, 16));
+      expect(r.text, locale).toContain(locale === "en" ? "non-autonomous equation" : "非自治方程");
+      expect(r.text, locale).not.toContain(locale === "en" ? "non-autonomous system" : "非自治系统");
+      expect(r.text, locale).toContain("(v, -x + cos(t))");
+      expect(r.text, locale).toContain(fill(L.tool.secondOrderHeader, { xMin: "-3", xMax: "3", xpMin: "-3", xpMax: "3" }));
+      expect(loneY(r.text), `${locale}: ${r.text}`).toBe(false);
+    }
+  });
+
+  it("analyze_second_order: y is refused with the y sentence, and v is accepted as x' and shown as x'", async () => {
+    const y = await call("analyze_second_order", { equation: "x'' = y" });
+    expect(y.isError).toBe(true);
+    expect(y.text).toMatch(/y has no meaning here/);
+    const v = await call("analyze_second_order", { equation: "x'' = -x - 0.5*v" });
+    expect(v.isError).toBeFalsy();
+    expect(v.scene.secondOrder?.equation).toBe("x'' = -x - 0.5*x'");
+    expect(v.scene.secondOrder?.reduced.g).toBe("-x - 0.5 * v");
+    expect(v.scene.equilibria![0].classification).toBe("stable_spiral");
+  });
+
+  it("query_solution mode second: x0 = x(t0), xp0 = x'(t0), the header and the hits read (x, x'), kind y is the velocity x'", async () => {
+    const { tools } = await client.listTools();
+    const q = tools.find((t) => t.name === "query_solution")!;
+    const props = q.inputSchema.properties as Record<string, { description?: string }>;
+    expect(Object.keys(props)).toEqual(expect.arrayContaining(["xp0", "xpMin", "xpMax", "t0", "x0", "y0"]));
+    expect(q.description).toMatch(/x\(t0\) = x0, x'\(t0\) = xp0/);
+    expect(q.description).toMatch(/\(t, x, x'\)/);
+    for (const locale of ["en", "zh"] as const) {
+      const L = labels(locale);
+      // x'' + x = 0 from x(0) = 1, x'(0) = 0: x = cos t, so at t = pi the point is (x, x') = (-1, 0).
+      const r = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, tSpan: 4, target: { kind: "t", value: Math.PI }, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.query!.hits, locale).toHaveLength(1);
+      expect(r.scene.query!.hits[0].x, locale).toBeCloseTo(-1, 6);
+      expect(Math.abs(r.scene.query!.hits[0].y), locale).toBeLessThan(1e-6);
+      expect(r.text.split("\n")[1], locale).toBe(fill(L.tool.queryHeaderSecond, { equation: "x'' + x = 0", t0: "0", x0: "1", xp0: "0", target: fill(L.tool.queryTargetT, { value: "3.1416" }) }));
+      expect(r.text, locale).toContain("(x, x') = (-1, ");
+      expect(loneY(r.text), `${locale}: ${r.text}`).toBe(false);
+      // A target on the velocity: kind y means x' in the header.
+      const vel = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, tSpan: 4, target: { kind: "y", value: 0.5 }, locale });
+      expect(vel.isError, locale).toBeFalsy();
+      expect(vel.text, locale).toContain(fill(L.tool.queryTargetXp, { value: "0.5" }));
+      expect(loneY(vel.text), `${locale}: ${vel.text}`).toBe(false);
+    }
+    // xp0 is required (y0 is still read as a fallback for the kernel's second coordinate); a differing y0 is refused.
+    const missing = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, target: { kind: "t", value: 1 } });
+    expect(missing.isError).toBe(true);
+    expect(missing.text).toMatch(/needs `xp0`/);
+    const fallback = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, y0: 0, tSpan: 4, target: { kind: "t", value: Math.PI } });
+    expect(fallback.isError).toBeFalsy();
+    expect(fallback.scene.start).toEqual({ x: 1, y: 0 });
+    const both = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, y0: 1, target: { kind: "t", value: 1 } });
+    expect(both.isError).toBe(true);
+    // The x' range may be given as xpMin / xpMax.
+    const ranged = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, xpMin: -2, xpMax: 2, tSpan: 4, target: { kind: "t", value: 1 } });
+    expect(ranged.scene.box).toEqual({ x: { min: -3, max: 3 }, y: { min: -2, max: 2 } });
+    const badRange = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, xpMin: 2, xpMax: -2, target: { kind: "t", value: 1 } });
+    expect(badRange.isError).toBe(true);
+    expect(badRange.text).toMatch(/xpMin \(2\) must be smaller than xpMax \(-2\)/);
+  });
+
+  it("query_solution mode second: t0 is the start time of a forced equation: x'' = t with x(1) = 0, x'(1) = 0 gives x(2) = 2/3, x'(2) = 3/2", async () => {
+    // x'(t) = (t^2 - 1)/2 and x(t) = (t^3 - 1)/6 - (t - 1)/2: at t = 2 that is 3/2 and 7/6 - 1/2 = 2/3.
+    const r = await call("query_solution", { mode: "second", equation: "x'' = t", x0: 0, xp0: 0, t0: 1, tSpan: 2, target: { kind: "t", value: 2 } });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.timeDependent?.snapshotT).toBe(1);
+    expect(r.scene.query!.hits).toHaveLength(1);
+    expect(r.scene.query!.hits[0].t).toBe(2);
+    expect(r.scene.query!.hits[0].x).toBeCloseTo(2 / 3, 8);
+    expect(r.scene.query!.hits[0].y).toBeCloseTo(1.5, 8);
+    expect(r.text).toContain("with x(1) = 0, x'(1) = 0");
+    expect(r.text).toContain(labels("en").tool.timeDependentTrajectory.slice(0, 30));
   });
 });

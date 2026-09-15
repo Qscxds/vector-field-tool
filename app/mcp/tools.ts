@@ -28,7 +28,7 @@ import type { Box, SystemSpec } from "@/lib/core/types";
 import { EXACT_PATH_TOL, fixedStopBox, markNonUnique, withUniqueness } from "@/lib/interactive";
 import { queryLines, queryTargetText } from "@/lib/labels-query";
 import { statusSentence, trajectoryStatus } from "@/lib/labels-trajectory";
-import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, pointText, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
@@ -79,6 +79,36 @@ const NEVER_COMPUTE =
 const BOX_RULES =
   'The viewing box (xMin, xMax, yMin, yMax) must have xMin < xMax and yMin < yMax; defaults are -3..3.';
 
+/** analyze_second_order: the vertical range is the velocity x', named so (round P). */
+const SECOND_ORDER_BOX_RULES =
+  "The viewing box of the phase plane must have xMin < xMax (the x range, horizontal) and xpMin < xpMax (the x' " +
+  "range, vertical); defaults are -3..3.";
+
+/**
+ * The second-order notation (round P, the professor's correction): the independent variable is t,
+ * the right-hand side may depend on it, the second coordinate of the phase plane is x' and there
+ * is no y in the student's problem. Shared by analyze_second_order and query_solution.
+ */
+const SECOND_ORDER_NOTATION =
+  "NOTATION of a second-order equation: the independent variable is t and the unknown is x(t), so the right-hand " +
+  "side is F(t, x, x') and may depend on t (x'' = -x + cos(t) is a forced oscillator). The tool sets v = x' and " +
+  "reduces the equation to the planar system x' = v, v' = F(t, x, v). COORDINATES: the horizontal axis is x " +
+  "(position) and the vertical axis is x' (velocity); every point in the result is (x, x'), and the second " +
+  "coordinate is the velocity x', NOT an independent dependent variable. The student's problem has no y: never " +
+  "speak of y to the student, and y in the equation is rejected. An equilibrium (x, x') = (c, 0) of the phase " +
+  "plane is the constant solution x ≡ c (the body at rest). " +
+  "Examples that are accepted: x'' = -x, x'' = -sin(x), x'' = -x - 0.5*x', x'' = -x + cos(t), " +
+  "x'' = -x - x'*abs(x'), x'' = (1 - x^2)*x' - x, x'' = -x + 0.5*cos(1.2*t), x'' + 0.5*x' + x = 0.";
+
+/** analyze_second_order: what happens when F mentions t (the same static rule as NON_AUTONOMOUS_RULE). */
+const SECOND_ORDER_NON_AUTONOMOUS_RULE =
+  "If the symbol t appears in the equation it is non-autonomous (a static rule, whatever the size of the t term): " +
+  "the direction field of the phase plane changes with time, so the tool returns the field sampled at the snapshot " +
+  "time `t` and says so, and equilibria and linearized stability are NOT computed (they are defined for autonomous " +
+  "equations only). Tell the student that the picture is a snapshot at t = ..., that no equilibrium analysis is " +
+  "done, and why (the equation changes with time); for values of a forced solution at given times use " +
+  "query_solution with mode 'second'.";
+
 const FIRST_ORDER_BOX_RULES =
   'The viewing box must have xMin < xMax and yMin < yMax; defaults are -3..3. xMin and xMax are the t range ' +
   '(horizontal axis), yMin and yMax the y range.';
@@ -114,6 +144,13 @@ const firstOrderBoxShape = {
   xMax: coordinate.default(3).describe("Right end of the t range (horizontal axis)."),
   yMin: coordinate.default(-3).describe("Bottom of the y range."),
   yMax: coordinate.default(3).describe("Top of the y range."),
+};
+/** analyze_second_order: the vertical range is the velocity x' (round P), so its parameters are named xpMin / xpMax. */
+const secondOrderBoxShape = {
+  xMin: coordinate.default(-3).describe("Left end of the x range (position, horizontal axis)."),
+  xMax: coordinate.default(3).describe("Right end of the x range (position, horizontal axis)."),
+  xpMin: coordinate.default(-3).describe("Bottom of the x' range (velocity, vertical axis)."),
+  xpMax: coordinate.default(3).describe("Top of the x' range (velocity, vertical axis)."),
 };
 const density = z
   .number()
@@ -153,9 +190,10 @@ export type ToolDeps = {
 type ResolvedDeps = Required<ToolDeps>;
 export const DEFAULT_BUDGET_MS = 2000;
 
-function resolveBox(b: BoxInput): Box {
+/** `vertical` names the vertical pair in the messages: yMin / yMax, or xpMin / xpMax on a second-order picture. */
+function resolveBox(b: BoxInput, vertical: "y" | "xp" = "y"): Box {
   if (!(b.xMin < b.xMax)) throw new ToolInputError(`xMin (${b.xMin}) must be smaller than xMax (${b.xMax}).`);
-  if (!(b.yMin < b.yMax)) throw new ToolInputError(`yMin (${b.yMin}) must be smaller than yMax (${b.yMax}).`);
+  if (!(b.yMin < b.yMax)) throw new ToolInputError(`${vertical}Min (${b.yMin}) must be smaller than ${vertical}Max (${b.yMax}).`);
   const w = b.xMax - b.xMin;
   const h = b.yMax - b.yMin;
   if (w > 1e6 || h > 1e6) throw new ToolInputError("The viewing box is too large (each side must be at most 1e6).");
@@ -211,12 +249,14 @@ function boxValues(box: Box): Record<string, string> {
 function describeEquilibria(scene: Scene, locale: Locale): string[] {
   const L = labels(locale);
   const eq = scene.equilibria ?? [];
+  // A second-order picture names its points (x, x') = (...): the second coordinate is the velocity.
+  const secondOrder = Boolean(scene.secondOrder);
   const lines: string[] = equilibriaNotices(L, scene);
   eq.forEach((p, i) => {
     lines.push(
       fill(L.tool.equilibriumLine, {
         index: i + 1,
-        point: formatPoint(p.at),
+        point: pointText(L, p.at, secondOrder),
         classification: L.classification[p.classification],
         eigenvalues: p.eigenvalues.map((e) => formatEigenvalue(e)).join(", ") || L.tool.eigenvaluesUnavailable,
         trace: fmt(p.trace, 5),
@@ -224,7 +264,7 @@ function describeEquilibria(scene: Scene, locale: Locale): string[] {
       }) + (p.caveat ? fill(L.tool.note, { caveat: L.caveat[p.caveat] }) : ""),
     );
     // Right after the point it belongs to; silent when the quotients stayed bounded (no proof).
-    const uniqueness = uniquenessSentence(L, p.uniqueness, { point: p.at });
+    const uniqueness = uniquenessSentence(L, p.uniqueness, { point: p.at, secondOrder });
     if (uniqueness) lines.push(uniqueness);
   });
   return lines;
@@ -312,10 +352,14 @@ function guarded(deps: ResolvedDeps, run: (checkpoint: () => void) => CallToolRe
 
 /**
  * The body of analyze_system, shared with analyze_second_order (which feeds it the reduced system
- * x' = y, y' = F): compiles the system, finds and classifies the equilibria in the box, samples the
- * field, and returns the Scene plus the summary lines (header with the singular-sample note, then
- * one line per equilibrium). The handler shells stay thin. Checks that concern the planar system
- * itself (time dependence, uniqueness lines) belong here so both tools get them.
+ * x' = y, y' = F together with `second`, the reduction shown to students): compiles the system,
+ * finds and classifies the equilibria in the box, samples the field, and returns the Scene plus
+ * the summary lines (header with the singular-sample note, then one line per equilibrium). The
+ * handler shells stay thin. Checks that concern the planar system itself (time dependence,
+ * uniqueness lines) belong here so both tools get them. With `second` every line speaks the
+ * second-order notation (round P): the header names the x and x' ranges, the sampled field is
+ * (v, F) with v = x', the non-autonomous note speaks of the equation, and points read (x, x');
+ * the kernel's y never appears.
  */
 export function analyzePlanar(
   spec: SystemSpec,
@@ -324,10 +368,13 @@ export function analyzePlanar(
   locale: Locale,
   snapshotT: number,
   checkpoint: () => void,
+  second?: NonNullable<Scene["secondOrder"]>,
 ): { scene: Scene; lines: string[] } {
   const L = labels(locale);
   const sys = compileOrExplain(spec);
-  const header = fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
+  const header = second
+    ? fill(L.tool.secondOrderHeader, { xMin: fmt(box.x.min), xMax: fmt(box.x.max), xpMin: fmt(box.y.min), xpMax: fmt(box.y.max) })
+    : fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
   const singularNote = (count: number) => (count ? " " + fill(L.tool.singularSamples, { count }) : "");
   // Non-autonomous (t appears in f or g: the static rule of lib/core/time-dependence): equilibria
   // and linearized stability are tools for autonomous systems and are not attempted. Return only
@@ -335,9 +382,10 @@ export function analyzePlanar(
   const td = detectTimeDependence(sys, box, { checkpoint, snapshotT });
   if (td.dependsOnT) {
     const field = sampleField(sys, box, density, density, snapshotT, checkpoint);
-    const scene: Scene = { kind: "analyze_system", locale, system: spec, box, field, timeDependent: { snapshotT, maxRelDeviation: td.maxRelDeviation } };
-    const note = fill(L.tool.timeDependent, { t: fmt(snapshotT), evidence: timeDependenceEvidence(L, td) });
-    const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
+    const scene: Scene = { kind: "analyze_system", locale, system: spec, box, field, timeDependent: { snapshotT, maxRelDeviation: td.maxRelDeviation }, ...(second ? { secondOrder: second } : {}) };
+    const note = fill(second ? L.tool.timeDependentSecond : L.tool.timeDependent, { t: fmt(snapshotT), evidence: timeDependenceEvidence(L, td) });
+    const shown = second ? second.reduced : { f: spec.f, g: spec.g };
+    const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: shown.f, g: shown.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
     return { scene, lines: [`${header}${singularNote(field.singularCount)}`, note, line] };
   }
   const eq = findEquilibria(sys, box, { checkpoint });
@@ -354,6 +402,7 @@ export function analyzePlanar(
     singularPoints: eq.singularPoints,
     underflowPlateau: eq.underflowPlateau,
     ...(eq.seeding.refineCapped ? { refineCapped: true } : {}),
+    ...(second ? { secondOrder: second } : {}),
   };
   return { scene, lines: [`${header}${singularNote(field.singularCount)}`, ...describeEquilibria(scene, locale)] };
 }
@@ -416,26 +465,29 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     server,
     "analyze_second_order",
     {
-      title: "Analyze a second-order equation x'' = F(x, x')",
+      title: "Analyze a second-order equation x'' = F(t, x, x')",
       description:
         `${CALL_FIRST_PREFIX} for any question that involves a concrete second-order equation in x(t), given as ` +
-        "x'' = F(x, x') or as a full equation such as x'' + a*x' + b*x = 0, before saying anything about its " +
+        "x'' = F(t, x, x') or as a full equation such as x'' + a*x' + b*x = 0, before saying anything about its " +
         "equilibria, stability or phase plane. Even when you can solve the equation in closed form (a linear " +
         "oscillator with a characteristic equation is exactly the case you are tempted to skip), " + CALL_FIRST_TAIL + " " +
-        "WHAT IT COMPUTES: reduces a single second-order equation in x(t) to the planar system x' = y, y' = F(x, y) (y = x' is the " +
-        "velocity), then does exactly what analyze_system does for that system: all equilibrium points inside the " +
-        "viewing box (the x axis is position, the y axis is velocity), each classified from its Jacobian " +
-        "(eigenvalues, trace, determinant), plus a sampled vector field for the phase portrait. The text summary " +
-        "starts with the reduction step, because students get that step wrong; read it to the student. " +
-        "USE THIS whenever a student gives ONE second-order equation, either as x'' = F(x, x') or as a full " +
-        "equation such as x'' + a*x' + b*x = 0: harmonic and damped oscillators, the pendulum x'' = -sin(x), " +
+        SECOND_ORDER_NOTATION + " " +
+        "WHAT IT COMPUTES: reduces the equation with v = x' to the planar system x' = v, v' = F(t, x, v), then does " +
+        "exactly what analyze_system does for that system: all equilibrium points (x, x') inside the viewing box, each " +
+        "classified from its Jacobian (eigenvalues, trace, determinant), plus a sampled vector field for the phase " +
+        "portrait. The text summary starts with the reduction step, because students get that step wrong; read it " +
+        "to the student. " +
+        SECOND_ORDER_NON_AUTONOMOUS_RULE + " " +
+        "USE THIS whenever a student gives ONE second-order equation, either as x'' = F(t, x, x') or as a full " +
+        "equation such as x'' + a*x' + b*x = 0: harmonic, damped and forced oscillators, the pendulum x'' = -sin(x), " +
         "Van der Pol x'' - (1 - x^2)*x' + x = 0, Duffing x'' + d*x' + a*x + b*x^3 = 0, and questions about the " +
         "phase plane, equilibria or stability of such an equation. Do not reduce the equation yourself and call " +
         "analyze_system; pass the equation as written. For a system of two first-order equations use " +
         "analyze_system; for one first-order equation dy/dt = g(t, y) use analyze_first_order. " +
         "Input syntax for `equation`: the unknown is x, its derivatives are written x' and x'' with straight " +
-        "apostrophes, t is the time (a t in the equation makes the reduced system non-autonomous, also when it " +
-        "multiplies x''). Either a full " +
+        "apostrophes (v is accepted as an alias of x' and shown as x'), t is the independent variable and may appear " +
+        "anywhere (a t in the equation makes it non-autonomous, also when it multiplies x''); y is rejected because " +
+        "the problem has no y. Either a full " +
         "equation with exactly one = (x'' + 0.5*x' + x = 0, (1 + x^2)*x'' = -x) or just the right-hand side F " +
         "of x'' = F (-sin(x) - 0.2*x'). The equation must be affine in x'': the coefficient of x'' may depend on x, x' " +
         "and t, as in (1 + x^2)*x'' = -x or t*x'' + x' = 0, but forms that are not affine in x'' (x''^2, sin(x''), " +
@@ -445,20 +497,20 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "the box) cannot be detected, so choose the box the student cares about. " +
         "Write multiplication explicitly: x*x', 2*x, not xx' (2x is accepted). Powers use ^, e.g. x^3. " +
         "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; " +
-        'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
+        'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name (v is reserved). ' +
         FRACTIONAL_POWER_NOTE + " " +
-        BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        SECOND_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         equation: z
           .string()
           .trim()
           .min(1)
           .max(200)
-          .describe("The second-order equation in x(t): x'' = F(x, x') written as a full equation with one =, or just F. Derivatives are x' and x''."),
+          .describe("The second-order equation in x(t): x'' = F(t, x, x') written as a full equation with one =, or just F. Derivatives are x' and x'' (v means x'); t is the independent variable."),
         params: paramsSchema,
-        ...boxShape,
+        ...secondOrderBoxShape,
         density: density.describe("Grid points per axis for the returned vector field (5..60)."),
-        t: snapshotTime,
+        t: snapshotTime.describe("Snapshot time for a non-autonomous equation (t appears in F): the phase-plane field is sampled at this t. Ignored otherwise."),
         locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -467,10 +519,11 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     (input) =>
       guarded(d, (checkpoint) => {
         const L = labels(input.locale);
-        const box = resolveBox(input);
+        // The vertical range is the velocity x' (xpMin / xpMax); the kernel's box keeps calling it y.
+        const box = resolveBox({ xMin: input.xMin, xMax: input.xMax, yMin: input.xpMin, yMax: input.xpMax }, "xp");
         const reduced = reduceSecondOrder(input.equation, input.params, { box });
-        const { scene, lines } = analyzePlanar(reduced.spec, box, input.density, input.locale, input.t, checkpoint);
-        scene.secondOrder = { equation: reduced.equation, reduced: reduced.reduced };
+        const second = { equation: reduced.equation, reduced: reduced.reduced };
+        const { scene, lines } = analyzePlanar(reduced.spec, box, input.density, input.locale, input.t, checkpoint, second);
         const reduction = fill(L.tool.secondOrderReduced, { equation: reduced.equation, g: reduced.reduced.g });
         return ok([reduction, ...lines].join("\n"), scene);
       }),
@@ -803,13 +856,19 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "the whole curve, analyze_first_order / analyze_system for equilibria and stability. " +
         "Inputs: `mode` selects the equation form and which expression parameters are read: 'first' (expr: dy/dt = " +
         "g(t, y)), 'diff' (M and N: M dt + N dy = 0), 'system' (f and g: x' = f, y' = g), 'second' (equation: x'' = " +
-        "F(x, x') or a full equation, reduced to x' = y, y' = F as analyze_second_order does). The initial point is " +
-        "(t0, y0) for first / diff (t0 is the initial t) and (x0, y0) for system / second (the start time is 0). " +
-        "`target` is { kind, value }: for first / diff kind 't' (a t coordinate) or 'y' (a y value); for system / " +
-        "second kind 't' (a time), 'x' or 'y' (a coordinate value). tSpan (default 20, at most 1000) is integrated in " +
-        "EACH direction; the solution is followed up to 20 times beyond the viewing box. " +
+        "F(t, x, x') or a full equation, reduced with v = x' to x' = v, v' = F as analyze_second_order does). " +
+        "The initial point is (t0, y0) for first / diff (t0 is the initial t); (x0, y0) at time t0 for system " +
+        "(t0 defaults to 0 and only matters when f or g mentions t); and x(t0) = x0, x'(t0) = xp0 for second " +
+        "(xp0 is the initial velocity x'; t0 defaults to 0 and matters for a forced, non-autonomous equation). " +
+        "`target` is { kind, value }: for first / diff kind 't' (a t coordinate) or 'y' (a y value); for system " +
+        "kind 't' (a time), 'x' or 'y' (a coordinate value); for second kind 't' (a time), 'x' (a position) or 'y', " +
+        "which there means the VELOCITY x' (the result names it x'). Every returned point of a 'second' query is " +
+        "(t, x, x'): the second coordinate is x', never a y of its own. tSpan (default 20, at most 1000) is " +
+        "integrated in EACH direction; the solution is followed up to 20 times beyond the viewing box. " +
         EXPRESSION_RULES + " For first / diff the variables are t and y only (x is rejected; write t). " +
-        "For 'second' the unknown is x with derivatives x' and x''. " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        "For 'second' the unknown is x(t) with derivatives x' and x'' (v means x'), t is the independent variable, " +
+        "and y is rejected; the viewing box's vertical range may be given as xpMin / xpMax (the x' range). " +
+        BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
       inputSchema: {
         mode: z.enum(["first", "diff", "system", "second"]).describe("Which form the equation is given in: first (expr), diff (M, N), system (f, g), second (equation)."),
         expr: expression.optional().describe("mode first: the right-hand side g(t, y) of dy/dt = g(t, y)."),
@@ -817,19 +876,22 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         N: expression.optional().describe("mode diff: N(t, y) in M dt + N dy = 0."),
         f: expression.optional().describe("mode system: the right-hand side of x'."),
         g: expression.optional().describe("mode system: the right-hand side of y'."),
-        equation: z.string().trim().min(1).max(200).optional().describe("mode second: the second-order equation in x(t), as analyze_second_order takes it."),
+        equation: z.string().trim().min(1).max(200).optional().describe("mode second: the second-order equation x'' = F(t, x, x') in x(t), as analyze_second_order takes it."),
         params: paramsSchema,
-        t0: coordinate.optional().describe("mode first / diff: the t coordinate of the initial point (t0, y0). Not used for system / second (give x0)."),
-        x0: coordinate.optional().describe("mode system / second: the initial x (the start time is 0). Not used for first / diff (give t0)."),
-        y0: coordinate.describe("The initial y."),
+        t0: coordinate.optional().describe("mode first / diff: the t coordinate of the initial point (t0, y0), required. mode system / second: the start time of the solution (default 0; the initial values are given at this t)."),
+        x0: coordinate.optional().describe("mode system: the initial x; mode second: the initial position x(t0). Not used for first / diff (give t0)."),
+        y0: coordinate.optional().describe("mode first / diff / system: the initial y (required). mode second: use xp0 instead."),
+        xp0: coordinate.optional().describe("mode second: the initial velocity x'(t0)."),
         target: z
           .object({
-            kind: z.enum(["t", "x", "y"]).describe("first / diff: 't' (a t coordinate) or 'y'; system / second: 't' (a time), 'x' or 'y'."),
+            kind: z.enum(["t", "x", "y"]).describe("first / diff: 't' (a t coordinate) or 'y'; system: 't' (a time), 'x' or 'y'; second: 't' (a time), 'x' (a position) or 'y' (meaning the velocity x')."),
             value: coordinate.describe("The target value."),
           })
           .describe("What is asked: the value at a time (kind 't' for a system) or the crossings of a coordinate value."),
         tSpan: z.number().positive().max(1000).default(20).describe("Time span integrated in each direction (0 < tSpan <= 1000)."),
         ...boxShape,
+        xpMin: coordinate.optional().describe("mode second: bottom of the x' range (used instead of yMin)."),
+        xpMax: coordinate.optional().describe("mode second: top of the x' range (used instead of yMax)."),
         locale: localeSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
@@ -838,8 +900,12 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
     (input) =>
       guarded(d, (checkpoint) => {
         const L = labels(input.locale);
-        const box = resolveBox(input);
         const firstOrder = input.mode === "first" || input.mode === "diff";
+        const secondMode = input.mode === "second";
+        // A second-order picture's vertical range is x' (xpMin / xpMax when given); the kernel's box calls it y.
+        const box = secondMode
+          ? resolveBox({ xMin: input.xMin, xMax: input.xMax, yMin: input.xpMin ?? input.yMin, yMax: input.xpMax ?? input.yMax }, input.xpMin !== undefined || input.xpMax !== undefined ? "xp" : "y")
+          : resolveBox(input);
         const need = (name: "expr" | "M" | "N" | "f" | "g" | "equation"): string => {
           const v = input[name];
           if (typeof v !== "string") throw new ToolInputError(`mode '${input.mode}' needs \`${name}\`.`);
@@ -871,21 +937,28 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           equation = reduced.equation;
         }
         const sys = compileOrExplain(spec);
-        // The initial point: (t0, y0) on a first-order picture, (x0, y0) on a planar one (t0 is
-        // accepted there as an alias of x0 when x0 is absent).
+        // The initial point: (t0, y0) on a first-order picture; (x0, y0) at the start time t0 on a
+        // planar one; x(t0) = x0, x'(t0) = xp0 on a second-order one (y0 is still read there as a
+        // fallback, since the kernel's second coordinate is the velocity). No aliases between t0
+        // and x0 (round P): t0 is always a t.
         let h: number;
+        let startTime = 0;
         if (firstOrder) {
           if (typeof input.x0 === "number") throw new ToolInputError("A first-order equation has the coordinates t and y: give the initial point as t0 and y0, not x0.");
           if (typeof input.t0 !== "number") throw new ToolInputError("mode 'first' / 'diff' needs `t0`, the t coordinate of the initial point.");
           h = input.t0;
         } else {
-          if (typeof input.x0 === "number") h = input.x0;
-          else if (typeof input.t0 === "number") h = input.t0;
-          else throw new ToolInputError("mode 'system' / 'second' needs `x0`, the initial x (the start time is 0).");
+          if (typeof input.x0 !== "number") throw new ToolInputError(secondMode ? "mode 'second' needs `x0`, the initial position x(t0)." : "mode 'system' needs `x0`, the initial x (t0 is the start time, not a coordinate).");
+          h = input.x0;
+          startTime = input.t0 ?? 0;
         }
-        const start = { x: h, y: input.y0 };
+        const v0 = secondMode ? (input.xp0 ?? input.y0) : input.y0;
+        if (typeof v0 !== "number") throw new ToolInputError(secondMode ? "mode 'second' needs `xp0`, the initial velocity x'(t0)." : "`y0`, the initial y, is required.");
+        if (secondMode && input.xp0 !== undefined && input.y0 !== undefined && input.xp0 !== input.y0) throw new ToolInputError("mode 'second' takes the initial velocity as `xp0`; do not give a different `y0` as well.");
+        const start = { x: h, y: v0 };
         // The student's target kind -> the kernel's: on a first-order picture t is the horizontal
-        // coordinate (kernel "x") and there is no separate time; on a planar one t is the time.
+        // coordinate (kernel "x") and there is no separate time; on a planar one t is the time. On
+        // a second-order picture the kind "y" is the velocity x' (the kernel's y).
         let target: QueryTarget;
         if (firstOrder) {
           if (input.target.kind === "x") throw new ToolInputError("A first-order equation has the coordinates t and y: use target.kind 't' (a t coordinate) or 'y', not 'x'.");
@@ -893,7 +966,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         } else {
           target = { kind: input.target.kind === "t" ? "time" : input.target.kind, value: input.target.value };
         }
-        const result = querySolution(sys, start, target, { tSpan: input.tSpan, stopBox: fixedStopBox(box), t0: 0, checkpoint });
+        const result = querySolution(sys, start, target, { tSpan: input.tSpan, stopBox: fixedStopBox(box), t0: startTime, checkpoint });
         const traced: TrajectoryView[] = [result.forward, result.backward].map((leg, i) => ({
           direction: i === 0 ? "forward" : "backward",
           points: thin(leg.points, 1000),
@@ -902,8 +975,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           tEnd: leg.tEnd,
           stop: "far",
         }));
-        const td = firstOrder ? null : detectTimeDependence(sys, box, { checkpoint });
-        const timeDependent = td?.dependsOnT ? { snapshotT: 0, maxRelDeviation: td.maxRelDeviation } : undefined;
+        const td = firstOrder ? null : detectTimeDependence(sys, box, { checkpoint, snapshotT: startTime });
+        const timeDependent = td?.dependsOnT ? { snapshotT: startTime, maxRelDeviation: td.maxRelDeviation } : undefined;
         // A curve through a point where uniqueness fails is one of many (as trace_trajectory does).
         const trajectories =
           firstOrderSpec
@@ -924,18 +997,20 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           ...(timeDependent ? { timeDependent } : {}),
           query: { target: input.target, hits: result.hits, note: result.note, reached: result.reached },
         };
-        const targetText = queryTargetText(scene.query!, L);
+        const targetText = queryTargetText(scene.query!, L, secondMode);
         const lines: string[] = [];
         lines.push(
           firstOrder
             ? fill(L.tool.queryHeaderFirst, { equation, t0: fmt(start.x), y0: fmt(start.y), target: targetText })
-            : fill(L.tool.queryHeaderSystem, { f: spec.f, g: spec.g, start: formatPoint(start), t0: "0", target: targetText }),
+            : secondOrder
+              ? fill(L.tool.queryHeaderSecond, { equation, t0: fmt(startTime), x0: fmt(start.x), xp0: fmt(start.y), target: targetText })
+              : fill(L.tool.queryHeaderSystem, { f: spec.f, g: spec.g, start: formatPoint(start), t0: fmt(startTime), target: targetText }),
         );
         if (secondOrder) lines.unshift(fill(L.tool.secondOrderReduced, { equation: secondOrder.equation, g: secondOrder.reduced.g }));
         lines.push(...queryLines(scene, L));
         for (const t of trajectories) {
           const end = t.points[t.points.length - 1];
-          lines.push(fill(L.tool.queryLeg, { direction: t.direction === "forward" ? L.tool.forward : L.tool.backward, tEnd: fmt(t.tEnd, 3), end: formatPoint(end), status: trajectoryStatus(t, L, timeDependent) }));
+          lines.push(fill(L.tool.queryLeg, { direction: t.direction === "forward" ? L.tool.forward : L.tool.backward, tEnd: fmt(t.tEnd, 3), end: pointText(L, end, secondMode), status: trajectoryStatus(t, L, timeDependent) }));
         }
         if (trajectories.some((t) => t.nonUnique)) lines.push(L.tool.nonUniqueTrajectory);
         if (timeDependent && td) lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced: L.tool.tracedBoth }));
