@@ -439,7 +439,7 @@ describe("analyze_second_order", () => {
     expect(r.scene.kind).toBe("analyze_system");
     expect(r.scene.system?.f).toBe("y");
     expect(r.scene.system?.variables).toBeUndefined();
-    expect(r.scene.secondOrder).toEqual({ equation: "x'' + x = 0", reduced: { f: "y", g: r.scene.system!.g } });
+    expect(r.scene.secondOrder).toEqual({ equation: "x'' + x = 0", reduced: { f: "v", g: r.scene.system!.g } });
     expect(r.text.startsWith(`Second-order equation x'' + x = 0: with y = x' it becomes the system x' = y, y' = ${r.scene.system!.g}.`)).toBe(true);
     expect(r.text.split("\n")[1]).toMatch(/^System x' = y, y' = /);
     expect(r.scene.equilibria).toHaveLength(1);
@@ -516,8 +516,8 @@ describe("analyze_second_order", () => {
     expect(nonlinear.text).toMatch(/x'' must appear linearly/);
     const y = await call("analyze_second_order", { equation: "x'' + y = 0", locale: "en" });
     expect(y.isError).toBe(true);
-    expect(y.text).toMatch(/Unknown symbol "y"/);
-    expect(y.text).toMatch(/unknown function is x/);
+    expect(y.text).toMatch(/y has no meaning here/);
+    expect(y.text).toMatch(/the variables are t \(the independent variable\), x and x'/);
     const noEquals = await call("analyze_second_order", { equation: "x'' + x", locale: "en" });
     expect(noEquals.isError).toBe(true);
     expect(noEquals.text).toMatch(/right-hand side F of x'' = F/);
@@ -1318,9 +1318,11 @@ describe("Phase J results are exposed in the Scene and the summary, in both loca
       expect(r.isError, locale).toBeFalsy();
       expect(r.scene.kind, locale).toBe("analyze_system");
       expect(r.scene.secondOrder?.equation, locale).toBe("x'' + 0.5*x' + x = 0");
-      expect(r.scene.secondOrder?.reduced.f, locale).toBe("y");
+      // The kernel system keeps y for x'; the reduction shown to students writes it as v.
+      expect(r.scene.secondOrder?.reduced.f, locale).toBe("v");
       expect(r.scene.system?.f, locale).toBe("y");
-      expect(r.scene.system?.g, locale).toBe(r.scene.secondOrder?.reduced.g);
+      expect(r.scene.secondOrder?.reduced.g, locale).toBe("-(0.5 * v + x)");
+      expect(r.scene.system?.g, locale).toBe("-(0.5 * y + x)");
       const L = labels(locale);
       expect(r.text.split("\n")[0], locale).toBe(fill(L.tool.secondOrderReduced, { equation: "x'' + 0.5*x' + x = 0", g: r.scene.secondOrder!.reduced.g }));
     }
@@ -1508,7 +1510,7 @@ describe("query_solution (round N)", () => {
     // x'' + x = 0 from x = 1, x' = 0: x = cos t, so x = 0 first at t = pi/2 (forward).
     const r = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, y0: 0, tSpan: 2, target: { kind: "x", value: 0 } });
     expect(r.isError).toBeFalsy();
-    expect(r.scene.secondOrder?.reduced.f).toBe("y");
+    expect(r.scene.secondOrder?.reduced.f).toBe("v");
     expect(r.text).toMatch(/^Second-order equation x'' \+ x = 0: /);
     expect(r.scene.query!.hits.map((h) => h.t)).toEqual([expect.closeTo(-Math.PI / 2, 6), expect.closeTo(Math.PI / 2, 6)]);
     // y dt - t dy = 0 is dy/dt = y/t: through (1, 1) the solution is y = t, so y = 2 at t = 2.

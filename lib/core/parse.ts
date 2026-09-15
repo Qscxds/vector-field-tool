@@ -136,7 +136,8 @@ export const MAX_EXPRESSION_LENGTH = 500;
  * - "x_in_first_order": the symbol x in "ty" mode (the student meant t).
  * - "lhs_in_expression": the text starts with a left-hand side such as "dy/dt =" or "y' =".
  * - "second_order_*": the failures of lib/core/second-order.ts (the web shell shows a bilingual
- *   sentence per code; "second_order_unknown_symbol" carries the symbol in `symbol`).
+ *   sentence per code; "second_order_unknown_symbol" carries the symbol in `symbol`;
+ *   "second_order_y_symbol" is the professor's case: y has no meaning in x'' = F(t, x, x')).
  * Every other ParseError has no code.
  */
 export type ParseErrorCode =
@@ -152,7 +153,9 @@ export type ParseErrorCode =
   | "second_order_placeholder_typed"
   | "second_order_undefined_at_samples"
   | "second_order_unknown_symbol"
-  | "second_order_implicit_product";
+  | "second_order_implicit_product"
+  | "second_order_y_symbol"
+  | "second_order_v_parameter";
 
 export class ParseError extends Error {
   readonly expr: string;

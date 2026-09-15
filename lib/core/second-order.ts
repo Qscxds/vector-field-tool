@@ -1,13 +1,18 @@
 /**
- * Second-order equations x'' = F(x, x', t) (or a full equation such as x'' + 0.5*x' + x = 0) reduced
- * to the planar system x' = y, y' = F(x, y, t) AT THE STRING LEVEL, so the reduced system can be
+ * Second-order equations x'' = F(t, x, x') (or a full equation such as x'' + 0.5*x' + x = 0) reduced
+ * to the planar system x' = y, y' = F(t, x, y) AT THE STRING LEVEL, so the reduced system can be
  * shown to the student, put into a Scene, and recompiled by any client exactly like a planar system.
  *
- * Notation: the unknown is x, its derivatives are written x' and x'' (straight apostrophes; the
- * unicode primes ′ ″, curly apostrophes ’ ‘ (what iOS and Word type), backticks, ´ and a double
- * quote are accepted and normalized first, spaces between two primes too), and t is the time.
- * Internally the derivatives become the placeholder symbols xd and xdd, which the parser accepts
- * ONLY here.
+ * Notation (the professor's, round P): t is the INDEPENDENT variable, the unknown is x(t), its
+ * derivatives are written x' and x'' (straight apostrophes; the unicode primes ′ ″, curly
+ * apostrophes ’ ‘ (what iOS and Word type), backticks, ´ and a double quote are accepted and
+ * normalized first, spaces between two primes too). The textbook alias v = x' is accepted on input
+ * (a bare symbol v means x'); every display uses x'. The symbol y has NO meaning in this mode: the
+ * student's problem has no y, so y (and y', y'') is refused with a sentence saying exactly that,
+ * never with a generic unknown-symbol message. Internally the derivatives become the placeholder
+ * symbols xd and xdd, which the parser accepts ONLY here, and the reduced system is the kernel's
+ * planar (x, y) system, where y stands for x'; that y is an implementation detail and never
+ * reaches a student: the reduction shown to students (`reduced`) writes it as v.
  *
  * Reduction: with E(x, x', x'', t) = lhs - rhs the equation is E = 0. E must be affine in x'':
  * E = a(x, x', t) * x'' + E0(x, x', t), so x'' = -E0 / a. Affinity is checked numerically (the
@@ -42,6 +47,13 @@ import type { Box, SystemSpec, Vec2 } from "./types";
 /** Placeholder symbols for x' and x''; accepted by the parser only through this module. */
 export const XD = "xd";
 export const XDD = "xdd";
+/** The name the reduction SHOWN to students gives x' ("let v = x'"); the kernel's system keeps y. */
+export const V = "v";
+
+/** A bare symbol v (not part of a longer name): the textbook alias of x' on input. */
+const V_SYMBOL = /(?<![A-Za-z0-9_])v(?![A-Za-z0-9_])/g;
+/** A bare symbol y (also the y of y' and y''): meaningless in a second-order equation. */
+const Y_SYMBOL = /(?<![A-Za-z0-9_])y(?![A-Za-z0-9_])/;
 
 export const NOT_LINEAR_IN_XDD_MESSAGE =
   "x'' must appear linearly, e.g. x'' + 0.5*x' + x = 0 or x'' = -sin(x); x''^2, sin(x'') and the like cannot be reduced.";
@@ -52,7 +64,11 @@ export const XDD_WITHOUT_EQUALS_MESSAGE =
 export const DOUBLE_EQUALS_MESSAGE = 'Use a single "=" between the two sides of the equation (== is a comparison).';
 export const TOO_MANY_EQUALS_MESSAGE = 'The equation must contain exactly one "=".';
 export const OTHER_PRIME_MESSAGE =
-  "Only the unknown x may carry primes: write x' for dx/dt and x'' for the second derivative. The unknown function is x and t is the time.";
+  "Only the unknown x may carry primes: write x' for dx/dt and x'' for the second derivative. The unknown function is x and t is the independent variable.";
+/** The professor's case (round P): the second variable of the phase plane is x', not a y of its own. */
+export const Y_IN_SECOND_ORDER_MESSAGE =
+  "In a second-order equation the variables are t (the independent variable), x and x' (dx/dt, also written v); y has no meaning here. Write x' for the derivative of x.";
+export const V_PARAMETER_MESSAGE = 'Parameter name "v" is reserved in a second-order equation: v stands for x\'.';
 export const HIGHER_DERIVATIVE_MESSAGE =
   "Only the first and second derivatives x' and x'' are supported; x''' and higher cannot be reduced to a planar system.";
 export const PLACEHOLDER_TYPED_MESSAGE =
@@ -82,17 +98,21 @@ export function studentNotation(text: string): string {
 
 export function unknownSymbolInSecondOrder(name: string): string {
   return (
-    `Unknown symbol "${name}". The unknown function is x, its derivative is x' (dx/dt) and its second derivative is x''; ` +
-    "t is the time. Allowed symbols: x, x', x'', t, pi, e, and the names in params."
+    `Unknown symbol "${name}". The unknown function is x, its derivative is x' (dx/dt), which may also be written v, and its second derivative is x''; ` +
+    "t is the independent variable. Allowed symbols: t, x, x', x'', pi, e, and the names in params."
   );
 }
 
 export type ReducedSecondOrder = {
-  /** The reduced planar system x' = y, y' = F(x, y, t) (variables "xy": no `variables` field); `g` keeps full precision. */
+  /** The reduced planar system x' = y, y' = F(t, x, y) (variables "xy": no `variables` field); `g` keeps full precision. The y here is the kernel's name for x' and is never shown. */
   spec: SystemSpec;
-  /** What the student typed, with primes normalized to straight apostrophes ("x'' = F" for a bare F). */
+  /** What the student typed, with primes normalized to straight apostrophes and a v written as x' ("x'' = F" for a bare F). */
   equation: string;
-  /** The reduction shown to students: x' = f, y' = g with f = "y"; numeric literals in g have at most DISPLAY_DIGITS significant digits. */
+  /**
+   * The reduction shown to students, "let v = x': x' = v, v' = g": f is "v" and g is F with x'
+   * written v (the kernel's y never appears); numeric literals in g have at most DISPLAY_DIGITS
+   * significant digits.
+   */
   reduced: { f: string; g: string };
 };
 
@@ -152,19 +172,27 @@ function preprocess(input: string): string {
   return normalizeOperators(straightenPrimes(input.trim())).replace(FUNCTION_OF_T, "$1");
 }
 
-/** Normalizes the prime notation: x'' / x″ / x’’ / x ' ' / x" -> xdd, then x' / x′ / x’ -> xd. Trims whitespace. */
+/**
+ * Normalizes the prime notation: x'' / x″ / x’’ / x ' ' / x" -> xdd, then x' / x′ / x’ -> xd, then
+ * the alias v -> xd. Trims whitespace. Double primes go first so the two apostrophes of x'' are
+ * never read as x' followed by a stray quote; only an x DIRECTLY followed by a prime is touched, so
+ * exp(x), max(x, 1) or x^2 are left alone. A v followed by a prime (v') becomes xd' and is refused
+ * by the caller's prime check.
+ */
 export function normalizePrimes(input: string): string {
   return preprocess(input)
     .replace(/x\s*(?:'\s*'|")/g, XDD)
-    .replace(/x\s*'/g, XD);
+    .replace(/x\s*'/g, XD)
+    .replace(V_SYMBOL, XD);
 }
 
-/** The student's text with every prime notation turned into straight, unspaced apostrophes, for display. */
+/** The student's text with every prime notation turned into straight, unspaced apostrophes and v written as x', for display. */
 function displayForm(input: string): string {
   return preprocess(input)
     .replace(/x\s*"/g, "x''")
     .replace(/x\s*'\s*'/g, "x''")
-    .replace(/x\s*'(?!')/g, "x'");
+    .replace(/x\s*'(?!')/g, "x'")
+    .replace(V_SYMBOL, "x'");
 }
 
 function substitute(node: MathNode, xddValue: number): MathNode {
@@ -270,10 +298,19 @@ function quotientByConstant(E0: string, a: number): string {
   return a < 0 ? `(${E0})/(${String(-a)})` : `-(${E0})/(${String(a)})`;
 }
 
-/** Numeric literals rounded to DISPLAY_DIGITS significant digits; the same string when none needed it. */
+/**
+ * The display form of the compiled g: the kernel's y (the placeholder for x') written as v, and
+ * numeric literals rounded to DISPLAY_DIGITS significant digits; the same string when neither
+ * applied. The symbol is renamed on the AST (never by text replacement), so nothing but the
+ * variable y itself is touched.
+ */
 function displayString(g: string): string {
   let changed = 0;
   const node = mathjs.parse(g).transform((n: MathNode) => {
+    if (mathjs.isSymbolNode(n) && n.name === "y") {
+      changed++;
+      return new mathjs.SymbolNode(V);
+    }
     if (mathjs.isConstantNode(n) && typeof n.value === "number") {
       const short = Number(n.value.toPrecision(DISPLAY_DIGITS));
       if (short !== n.value) {
@@ -322,8 +359,12 @@ export function reduceSecondOrder(input: string, params?: Record<string, number>
     throw new ParseError(raw, message, code);
   };
   if (/\bxdd?\b/.test(raw)) refuse(PLACEHOLDER_TYPED_MESSAGE, "second_order_placeholder_typed");
+  if (params && Object.prototype.hasOwnProperty.call(params, V)) refuse(V_PARAMETER_MESSAGE, "second_order_v_parameter");
   if (/x\s*'\s*'\s*'/.test(straightenPrimes(raw))) refuse(HIGHER_DERIVATIVE_MESSAGE, "second_order_higher_derivative");
   const text = normalizePrimes(raw);
+  // The professor's case: y (also y', y'') is not a variable of this problem. Checked before the
+  // prime check so that y' gets this sentence and not the one about primes on other symbols.
+  if (Y_SYMBOL.test(text)) refuse(Y_IN_SECOND_ORDER_MESSAGE, "second_order_y_symbol");
   if (/['"]/.test(text)) refuse(OTHER_PRIME_MESSAGE, "second_order_other_prime");
   if (/==/.test(text)) refuse(DOUBLE_EQUALS_MESSAGE, "second_order_double_equals");
 
@@ -447,5 +488,5 @@ export function reduceSecondOrder(input: string, params?: Record<string, number>
   }
 
   const spec: SystemSpec = params ? { f: "y", g, params } : { f: "y", g };
-  return { spec, equation, reduced: { f: "y", g: displayString(g) } };
+  return { spec, equation, reduced: { f: V, g: displayString(g) } };
 }
