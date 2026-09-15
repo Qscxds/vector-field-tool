@@ -44,3 +44,18 @@ Codex 的改动以一个 `[P0]` 提交原样固化（作者标注为 Codex 的�
 ## 2. P2 普查表
 
 （P2 段填写。）
+
+## 3. P1 决策
+
+| # | 决策 | 理由 |
+|---|---|---|
+| 3.1 | 速度坐标在界面上一律写 `x'`；降阶说明引入 `v = x'`（教材写法）并把降阶后的 g 显示成含 v 的串（`reduced.f = "v"`，`reduced.g` 在 AST 上把内核的 y 改名为 v）；内核系统 `spec` 不动，仍是 `x' = y, y' = F(t, x, y)` | 学生的问题里只有 t、x、x'；v 是降阶时自己定义的量，可以出现在降阶行里；y 是实现细节，不进任何可见文本。改名在 AST 上做（`SymbolNode` y → v），不用文本替换，所以只碰变量 y |
+| 3.2 | 输入接受 `v` 作为 `x'` 的别名（只匹配独立符号，`vx`、`v_1` 不算），`v'` 仍按「非 x 的撇号」拒绝，参数不许叫 v | 任务书要求；`v'` 若静默当成 x'' 会让 `v' = -x` 这种降阶后的写法混进二阶模式 |
+| 3.3 | `y`、`y'`、`y''` 用专用错误码 `second_order_y_symbol` 和一句话「变量是 t、x 和 x'；y 在这里没有含义」，检查在撇号检查之前 | 教授的原话就是这句；`y'` 若先撞上撇号检查会得到无关的提示 |
+| 3.4 | MCP 参数名用 `xp`：`xpMin/xpMax`（analyze_second_order 必带；query_solution second 可选，覆盖 yMin/yMax）、`xp0`；URL 用 `xpmin/xpmax`，解码时旧链接的 `ymin/ymax` 在 second 模式静默接受、新名优先，其他模式下 `xpmin/xpmax` 报 unusedInMode | 任务书二选一（xpMin 或 vMin），选 xp 与显示符号 x' 一致；旧链接不能坏 |
+| 3.5 | `query_solution` 的 `t0` 在 system/second 模式 = 起始时刻（默认 0），传给内核 `querySolution({ t0 })`，`timeDependent.snapshotT = t0`；不再是 x0 的别名 | 受迫二阶方程的初值 x(t₀)、x'(t₀) 必须能指定时刻；网页端早已用快照时刻当 t₀，工具端对齐；R.1「删掉 t0 别名」顺手完成 |
+| 3.6 | `analyzePlanar` 增加可选 `second` 参数，二阶时换表头（`secondOrderHeader`）、换非自治说明（`timeDependentSecond`，说「方程」不说「系统」）、采样场写 `(v, F)`、点写 `(x, x') = (…)`；`scene.secondOrder` 在 analyzePlanar 内部就设好 | 共享主体不复制；所有二阶专用措辞集中在标签表 |
+| 3.7 | 范围类模板统一加 `{vv}` 占位（`yRangeError`、`featuresBox`、`equalScaleDetail`、`shownRange*`、`exportRange`），两个外壳和 PNG 页脚都通过 `lib/coordinate-names` 取名 | 一处定义，杜绝再漏 |
+| 3.8 | 网页端把 `compiled.secondOrder` 传进 hook（`Scene.secondOrder`） | 之前网页 Scene 没有这个字段，PNG 页脚在二阶模式下打印的是内核的 `x' = y, y' = …`（P2 类漏洞，顺手修） |
+| 3.9 | widget 版本直接 `o-1 → p-1`，跳过 Codex 的 `o-2` | o-2 从未部署 |
+| 3.10 | 非自治二阶的网页说明（`timeDependentNoteSecond`）明写「平衡点（即常数解 x ≡ c，物体静止）」 | P2.3 要求把相平面平衡点与常数解的对应说出来，二阶文案先带上 |
