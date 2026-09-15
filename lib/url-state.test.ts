@@ -308,3 +308,49 @@ describe("[P2] t0 on a first-order link", () => {
     expect(encodeState(withDefaults({ snapshotT: 2 }))).toBe("t0=2");
   });
 });
+
+describe("[Q] the time-series view in a link: view and the t range of a planar picture", () => {
+  it("encodes view and tmin / tmax for a planar picture only; a first-order link keeps tmin / tmax for its own t range", () => {
+    expect(encodeState(withDefaults({ view: "time" }))).toBe("view=time");
+    expect(encodeState(withDefaults({ view: "phase", timeRange: { min: -5, max: 5 } }))).toBe("tmin=-5&tmax=5&view=phase");
+    // Default t range and no choice: nothing written.
+    expect(encodeState(withDefaults({ view: null, timeRange: { min: 0, max: 20 } }))).toBe("");
+    expect(encodeState(withDefaults({ mode: "second", eq: "x'' = -x", view: "time", timeRange: { min: 0, max: 40 } }))).toBe("m=second&eq=x''+%3D+-x&tmax=40&view=time");
+    // A first-order picture has no time-series view: view and the planar t range are never written.
+    const first = encodeState(withDefaults({ mode: "first", g: "y", view: "time", timeRange: { min: 1, max: 2 } }));
+    expect(first).toBe("m=first&g=y");
+  });
+
+  it("decodes them, reports a bad view or an inverted range, and rejects view on a first-order link", () => {
+    const ok = decodeState("tmin=-5&tmax=5&view=time", D);
+    expect(ok.problems).toEqual([]);
+    expect(ok.state.timeRange).toEqual({ min: -5, max: 5 });
+    expect(ok.state.view).toBe("time");
+    expect(ok.state.box).toEqual(D.box);
+    const bad = decodeState("view=nope", D);
+    expect(bad.problems).toEqual([{ param: "view", reason: "badChoice" }]);
+    expect(bad.state.view).toBeNull();
+    const inverted = decodeState("tmin=5&tmax=1", D);
+    expect(reasons(inverted.problems)).toEqual(["tmin:invertedRange", "tmax:invertedRange"]);
+    expect(inverted.state.timeRange).toEqual(D.timeRange);
+    const first = decodeState("m=first&g=y&view=time", D);
+    expect(first.problems).toEqual([{ param: "view", reason: "unusedInMode" }]);
+    expect(first.state.view).toBeNull();
+    // On a first-order link tmin / tmax are the picture's own range, as before.
+    const firstRange = decodeState("m=first&g=y&tmin=0&tmax=10", D);
+    expect(firstRange.problems).toEqual([]);
+    expect(firstRange.state.box.xMin).toBe(0);
+    expect(firstRange.state.box.xMax).toBe(10);
+    expect(firstRange.state.timeRange).toEqual(D.timeRange);
+  });
+
+  it("round-trips through encodeState / decodeState", () => {
+    for (const s of [
+      withDefaults({ view: "time", timeRange: { min: 2, max: 30 } }),
+      withDefaults({ mode: "second", eq: "x'' = -x + cos(t)", view: "phase", snapshotT: 1, timeRange: { min: -10, max: 10 } }),
+      withDefaults({ view: null, timeRange: { min: 0, max: 20 } }),
+    ]) {
+      expect(decodeState(encodeState(s), D).state).toEqual(s);
+    }
+  });
+});

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { compileSystem } from "./core/parse";
 import { toSystem, type FirstOrderSpec } from "./core/slope-field";
 import { exportFileName, exportFooterText, FOOTER_SEPARATOR, formatSignificant, sceneEquationText } from "./export-footer";
+import * as footer from "./export-footer";
 import { computeFeatures } from "./interactive";
 import { fitViewport } from "./render/viewport";
 import type { Scene } from "./scene";
@@ -152,5 +153,24 @@ describe("entered and shown ranges (round N.3 e)", () => {
     expect(exportFooterText({ ...scene, featuresBox: home }, zoomed, "en", ORIGIN)).toContain(`entered t ∈ [-1, 1], y ∈ [-1, 1]${FOOTER_SEPARATOR}shown t ∈ [1, 2], y ∈ [0, 1]`);
     // Identical ranges are printed once, without labels.
     expect(exportFooterText(scene, viewport, "en", ORIGIN, scene.box)).toBe(`dy/dt = y*(1 - y)${FOOTER_SEPARATOR}t ∈ [0, 6], y ∈ [-0.5, 2]${FOOTER_SEPARATOR}${ORIGIN}`);
+  });
+});
+
+describe("[Q] exportTimeSeriesFooterText", () => {
+  it("prints the equation, the t range with the drawn components' value range, the start instant when non-autonomous, and the origin", () => {
+    const { exportTimeSeriesFooterText } = footer;
+    const forced: Scene = {
+      kind: "analyze_system",
+      locale: "en",
+      system: { f: "y", g: "-x + cos(t)" },
+      secondOrder: { equation: "x'' = -x + cos(t)", reduced: { f: "v", g: "-x + cos(t)" } },
+      timeDependent: { snapshotT: 1, maxRelDeviation: 1 },
+    };
+    const box = { x: { min: 0, max: 20 }, y: { min: -3, max: 3 } };
+    expect(exportTimeSeriesFooterText(forced, box, "x, x'", "en", ORIGIN)).toBe(["x'' = -x + cos(t)", "t ∈ [0, 20], x, x' ∈ [-3, 3]", "t = 1", ORIGIN].join(FOOTER_SEPARATOR));
+    // Autonomous planar system: no start instant; 3 significant digits; no origin when none is given.
+    const planar: Scene = { kind: "analyze_system", locale: "zh", system: { f: "y", g: "-x" } };
+    const wide = { x: { min: -5, max: 5.123456 }, y: { min: -4, max: 4 } };
+    expect(exportTimeSeriesFooterText(planar, wide, "x, y", "zh", "")).toBe([sceneEquationText(planar, "zh"), "t ∈ [-5, 5.12]，x, y ∈ [-4, 4]"].join(FOOTER_SEPARATOR));
   });
 });

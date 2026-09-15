@@ -15,7 +15,10 @@
  *   f      x' = f(x, y) (system)
  *   M, N   M(t, y) dt + N(t, y) dy = 0 (diff)
  *   eq     second-order equation text (second)
- *   tmin, tmax   horizontal range of a first-order picture (first, diff): the t range
+ *   tmin, tmax   horizontal range of a first-order picture (first, diff): the t range; on a planar
+ *                picture (system, second) the t range of the time-series view (round Q; omitted at 0..20)
+ *   view   phase | time   which picture a planar system / second-order equation shows (round Q;
+ *          omitted = the default: the time series when the equation is non-autonomous, else the phase plane)
  *   xmin, xmax   horizontal range of a planar picture (system, second)
  *   ymin, ymax   vertical range of a first-order or planar picture (first, diff, system): the y range
  *   xpmin, xpmax vertical range of a second-order picture (second): the x' range (round P; links
@@ -32,13 +35,16 @@
  */
 import { compileScalar } from "./core/parse";
 import { reduceSecondOrder } from "./core/second-order";
-import type { Locale, Vec2 } from "./core/types";
+import type { Locale, Range, Vec2 } from "./core/types";
 import type { ArrowMode } from "./render/arrows";
 
 export type AppMode = "first" | "diff" | "system" | "second";
 
 /** The entered range; for first / diff the horizontal range is the t range. */
 export type AppBox = { xMin: number; xMax: number; yMin: number; yMax: number };
+
+/** The two pictures of a planar system or a second-order equation (round Q); null = the default rule (non-autonomous -> time series). */
+export type ViewChoice = "phase" | "time" | null;
 
 export type AppState = {
   mode: AppMode;
@@ -59,6 +65,10 @@ export type AppState = {
   arrowMode: ArrowMode;
   snapshotT: number;
   trajectoryStarts: Vec2[];
+  /** Round Q: which picture a planar system / second-order equation shows; null = the default rule. */
+  view: ViewChoice;
+  /** Round Q: the t range of the time-series view (system / second modes; tmin / tmax in the link). */
+  timeRange: Range;
 };
 
 export type UrlProblemReason =
@@ -104,6 +114,8 @@ export const DEFAULT_STATE: AppState = {
   arrowMode: "unit",
   snapshotT: 0,
   trajectoryStarts: [],
+  view: null,
+  timeRange: { min: 0, max: 20 },
 };
 
 /**
@@ -199,6 +211,12 @@ export function encodeState(state: AppState): string {
   if (state.box.xMax !== d.box.xMax) q.set(hMax, formatExact(state.box.xMax));
   if (state.box.yMin !== d.box.yMin) q.set(vMin, formatExact(state.box.yMin));
   if (state.box.yMax !== d.box.yMax) q.set(vMax, formatExact(state.box.yMax));
+  // Planar pictures: the time-series view's t range and the chosen picture (round Q).
+  if (!horizontalIsT(state.mode)) {
+    if (state.timeRange.min !== d.timeRange.min) q.set("tmin", formatExact(state.timeRange.min));
+    if (state.timeRange.max !== d.timeRange.max) q.set("tmax", formatExact(state.timeRange.max));
+    if (state.view !== null) q.set("view", state.view);
+  }
   if (state.locale !== null) q.set("loc", state.locale);
   if (!state.equalScale) q.set("eqs", "0");
   if (state.density !== d.density) q.set("d", String(state.density));
@@ -239,7 +257,7 @@ function parseBounded(text: string): Parsed {
 }
 
 function cloneState(s: AppState): AppState {
-  return { ...s, box: { ...s.box }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })) };
+  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })) };
 }
 
 /**
@@ -294,8 +312,10 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
   }
 
   const horizontalT = horizontalIsT(mode);
-  const [hMin, hMax, otherMin, otherMax] = horizontalT ? ["tmin", "tmax", "xmin", "xmax"] : ["xmin", "xmax", "tmin", "tmax"];
-  for (const key of [otherMin, otherMax]) if (q.get(key) !== null) problem(key, "unusedInMode");
+  const [hMin, hMax] = horizontalT ? ["tmin", "tmax"] : ["xmin", "xmax"];
+  // A first-order picture has no separate x range; a planar one reads tmin / tmax as the
+  // time-series view's t range (round Q) below.
+  if (horizontalT) for (const key of ["xmin", "xmax"]) if (q.get(key) !== null) problem(key, "unusedInMode");
   // The vertical range: xpmin/xpmax on a second-order picture (ymin/ymax still read there, for
   // links written before round P, without a notice); ymin/ymax elsewhere, where xpmin/xpmax are unused.
   const verticalXp = verticalIsXp(mode);
@@ -321,6 +341,17 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
   };
   [state.box.xMin, state.box.xMax] = checkPair(hMin, hMax, readSide(hMin, state.box.xMin), readSide(hMax, state.box.xMax), fallback.box.xMin, fallback.box.xMax);
   [state.box.yMin, state.box.yMax] = checkPair(vMin, vMax, readSide(vMin, state.box.yMin), readSide(vMax, state.box.yMax), fallback.box.yMin, fallback.box.yMax);
+  if (!horizontalT) {
+    // The time-series view (round Q): its t range and the chosen picture.
+    [state.timeRange.min, state.timeRange.max] = checkPair("tmin", "tmax", readSide("tmin", state.timeRange.min), readSide("tmax", state.timeRange.max), fallback.timeRange.min, fallback.timeRange.max);
+    const view = q.get("view");
+    if (view !== null) {
+      if (view === "phase" || view === "time") state.view = view;
+      else problem("view", "badChoice");
+    }
+  } else if (q.get("view") !== null) {
+    problem("view", "unusedInMode");
+  }
 
   const loc = q.get("loc");
   if (loc !== null) {

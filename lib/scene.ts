@@ -43,6 +43,11 @@ export type TrajectoryView = {
    */
   tEnd: number;
   /**
+   * The kernel's clock at each point of `points` (same length; round Q): what the time-series view
+   * draws x(t) / y(t) against. Absent on scenes that never had it (older tool results).
+   */
+  times?: number[];
+  /**
    * What 'left_box' refers to: the viewing box of a tool call ("view", default) or the far stop box
    * of a clicked trajectory in the shells ("far", 20x the entered range). Labels differ.
    */

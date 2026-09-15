@@ -64,6 +64,30 @@ export function exportFooterText(scene: Scene, viewport: Viewport, locale: Local
   return parts.join(FOOTER_SEPARATOR);
 }
 
+/**
+ * Footer of an exported time-series picture (round Q): equation · the t range and the value range
+ * of the drawn components ("t ∈ [0, 20], x, x' ∈ [-3, 3]") · the start instant when the equation
+ * is non-autonomous · origin. `names` lists the drawn components in the student's notation.
+ */
+export function exportTimeSeriesFooterText(scene: Scene, box: Box, names: string, locale: Locale, origin: string): string {
+  const L = labels(locale);
+  const parts: string[] = [];
+  const equation = sceneEquationText(scene, locale);
+  if (equation) parts.push(equation);
+  parts.push(
+    fill(L.ui.exportTimeRange, {
+      tMin: formatSignificant(box.x.min),
+      tMax: formatSignificant(box.x.max),
+      names,
+      vMin: formatSignificant(box.y.min),
+      vMax: formatSignificant(box.y.max),
+    }),
+  );
+  if (scene.timeDependent) parts.push(fill(L.ui.exportSnapshot, { t: formatSignificant(scene.timeDependent.snapshotT, 4) }));
+  if (origin) parts.push(origin);
+  return parts.join(FOOTER_SEPARATOR);
+}
+
 /** "vector-field-<tag>-<yyyymmdd-hhmmss>.png" in local time; the tag is a preset id or a mode, made file-safe. */
 export function exportFileName(tag: string, now: Date): string {
   const safe = tag.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "scene";

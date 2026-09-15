@@ -92,6 +92,9 @@ export type LabelTable = {
     // second-order equation, the reduction's internal-check failure, the too-long link.
     | "queryHeaderAt" | "initialValueSecondAutonomous" | "secondOrderInternal" | "urlQueryTooLong"
     | "featuresBoxDetailFirst" | "featuresBoxDetailSecond"
+    // Round Q: the time-series view of a planar system / second-order equation.
+    | "view" | "viewPhase" | "viewTime" | "timeFrom" | "timeTo" | "showVelocity" | "timeSeriesScaleNote"
+    | "timeSeriesEmpty" | "timeSeriesSpanNote" | "shownTimeRange" | "exportTimeRange" | "timeRangeError"
     | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
     | "equilibriaTruncated" | "singularitiesTruncated"
     | "nonUniqueTrajectory"
@@ -394,6 +397,18 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlQueryTooLong: "链接过长，全部参数已忽略，使用默认值。",
       featuresBoxDetailFirst: "复位时这是输入范围，缩放或平移后是可见范围。常数解和方程类型都只在这个范围内扫描；结论依赖于所考察的范围。",
       featuresBoxDetailSecond: "复位时这是输入范围，缩放或平移后是可见范围。平衡点（即常数解 x ≡ c）只在这个范围内扫描；结论依赖于所考察的范围。",
+      view: "视图",
+      viewPhase: "相平面",
+      viewTime: "时间序列",
+      timeFrom: "t 起",
+      timeTo: "t 止",
+      showVelocity: "同时画 x'(t)",
+      timeSeriesScaleNote: "时间序列：横轴是 t，纵轴是解的值，两轴单位不同，等比在这里没有意义，已自动解除。",
+      timeSeriesEmpty: "还没有曲线：在「初值」里添加一条，这里就画出解随 t 的变化（时间序列视图下点击图像不添加曲线）。",
+      timeSeriesSpanNote: "曲线只算到 t ∈ [{from}, {to}]（从 t₀ 向前、向后各 {span} 个时间单位，与相平面相同的规则）；这段之外图中是空白，不是解为零。",
+      shownTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]（时间序列）",
+      exportTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]",
+      timeRangeError: "t 范围无效：起点必须是小于终点的数。图中仍用上一个有效范围。",
       copyLink: "复制链接",
       copied: "已复制",
       copyLinkFallback: "无法访问剪贴板，请手动复制下面的链接：",
@@ -717,6 +732,18 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlQueryTooLong: "The link is too long; all of its parameters were ignored and the defaults are used.",
       featuresBoxDetailFirst: "This is the entered range at the home view and the visible range after zooming or panning. Constant solutions and equation types are scanned inside this range only; conclusions depend on the range examined.",
       featuresBoxDetailSecond: "This is the entered range at the home view and the visible range after zooming or panning. Equilibria (the constant solutions x ≡ c) are scanned inside this range only; conclusions depend on the range examined.",
+      view: "View",
+      viewPhase: "Phase plane",
+      viewTime: "Time series",
+      timeFrom: "t from",
+      timeTo: "t to",
+      showVelocity: "Also draw x'(t)",
+      timeSeriesScaleNote: "Time series: t horizontally, the solution's value vertically; the axes have different units, so equal scale has no meaning here and is off.",
+      timeSeriesEmpty: "No curve yet: add one under Initial value and this picture shows how the solution changes with t (in the time-series view a click on the picture does not add a curve).",
+      timeSeriesSpanNote: "Curves are computed for t ∈ [{from}, {to}] only ({span} time units forward and backward from t₀, the same rule as the phase plane); outside it the picture is blank, not a zero solution.",
+      shownTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}] (time series)",
+      exportTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}]",
+      timeRangeError: "Invalid t range: the start must be a number smaller than the end. The picture keeps the last valid range.",
       copyLink: "Copy link",
       copied: "Copied",
       copyLinkFallback: "The clipboard is not available; copy the link below by hand:",

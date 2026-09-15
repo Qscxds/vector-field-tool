@@ -369,6 +369,7 @@ export function traceBoth(sys: CompiledSystem, start: Vec2, opts: TraceOptions):
       status: tr.status,
       steps: tr.steps,
       tEnd: tr.times[tr.times.length - 1],
+      times: tr.times,
       stop: opts.stop ?? "view",
     };
   });

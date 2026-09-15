@@ -83,7 +83,7 @@ export function VectorFieldCanvas({
   useEffect(() => {
     const canvas = baseRef.current;
     if (!canvas) return;
-    const ctx = prepare(canvas, width, height);
+    const ctx = prepareCanvas(canvas, width, height);
     if (!ctx) return;
     drawScene(ctx, scene, v, { width, height }, { arrowMode });
   }, [scene, v, width, height, arrowMode]);
@@ -92,7 +92,7 @@ export function VectorFieldCanvas({
   useEffect(() => {
     const canvas = overlayRef.current;
     if (!canvas) return;
-    const ctx = prepare(canvas, width, height);
+    const ctx = prepareCanvas(canvas, width, height);
     if (!ctx) return;
     ctx.clearRect(0, 0, width, height);
     if (!v) return;
@@ -342,7 +342,7 @@ export function VectorFieldCanvas({
   );
 }
 
-function prepare(canvas: HTMLCanvasElement, width: number, height: number): CanvasRenderingContext2D | null {
+export function prepareCanvas(canvas: HTMLCanvasElement, width: number, height: number): CanvasRenderingContext2D | null {
   const dpr = typeof window !== "undefined" ? window.devicePixelRatio || 1 : 1;
   canvas.width = Math.round(width * dpr);
   canvas.height = Math.round(height * dpr);

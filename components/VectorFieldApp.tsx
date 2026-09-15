@@ -10,27 +10,31 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { FoldedLine, Info } from "@/components/Info";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
+import { TimeSeriesCanvas } from "@/components/TimeSeriesCanvas";
+import type { TimeSeriesDrawing } from "@/components/drawTimeSeries";
 import { useDocumentLang } from "@/components/useDocumentLang";
-import { exportScenePng } from "@/components/exportScenePng";
-import { exportFileName, exportFooterText } from "@/lib/export-footer";
+import { exportScenePng, exportTimeSeriesPng } from "@/components/exportScenePng";
+import { exportFileName, exportFooterText, exportTimeSeriesFooterText } from "@/lib/export-footer";
 import { coordinateNamesForMode, type CoordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
 import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
-import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
+import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
 import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
 import { kernelQueryKind, parseQueryValue, queryHitText, queryKindName, queryKindsFor, selectedTrajectoryIndex, trajectoryOptionText, type PanelVariables, type UiQueryKind } from "@/lib/query-panel";
 import type { ArrowMode } from "@/lib/render/arrows";
+import { fitViewport } from "@/lib/render/viewport";
 import type { QueryView, Scene, TrajectoryView } from "@/lib/scene";
 import { siteText } from "@/lib/site-text";
+import { defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox, type ViewKind } from "@/lib/time-series";
 import { initialValueNames, parseInitialValue, type InitialValueReason } from "@/lib/initial-value";
 import { isUndoKey } from "@/lib/undo-key";
-import { buildShareUrl, encodeState, MAX_ABS_VALUE, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason } from "@/lib/url-state";
+import { buildShareUrl, encodeState, MAX_ABS_VALUE, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason, type ViewChoice } from "@/lib/url-state";
 import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } from "@/app/vector-field/presets";
 
 export type VectorFieldAppProps = {
@@ -151,7 +155,7 @@ const VF_STYLE = `
 /* The column fits its content in both languages: text wraps, controls fill the column, nothing is clipped. */
 .vf-form > * { min-width: 0; }
 .vf-form label, .vf-form span, .vf-form p { overflow-wrap: anywhere; white-space: normal; }
-.vf-form button:not([data-info-toggle]), .vf-form select, .vf-form input:not([type="checkbox"]) { width: 100%; box-sizing: border-box; min-width: 0; text-align: left; }
+.vf-form button:not([data-info-toggle]), .vf-form select, .vf-form input:not([type="checkbox"]):not([type="radio"]) { width: 100%; box-sizing: border-box; min-width: 0; text-align: left; }
 .vf-form input[type="range"] { margin: 0; }
 .vf-canvas { flex: 1 1 0; min-width: 0; }
 @media (max-width: 800px) {
@@ -162,8 +166,8 @@ const VF_STYLE = `
 }
 /* Touch screens: 44 px targets, and 16 px text so iOS does not zoom into a focused field. */
 @media (pointer: coarse) {
-  .vf-app button, .vf-app select, .vf-app input:not([type="checkbox"]) { min-height: 44px; font-size: 16px; }
-  .vf-app input[type="checkbox"] { width: 22px; height: 22px; }
+  .vf-app button, .vf-app select, .vf-app input:not([type="checkbox"]):not([type="radio"]) { min-height: 44px; font-size: 16px; }
+  .vf-app input[type="checkbox"], .vf-app input[type="radio"] { width: 22px; height: 22px; }
 }
 `;
 
@@ -343,6 +347,17 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     const v = Number(snapshotTText.trim());
     return snapshotTText.trim() !== "" && Number.isFinite(v) ? v : 0;
   }, [snapshotTText]);
+  // Round Q: which picture a planar system / second-order equation shows (null = the default rule,
+  // applied below once the scene says whether the equation is autonomous), the t range of the
+  // time-series view (text like the range fields; the last valid range stays in force while a
+  // field is mid-edit) and whether a second-order equation also draws x'(t).
+  const [viewChoice, setViewChoice] = useState<ViewChoice>(initial.view);
+  const [timeRangeText, setTimeRangeText] = useState({ min: String(initial.timeRange.min), max: String(initial.timeRange.max) });
+  const timeRangeParsed = useMemo(() => parseTimeRange(timeRangeText.min, timeRangeText.max), [timeRangeText]);
+  const lastTimeRangeRef = useRef<Range>(initial.timeRange);
+  if (timeRangeParsed) lastTimeRangeRef.current = timeRangeParsed;
+  const timeRange = lastTimeRangeRef.current;
+  const [showVelocity, setShowVelocity] = useState(false);
   const compiled = useMemo(() => compile(form, L), [form, L]);
   // The reduction of a second-order equation travels into the Scene (Scene.secondOrder), so the
   // canvas names its vertical axis x', the PNG footer prints the student's equation and the
@@ -446,6 +461,38 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   // The result shown: computed under this picture and about a curve that is still kept.
   const queryShown = queryView && queryRun && trajectoryStarts.some((p) => p.x === queryRun.start.x && p.y === queryRun.start.y) ? queryRun : null;
 
+  const { hv, vv } = namesFor(form.mode);
+  const second = form.mode === "second";
+  // Words that depend on what the picture is (P2.4 / P2.5): solution curves and slopes dy/dt on a
+  // first-order picture, trajectories and directions on a phase plane.
+  const picture: PictureMode = second ? "second" : form.mode === "system" ? "system" : "first";
+  const groups = useMemo(() => groupTrajectories(trajectories), [trajectories]);
+  const lastGroup = groups.length ? groups[groups.length - 1] : null;
+
+  // Round Q: the time-series view (lib/time-series). Offered on planar pictures only; opens on the
+  // phase plane for an autonomous equation and on the time series for a non-autonomous one unless
+  // the link or the student chose. Its box: the chosen t range across, the entered range of the
+  // drawn components up; never equal-scale. The curves are the kept ones (same store, same
+  // Clear / Undo / link), drawn against the kernel's clock; a query's hits are marked at (t, value).
+  const timeSeriesAvailable = hasTimeSeries(picture);
+  const view: ViewKind = timeSeriesAvailable ? (viewChoice ?? defaultView(picture, Boolean(scene?.timeDependent))) : "phase";
+  const series = useMemo(() => seriesOf(picture, showVelocity), [picture, showVelocity]);
+  const timeSeriesViewport = useMemo(
+    () => (compiled.box ? fitViewport(timeSeriesBox(compiled.box, series, timeRange), canvasW, canvasH, { equalScale: false }) : null),
+    [compiled.box, series, timeRange, canvasW, canvasH],
+  );
+  const timeSeriesDrawing = useMemo<TimeSeriesDrawing>(
+    () => ({
+      curves: groups.map((g) => seriesCurves(g, series)),
+      legend: series.map((key) => ({ key, name: seriesName(picture, key) })),
+      ...(queryShown ? { hits: seriesHits(queryShown.result.hits, series) } : {}),
+      t0: snapshotT,
+    }),
+    [groups, series, picture, queryShown, snapshotT],
+  );
+  // "x, x'" / "x" / "x, y": the drawn components, for the shown-range line and the PNG footer.
+  const seriesNames = series.map((key) => (key === "x" ? "x" : vv)).join(", ");
+
   // Ctrl+Z / Cmd+Z undoes the last trajectory action, unless the student is typing in a field.
   const undoRef = useRef(undo);
   undoRef.current = undo;
@@ -491,8 +538,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       arrowMode: form.arrowMode,
       snapshotT,
       trajectoryStarts,
+      view: viewChoice,
+      timeRange,
     }),
-    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts],
+    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange],
   );
 
   // Keep the address bar in sync (full page only; an embed's URL belongs to the embedding page):
@@ -523,9 +572,17 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     setDownloadFailed(false);
     try {
       // The entered box as the 5th argument: after a zoom or pan the footer prints both the
-      // entered range and the shown one (lib/export-footer).
-      const footer = exportFooterText(scene, viewport, locale, window.location.origin, compiled.box ?? undefined);
-      const blob = await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer, scale: 2 });
+      // entered range and the shown one (lib/export-footer). The time-series view exports its own
+      // picture (the same drawTimeSeries as the screen) with the t range and the drawn components.
+      const blob =
+        view === "time" && timeSeriesViewport
+          ? await exportTimeSeriesPng({
+              viewport: timeSeriesViewport,
+              drawing: timeSeriesDrawing,
+              footer: exportTimeSeriesFooterText(scene, timeSeriesViewport.box, seriesNames, locale, window.location.origin),
+              scale: 2,
+            })
+          : await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer: exportFooterText(scene, viewport, locale, window.location.origin, compiled.box ?? undefined), scale: 2 });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -537,7 +594,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     } catch {
       setDownloadFailed(true);
     }
-  }, [scene, viewport, locale, form.arrowMode, form.mode, presetId]);
+  }, [scene, viewport, locale, form.arrowMode, form.mode, presetId, compiled.box, view, timeSeriesViewport, timeSeriesDrawing, seriesNames]);
   const fallbackInputRef = useRef<HTMLInputElement | null>(null);
   const copyLink = useCallback(async () => {
     const url = buildShareUrl(window.location.origin, "/vector-field", appState);
@@ -564,14 +621,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const fullPageHref = `/vector-field${lastQueryRef.current ? `?${lastQueryRef.current}` : ""}`;
 
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : undefined;
-  const groups = groupTrajectories(trajectories);
-  const lastGroup = groups.length ? groups[groups.length - 1] : null;
-  const { hv, vv } = namesFor(form.mode);
-  const second = form.mode === "second";
   const ivNames = initialValueNames(second ? "second" : hv === "t" ? "ty" : "xy");
-  // Words that depend on what the picture is (P2.4 / P2.5): solution curves and slopes dy/dt on a
-  // first-order picture, trajectories and directions on a phase plane.
-  const picture: PictureMode = second ? "second" : form.mode === "system" ? "system" : "first";
   const words = curveWords(L, picture);
   const scale = equalScaleTexts(L, picture);
   const addOnEnter = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -733,6 +783,48 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <input value={form.yMax} onChange={(e) => update({ yMax: e.target.value })} style={inputStyle} name="yMax" />
             </label>
           </div>
+          {/* Round Q: which picture (planar modes only). The time-series view has its own t range and,
+              on a second-order equation, the x'(t) overlay; curves are added under Initial value. */}
+          {timeSeriesAvailable ? (
+            <div style={{ display: "grid", gap: 6, color: "#1f2933" }} data-view-toggle>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }} role="radiogroup" aria-label={L.ui.view}>
+                <span style={{ color: "#52606d" }}>{L.ui.view}</span>
+                <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                  <input type="radio" name="view" value="phase" checked={view === "phase"} onChange={() => setViewChoice("phase")} />
+                  <span>{L.ui.viewPhase}</span>
+                </label>
+                <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                  <input type="radio" name="view" value="time" checked={view === "time"} onChange={() => setViewChoice("time")} />
+                  <span>{L.ui.viewTime}</span>
+                </label>
+              </div>
+              {view === "time" ? (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                    <label style={labelStyle}>
+                      <span>{L.ui.timeFrom}</span>
+                      <input value={timeRangeText.min} onChange={(e) => setTimeRangeText((prev) => ({ ...prev, min: e.target.value }))} style={inputStyle} name="tMin" inputMode="decimal" />
+                    </label>
+                    <label style={labelStyle}>
+                      <span>{L.ui.timeTo}</span>
+                      <input value={timeRangeText.max} onChange={(e) => setTimeRangeText((prev) => ({ ...prev, max: e.target.value }))} style={inputStyle} name="tMax" inputMode="decimal" />
+                    </label>
+                  </div>
+                  {!timeRangeParsed ? (
+                    <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-time-range-error>
+                      {L.ui.timeRangeError}
+                    </p>
+                  ) : null}
+                  {second ? (
+                    <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      <input type="checkbox" checked={showVelocity} onChange={(e) => setShowVelocity(e.target.checked)} name="showVelocity" />
+                      <span>{L.ui.showVelocity}</span>
+                    </label>
+                  ) : null}
+                </>
+              ) : null}
+            </div>
+          ) : null}
           {scene?.timeDependent ? (
             <label style={labelStyle}>
               {/* A second-order equation calls it t₀: the initial values x(t₀), x'(t₀) are given at this instant. */}
@@ -755,7 +847,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           </label>
           <div style={{ color: "#1f2933" }}>
             <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-              <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" />
+              {/* Off and disabled in the time-series view (t and a value have different units); the phase plane keeps its setting. */}
+              <input type="checkbox" checked={view === "time" ? false : equalScale} disabled={view === "time"} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" />
               <span>{L.ui.equalScale}</span>
             </label>{" "}
             <Info label={L.ui.details} data-info="equal-scale">
@@ -879,39 +972,67 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           ) : null}
           {scene && viewport ? (
             <>
-              <VectorFieldCanvas
-                scene={scene}
-                viewport={viewport}
-                width={canvasW}
-                height={canvasH}
-                arrowMode={form.arrowMode}
-                overlay={overlay}
-                overlayHint={hint}
-                highlight={highlight}
-                cursor={cursor}
-                {...handlers}
-              />
-              {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
-              {!equalScale ? (
+              {view === "time" && timeSeriesViewport ? (
+                <TimeSeriesCanvas viewport={timeSeriesViewport} drawing={timeSeriesDrawing} />
+              ) : (
+                <VectorFieldCanvas
+                  scene={scene}
+                  viewport={viewport}
+                  width={canvasW}
+                  height={canvasH}
+                  arrowMode={form.arrowMode}
+                  overlay={overlay}
+                  overlayHint={hint}
+                  highlight={highlight}
+                  cursor={cursor}
+                  {...handlers}
+                />
+              )}
+              {/* Persistent notes (never timed toasts): in the time-series view equal scale has no meaning
+                  and is off; on a phase plane drawn without it the picture's angles are not slopes. */}
+              {view === "time" ? (
+                <p role="status" data-time-series-note style={{ margin: "6px 0 0", color: "#52606d" }}>
+                  {L.ui.timeSeriesScaleNote}
+                </p>
+              ) : !equalScale ? (
                 <p role="status" data-scale-warning style={{ margin: "6px 0 0", color: "#92400e" }}>
                   {scale.warning}
                 </p>
               ) : null}
+              {view === "time" && trajectories.length === 0 ? (
+                <p role="status" data-time-series-empty style={{ margin: "6px 0 0", color: "#92400e" }}>
+                  {L.ui.timeSeriesEmpty}
+                </p>
+              ) : null}
+              {/* The curves end at t₀ ± CLICK_TSPAN (the phase plane's rule, unchanged): a wider t range shows blank, said so. */}
+              {view === "time" && (timeRange.min < snapshotT - CLICK_TSPAN || timeRange.max > snapshotT + CLICK_TSPAN) ? (
+                <p role="status" data-time-series-span style={{ margin: "6px 0 0", color: "#92400e" }}>
+                  {fill(L.ui.timeSeriesSpanNote, { from: formatNumber(snapshotT - CLICK_TSPAN, 4), to: formatNumber(snapshotT + CLICK_TSPAN, 4), span: CLICK_TSPAN })}
+                </p>
+              ) : null}
               {/* The hover preview passes through a point where uniqueness fails (kept curves say it in the last-trajectory line). */}
-              {overlay.some((t) => t.nonUnique) ? (
+              {view === "phase" && overlay.some((t) => t.nonUnique) ? (
                 <p role="status" data-non-unique-preview style={{ margin: "6px 0 0", color: "#92400e" }}>
                   {L.ui.nonUniqueTrajectory}
                 </p>
               ) : null}
               <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
-                {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
-                  hv,
-                  vv,
-                  xMin: formatNumber(viewport.box.x.min, 3),
-                  xMax: formatNumber(viewport.box.x.max, 3),
-                  yMin: formatNumber(viewport.box.y.min, 3),
-                  yMax: formatNumber(viewport.box.y.max, 3),
-                })}
+                {view === "time" && timeSeriesViewport
+                  ? fill(L.ui.shownTimeRange, {
+                      tMin: formatNumber(timeSeriesViewport.box.x.min, 3),
+                      tMax: formatNumber(timeSeriesViewport.box.x.max, 3),
+                      names: seriesNames,
+                      vMin: formatNumber(timeSeriesViewport.box.y.min, 3),
+                      vMax: formatNumber(timeSeriesViewport.box.y.max, 3),
+                    })
+                  : fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
+                      hv,
+                      vv,
+                      xMin: formatNumber(viewport.box.x.min, 3),
+                      xMax: formatNumber(viewport.box.x.max, 3),
+                      yMin: formatNumber(viewport.box.y.min, 3),
+                      yMax: formatNumber(viewport.box.y.max, 3),
+                    })}
               </p>
             </>
           ) : (
