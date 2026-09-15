@@ -192,6 +192,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "清除解曲线 / 清除轨线（按钮名随图而变）：删掉所有固定下来的曲线。",
           "复制链接：当前方程、范围、语言、视图选项和固定曲线的起点都编在链接里，打开链接就是同一张图。",
           "下载 PNG：把当前画面存成两倍分辨率的图片，底部一行写明方程和范围。",
+          "报告问题：页面底部（嵌入页也有）的「报告问题」打开 GitHub 的新 issue 表单，预填当前链接、浏览器名称和三行提示（做了什么 / 期望 / 实际）；这个工具不收集任何数据，发不发由你。没有 GitHub 账号就把链接和这三行发给老师。",
         ],
         mouseHeading: "鼠标",
         mouse: [
@@ -373,6 +374,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "Clear solution curves / Clear trajectories (the button's name follows the picture): removes every kept curve.",
           "Copy link: the equation, the range, the language, the view options and the starting points of the kept curves are all encoded in the link; opening it shows the same picture.",
           "Download PNG: saves the current picture at twice the resolution, with one footer line naming the equation and the range.",
+          "Report a problem: the link at the bottom of the page (and of the embedded page) opens GitHub's new-issue form prefilled with the current link, the browser's name and three prompts (what you did / expected / saw); this tool collects nothing, sending is your decision. Without a GitHub account, send the link and those three lines to your teacher.",
         ],
         mouseHeading: "Mouse",
         mouse: [

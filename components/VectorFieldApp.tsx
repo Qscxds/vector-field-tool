@@ -6,7 +6,7 @@
  * The interaction model (zoom / pan / hover / click-to-keep) lives in useInteractiveScene.
  */
 import Link from "next/link";
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { FoldedLine, Info } from "@/components/Info";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
@@ -34,6 +34,8 @@ import { siteText } from "@/lib/site-text";
 import { defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox, type ViewKind } from "@/lib/time-series";
 import { initialValueNames, parseInitialValue, type InitialValueReason } from "@/lib/initial-value";
 import { isUndoKey } from "@/lib/undo-key";
+import { MAX_TRAJECTORIES } from "@/lib/trajectory-store";
+import { ISSUES_NEW_URL, reportIssueUrl } from "@/lib/report-issue";
 import { buildShareUrl, encodeState, MAX_ABS_VALUE, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason, type ViewChoice } from "@/lib/url-state";
 import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } from "@/app/vector-field/presets";
 
@@ -157,7 +159,10 @@ const VF_STYLE = `
 .vf-form label, .vf-form span, .vf-form p { overflow-wrap: anywhere; white-space: normal; }
 .vf-form button:not([data-info-toggle]), .vf-form select, .vf-form input:not([type="checkbox"]):not([type="radio"]) { width: 100%; box-sizing: border-box; min-width: 0; text-align: left; }
 .vf-form input[type="range"] { margin: 0; }
-.vf-canvas { flex: 1 1 0; min-width: 0; }
+.vf-canvas { flex: 1 1 0; min-width: 0; position: relative; }
+.vf-computing { position: absolute; top: 8px; right: 8px; z-index: 1; margin: 0; padding: 2px 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.92); border: 1px solid #e5e7eb; font-size: 12px; color: #52606d; }
+.vf-report { margin: 18px 0 0; font-size: 12px; color: #52606d; }
+.vf-embed .vf-report { margin: 8px 0 0; }
 @media (max-width: 800px) {
   .vf-columns { flex-direction: column; gap: 14px; }
   .vf-form { flex: none; min-width: 0; width: 100%; }
@@ -334,6 +339,11 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const L = labels(locale);
 
   const [form, setForm] = useState<Form>(() => fromAppState(initial));
+  // R.1: the picture follows the form through a deferred value, so a slow recomputation (the
+  // equilibria of x' = xy, y' = x² − y take ~1 s) paints the typed text and a "computing" note
+  // first and the new picture after. The inputs read `form`; everything computed reads `shown`.
+  const shown = useDeferredValue(form);
+  const computing = shown !== form;
   const [presetId, setPresetId] = useState<string | null>(() => matchPresetId(fromAppState(initial)));
   // View option, not part of the equation: toggling it keeps the selected preset.
   const [equalScale, setEqualScale] = useState(initial.equalScale);
@@ -358,7 +368,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   if (timeRangeParsed) lastTimeRangeRef.current = timeRangeParsed;
   const timeRange = lastTimeRangeRef.current;
   const [showVelocity, setShowVelocity] = useState(false);
-  const compiled = useMemo(() => compile(form, L), [form, L]);
+  const compiled = useMemo(() => compile(shown, L), [shown, L]);
   // The reduction of a second-order equation travels into the Scene (Scene.secondOrder), so the
   // canvas names its vertical axis x', the PNG footer prints the student's equation and the
   // x' range, and every summary line speaks of (x, x'); memoized so the scene is not rebuilt per render.
@@ -375,7 +385,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const [queryKind, setQueryKind] = useState<UiQueryKind>("t");
   const [queryValueText, setQueryValueText] = useState("");
   const [queryError, setQueryError] = useState<string | null>(null);
-  const queryKey = `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${form.second}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${snapshotT}`;
+  const queryKey = `${shown.mode}|${shown.f}|${shown.g}|${shown.M}|${shown.N}|${shown.second}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${snapshotT}`;
   const queryView = useMemo<QueryView | undefined>(
     () => (queryRun && queryRun.key === queryKey ? { target: queryRun.target, hits: queryRun.result.hits, note: queryRun.result.note, reached: queryRun.result.reached } : undefined),
     [queryRun, queryKey],
@@ -392,18 +402,19 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     homeBox: compiled.box,
     width: canvasW,
     height: canvasH,
-    density: form.density,
+    density: shown.density,
     locale,
-    kind: form.mode === "system" || form.mode === "second" ? "analyze_system" : "analyze_first_order",
-    fieldStyle: form.mode === "differential" ? "segments" : "arrows",
-    systemKey: `${form.mode}|${form.f}|${form.g}|${form.M}|${form.N}|${form.second}`,
+    kind: shown.mode === "system" || shown.mode === "second" ? "analyze_system" : "analyze_first_order",
+    fieldStyle: shown.mode === "differential" ? "segments" : "arrows",
+    systemKey: `${shown.mode}|${shown.f}|${shown.g}|${shown.M}|${shown.N}|${shown.second}`,
     withFeatures: true,
     equalScale,
     snapshotT,
     initialTrajectoryStarts: trajectorySeeds,
-    // Another snapshot time re-traces the SAME initial points at that instant (the link keeps its
-    // traj); it never resets to the seeds, so a cleared curve does not come back.
-    retraceKey: String(snapshotT),
+    // Another snapshot time, or another entered range (R.1: the far stop box is 20x the entered
+    // range), re-traces the SAME initial points; it never resets to the seeds, so a cleared curve
+    // does not come back.
+    retraceKey: `${snapshotT}|${compiled.box ? JSON.stringify(compiled.box) : ""}`,
     query: queryView,
     queryStart: queryRun?.start,
     secondOrder: secondOrderView,
@@ -424,7 +435,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     addTrajectory(r.point);
   };
 
-  const variables: PanelVariables = form.mode === "system" ? "xy" : form.mode === "second" ? "second" : "ty";
+  const variables: PanelVariables = shown.mode === "system" ? "xy" : shown.mode === "second" ? "second" : "ty";
+  // R.1: the store keeps at most MAX_TRAJECTORIES curves; the Add button and a notice say so.
+  const atCap = trajectoryStarts.length >= MAX_TRAJECTORIES;
   const queryKinds = queryKindsFor(variables);
   const queryKindShown = queryKinds.includes(queryKind) ? queryKind : queryKinds[0];
   const selectedIndex = selectedTrajectoryIndex(trajectoryStarts, queryPick);
@@ -461,11 +474,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   // The result shown: computed under this picture and about a curve that is still kept.
   const queryShown = queryView && queryRun && trajectoryStarts.some((p) => p.x === queryRun.start.x && p.y === queryRun.start.y) ? queryRun : null;
 
-  const { hv, vv } = namesFor(form.mode);
-  const second = form.mode === "second";
+  // Names and words of the COMPUTED picture (`shown`); the input labels follow the form at once.
+  const { hv, vv } = namesFor(shown.mode);
+  const second = shown.mode === "second";
+  const formNames = namesFor(form.mode);
+  const formSecond = form.mode === "second";
   // Words that depend on what the picture is (P2.4 / P2.5): solution curves and slopes dy/dt on a
   // first-order picture, trajectories and directions on a phase plane.
-  const picture: PictureMode = second ? "second" : form.mode === "system" ? "system" : "first";
+  const picture: PictureMode = second ? "second" : shown.mode === "system" ? "system" : "first";
   const groups = useMemo(() => groupTrajectories(trajectories), [trajectories]);
   const lastGroup = groups.length ? groups[groups.length - 1] : null;
 
@@ -646,9 +662,15 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       {embed ? (
         <div className="vf-topbar">
           {languageSelect}
-          <a href={fullPageHref} target="_blank" rel="noopener noreferrer" data-open-full-page>
-            {L.ui.openFullPage}
-          </a>
+          <span style={{ display: "flex", gap: 12 }}>
+            {/* R.1: the help page from inside an iframe, in a new tab. */}
+            <Link href={`/help?loc=${locale}`} target="_blank" rel="noopener noreferrer" data-help-link>
+              {L.ui.help}
+            </Link>
+            <a href={fullPageHref} target="_blank" rel="noopener noreferrer" data-open-full-page>
+              {L.ui.openFullPage}
+            </a>
+          </span>
         </div>
       ) : (
         <>
@@ -718,7 +740,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       <div className="vf-columns">
         {!controls ? (
           <div className="vf-form" data-equation-text>
-            <p style={{ margin: 0, color: "#1f2933", fontWeight: 600 }}>{equationText(form, L, compiled.secondOrder)}</p>
+            <p style={{ margin: 0, color: "#1f2933", fontWeight: 600 }}>{equationText(shown, L, compiled.secondOrder)}</p>
             {compiled.secondOrder ? (
               <p style={{ margin: 0, color: "#1f2933" }} data-second-order-reduced>
                 {fill(L.ui.secondOrderReduced, { g: compiled.secondOrder.reduced.g })}
@@ -767,19 +789,19 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           )}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <label style={labelStyle}>
-              <span>{hv === "x" ? L.ui.xMin : L.ui.tMin}</span>
+              <span>{formNames.hv === "x" ? L.ui.xMin : L.ui.tMin}</span>
               <input value={form.xMin} onChange={(e) => update({ xMin: e.target.value })} style={inputStyle} name="xMin" />
             </label>
             <label style={labelStyle}>
-              <span>{hv === "x" ? L.ui.xMax : L.ui.tMax}</span>
+              <span>{formNames.hv === "x" ? L.ui.xMax : L.ui.tMax}</span>
               <input value={form.xMax} onChange={(e) => update({ xMax: e.target.value })} style={inputStyle} name="xMax" />
             </label>
             <label style={labelStyle}>
-              <span>{second ? L.ui.xpMin : L.ui.yMin}</span>
+              <span>{formSecond ? L.ui.xpMin : L.ui.yMin}</span>
               <input value={form.yMin} onChange={(e) => update({ yMin: e.target.value })} style={inputStyle} name="yMin" />
             </label>
             <label style={labelStyle}>
-              <span>{second ? L.ui.xpMax : L.ui.yMax}</span>
+              <span>{formSecond ? L.ui.xpMax : L.ui.yMax}</span>
               <input value={form.yMax} onChange={(e) => update({ yMax: e.target.value })} style={inputStyle} name="yMax" />
             </label>
           </div>
@@ -828,7 +850,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           {scene?.timeDependent ? (
             <label style={labelStyle}>
               {/* A second-order equation calls it t₀: the initial values x(t₀), x'(t₀) are given at this instant. */}
-              <span>{second ? L.ui.snapshotTSecond : L.ui.snapshotT}</span>
+              <span>{formSecond ? L.ui.snapshotTSecond : L.ui.snapshotT}</span>
               <input value={snapshotTText} onChange={(e) => setSnapshotTText(e.target.value)} style={inputStyle} name="snapshotT" inputMode="decimal" />
             </label>
           ) : null}
@@ -868,13 +890,18 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                 <span>{ivNames.second}</span>
                 <input value={initialValue.second} onChange={(e) => setInitialValue((prev) => ({ ...prev, second: e.target.value }))} onKeyDown={addOnEnter} style={inputStyle} inputMode="decimal" name="initialSecond" />
               </label>
-              <button type="button" onClick={addInitialValue} style={buttonStyle} disabled={compiled.error !== null} data-add-solution>
+              <button type="button" onClick={addInitialValue} style={buttonStyle} disabled={compiled.error !== null || atCap} data-add-solution>
                 {words.add}
               </button>
             </div>
             {initialValueError ? (
               <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-initial-value-error>
                 {fill(L.ui[INITIAL_VALUE_ERROR[initialValueError.reason]], { name: ivNames[initialValueError.field], max: String(MAX_ABS_VALUE) })}
+              </p>
+            ) : null}
+            {atCap ? (
+              <p role="status" style={{ margin: 0, color: "#92400e", fontSize: 13 }} data-trajectory-cap>
+                {fill(L.ui.trajectoryCap, { max: MAX_TRAJECTORIES })}
               </p>
             ) : null}
           </fieldset>
@@ -961,6 +988,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
         )}
 
         <div className="vf-canvas" ref={canvasWrapRef}>
+          {/* R.1: while the deferred picture is behind the form (a slow equilibria search), say so over the old picture. */}
+          {computing ? (
+            <p role="status" className="vf-computing" data-computing>
+              {L.ui.computing}
+            </p>
+          ) : null}
           {compiled.error ? (
             <div role="alert" style={{ padding: "10px 12px", marginBottom: 10, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6 }}>
               {compiled.error}
@@ -1076,6 +1109,19 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           {scene && queryShown && queryView ? <QueryResultView scene={scene} run={queryShown} view={queryView} variables={variables} L={L} /> : null}
         </div>
       </div>
+      {/* R.3: a new GitHub issue prefilled with this page's link and the browser's name (lib/report-issue); nothing is tracked. */}
+      <p className="vf-report" data-report-problem>
+        <a
+          href={ISSUES_NEW_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={(e) => {
+            e.currentTarget.href = reportIssueUrl({ pageUrl: window.location.href, userAgent: navigator.userAgent, locale });
+          }}
+        >
+          {L.ui.reportProblem}
+        </a>
+      </p>
     </main>
   );
 }
