@@ -179,9 +179,12 @@ function drawArrows(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, mo
 function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene): void {
   ctx.lineWidth = 1.8;
   ctx.lineJoin = "round";
+  // A differential form M dt + N dy = 0 (undirected segments) has no forward or backward: its kept
+  // curve is one color on both sides of the start (round P2.1), never a directed two-color curve.
+  const undirected = scene.fieldStyle === "segments";
   for (const t of scene.trajectories ?? []) {
     if (t.points.length < 2) continue;
-    ctx.strokeStyle = t.direction === "forward" ? COLORS.forward : COLORS.backward;
+    ctx.strokeStyle = !undirected && t.direction === "backward" ? COLORS.backward : COLORS.forward;
     ctx.setLineDash(t.nonUnique ? NON_UNIQUE_DASH : []);
     ctx.beginPath();
     t.points.forEach((p, i) => {

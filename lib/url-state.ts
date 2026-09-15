@@ -25,7 +25,8 @@
  *   eqs    0 = equal scale off (omitted when on)
  *   d      grid density 5..40 (omitted at 20)
  *   arrows scaled (omitted for unit arrows)
- *   t0     snapshot time of a non-autonomous system (omitted at 0)
+ *   t0     snapshot time of a non-autonomous planar system or second-order equation (omitted at 0;
+ *          unused on a first-order picture, whose t is the horizontal axis: reported as such)
  *   traj   fixed trajectory starts "x,y;x,y" (at most 20 pairs; omitted when empty)
  * Unknown parameters are ignored (so /embed's own `controls` never counts as a problem).
  */
@@ -202,7 +203,7 @@ export function encodeState(state: AppState): string {
   if (!state.equalScale) q.set("eqs", "0");
   if (state.density !== d.density) q.set("d", String(state.density));
   if (state.arrowMode !== d.arrowMode) q.set("arrows", state.arrowMode);
-  if (state.snapshotT !== d.snapshotT) q.set("t0", formatExact(state.snapshotT));
+  if (state.snapshotT !== d.snapshotT && !horizontalIsT(state.mode)) q.set("t0", formatExact(state.snapshotT));
   if (state.trajectoryStarts.length) q.set("traj", state.trajectoryStarts.map((p) => `${formatStart(p.x)},${formatStart(p.y)}`).join(";"));
   return readable(q.toString());
 }
@@ -352,9 +353,14 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
 
   const t0 = q.get("t0");
   if (t0 !== null) {
-    const p = parseBounded(t0);
-    if (p.reason) problem("t0", p.reason);
-    else state.snapshotT = p.value;
+    // A first-order picture has no snapshot time (its t is the horizontal axis): a hand-written
+    // t0 there is reported as unused rather than silently swallowed (round P2).
+    if (horizontalT) problem("t0", "unusedInMode");
+    else {
+      const p = parseBounded(t0);
+      if (p.reason) problem("t0", p.reason);
+      else state.snapshotT = p.value;
+    }
   }
 
   const traj = q.get("traj");

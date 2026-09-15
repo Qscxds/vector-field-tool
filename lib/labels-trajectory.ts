@@ -30,17 +30,36 @@ export function trajectoryMode(scene: Pick<Scene, "system" | "fieldStyle">): Tra
  * the statuses that speak of time are reworded: the kernel's parameter is not the student's t
  * (round P2.1), and its "equilibrium" is a point where M = N = 0.
  */
-export function trajectoryStatus(t: TrajectoryView, L: LabelTable, timeDependent?: Scene["timeDependent"], differential = false): string {
+export function trajectoryStatus(t: TrajectoryView, L: LabelTable, timeDependent?: Scene["timeDependent"], picture: StatusPicture = "planar"): string {
   if (t.status === "left_box" && t.stop === "far") return L.ui.leftFarBox;
-  return statusSentence(t.status, L, timeDependent, differential);
+  return statusSentence(t.status, L, timeDependent, picture);
 }
 
-/** The wording of an integration status, non-autonomous and differential-form aware (see trajectoryStatus). */
-export function statusSentence(status: TrajectoryView["status"], L: LabelTable, timeDependent?: Scene["timeDependent"], differential = false): string {
-  if (differential) {
+/**
+ * What the picture is, for the status wording (round P2): a planar phase plane; the graph of a
+ * first-order solution y(t) ("explicit"); a differential form, which has no time and no direction;
+ * a second-order phase plane (x, x'), whose "position" and "speed" are the student's x and x'.
+ */
+export type StatusPicture = "planar" | "explicit" | "differential" | "second";
+
+/** The picture of a scene for the status wording (trajectoryMode plus the second-order flag). */
+export function statusPictureOf(scene: Pick<Scene, "system" | "fieldStyle" | "secondOrder">): StatusPicture {
+  if (scene.secondOrder) return "second";
+  return trajectoryMode(scene);
+}
+
+/** The wording of an integration status, non-autonomous and picture aware (see trajectoryStatus). */
+export function statusSentence(status: TrajectoryView["status"], L: LabelTable, timeDependent?: Scene["timeDependent"], picture: StatusPicture = "planar"): string {
+  if (picture === "differential") {
     if (status === "completed") return L.tool.completedDiff;
     if (status === "max_steps") return L.tool.maxStepsDiff;
     if (status === "reached_equilibrium") return L.tool.reachedSingularDiff;
+    if (status === "blew_up") return L.tool.blewUpDiff;
+  }
+  if (picture === "explicit" && status === "blew_up") return L.tool.blewUpFirst;
+  if (picture === "second") {
+    if (status === "blew_up") return L.tool.blewUpSecond;
+    if (status === "reached_equilibrium") return timeDependent ? L.tool.stoppedNonAutonomousSecond : L.tool.reachedEquilibriumSecond;
   }
   return status === "reached_equilibrium" && timeDependent ? L.tool.stoppedNonAutonomous : L.status[status];
 }
@@ -71,19 +90,20 @@ export function groupTrajectories(trajectories: readonly TrajectoryView[]): Traj
  * - explicit first order: one line per trajectory, "<direction> to t = <end point's t>, <status>";
  * - differential form: a single line "one side: <status>; other side: <status>".
  */
-export function trajectoryLines(scene: Pick<Scene, "system" | "fieldStyle" | "timeDependent">, group: readonly TrajectoryView[], L: LabelTable): string[] {
+export function trajectoryLines(scene: Pick<Scene, "system" | "fieldStyle" | "timeDependent" | "secondOrder">, group: readonly TrajectoryView[], L: LabelTable): string[] {
   const mode = trajectoryMode(scene);
+  const picture = statusPictureOf(scene);
   // A curve through a point where uniqueness fails (TrajectoryView.nonUnique) gets the sentence
   // once per group, after the status lines.
   const nonUnique = group.some((t) => t.nonUnique) ? [L.ui.nonUniqueTrajectory] : [];
   if (mode === "differential") {
-    const sides = group.map((t) => trajectoryStatus(t, L, scene.timeDependent, true));
+    const sides = group.map((t) => trajectoryStatus(t, L, scene.timeDependent, "differential"));
     if (sides.length < 2) return [...sides, ...nonUnique];
     return [fill(L.ui.trajectorySides, { first: sides[0], second: sides[1] }), ...nonUnique];
   }
   const lines = group.map((t) => {
     const direction = t.direction === "forward" ? L.tool.forward : L.tool.backward;
-    const status = trajectoryStatus(t, L, scene.timeDependent);
+    const status = trajectoryStatus(t, L, scene.timeDependent, picture);
     if (mode === "explicit") {
       const end = t.points[t.points.length - 1];
       return `${direction} ${fill(L.ui.towardT, { t: formatNumber(end.x, 2), status })}`;

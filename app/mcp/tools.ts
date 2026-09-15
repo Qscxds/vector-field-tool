@@ -73,8 +73,30 @@ const FIRST_ORDER_EXPRESSION_RULES =
 const NEVER_COMPUTE =
   'Do NOT compute any of this yourself: no mental arithmetic, no estimating eigenvalues, equilibria, ' +
   'stability or trajectories from memory. Always call this tool and report exactly what it returns. ' +
-  'If the result contains a "caveat", read it to the student word for word; it marks a case where the ' +
-  'mathematics genuinely cannot be decided by linearization.';
+  'If the text summary contains a sentence introduced by "Note:" after an equilibrium (its caveat), read that ' +
+  'sentence to the student word for word; it marks a case where the mathematics genuinely cannot be decided by ' +
+  'linearization.';
+
+/** analyze_first_order: the same rule in the vocabulary of a first-order equation (round P2.2). */
+const FIRST_ORDER_NEVER_COMPUTE =
+  "Do NOT compute any of this yourself: no estimating constant solutions, their stability, equation types or " +
+  "solution values from memory. Always call this tool and report exactly what it returns. If the text summary " +
+  'contains a sentence introduced by "Note:", read it to the student word for word.';
+
+/**
+ * What Claude may and may not take from structuredContent (round P2.2: the JSON is the widget's
+ * data in the kernel's coordinates; the student's names are in the text summary and in `axes`).
+ */
+const STRUCTURED_CONTENT_RULE =
+  "The structuredContent is the widget's data in the kernel's own coordinates, never the wording for the student: " +
+  "relay the TEXT summary. Its `axes` field says what the kernel's names mean on this picture: axes.x is the " +
+  "student's name of every .x coordinate (t on a first-order picture), axes.y of every .y (x' on a second-order " +
+  "one), and axes.t of every t / tEnd field (\"t\" = the student's time or t coordinate; \"parameter\" = the " +
+  "curve's own parameter on a differential form, which is NOT the student's t and must never be quoted as one). " +
+  "Never show a student its identifiers (status, warning, note, verdict, classification and caveat keys) and never " +
+  "quote `system`, which is the internal reduction. A uniqueness verdict \"bounded_at_tested_scales\" is a " +
+  "measurement at the tested scales, never a proof of uniqueness: say nothing about uniqueness unless the text " +
+  "says the Lipschitz condition fails.";
 
 const BOX_RULES =
   'The viewing box (xMin, xMax, yMin, yMax) must have xMin < xMax and yMin < yMax; defaults are -3..3.';
@@ -110,8 +132,15 @@ const SECOND_ORDER_NON_AUTONOMOUS_RULE =
   "query_solution with mode 'second'.";
 
 const FIRST_ORDER_BOX_RULES =
-  'The viewing box must have xMin < xMax and yMin < yMax; defaults are -3..3. xMin and xMax are the t range ' +
-  '(horizontal axis), yMin and yMax the y range.';
+  "The viewing box must have tMin < tMax (the t range, horizontal axis; the older names xMin / xMax are read as " +
+  "the same) and yMin < yMax (the y range); defaults are -3..3.";
+
+/** query_solution: the box vocabulary of each mode (round P2.2). */
+const QUERY_BOX_RULES =
+  "Viewing box (defaults -3..3): for first / diff the horizontal range is the t range, given as tMin / tMax " +
+  "(the older names xMin / xMax are read as the same), and yMin / yMax the y range; for system, xMin / xMax and " +
+  "yMin / yMax; for second, xMin / xMax are the x range (position) and xpMin / xpMax the x' range (velocity). " +
+  "The solution is followed up to 20 times beyond the box.";
 
 const LOCALE_RULE =
   "`locale` defaults to en: set it from the language the student writes in, 'zh' when the question is in Chinese, 'en' for every other language.";
@@ -138,13 +167,24 @@ const boxShape = {
   yMin: coordinate.default(-3).describe("Bottom edge of the viewing box."),
   yMax: coordinate.default(3).describe("Top edge of the viewing box."),
 };
-/** Same keys, defaults and types as boxShape (no aliases): only the descriptions speak of t. */
+/**
+ * First-order pictures: the horizontal range is the t range, named tMin / tMax (round P2.2); the
+ * older xMin / xMax keep their defaults and are read as the same range when tMin / tMax are absent.
+ */
 const firstOrderBoxShape = {
-  xMin: coordinate.default(-3).describe("Left end of the t range (horizontal axis)."),
-  xMax: coordinate.default(3).describe("Right end of the t range (horizontal axis)."),
+  tMin: coordinate.optional().describe("Left end of the t range (horizontal axis). Default -3."),
+  tMax: coordinate.optional().describe("Right end of the t range (horizontal axis). Default 3."),
+  xMin: coordinate.default(-3).describe("The same as tMin (older name), read when tMin is absent."),
+  xMax: coordinate.default(3).describe("The same as tMax (older name), read when tMax is absent."),
   yMin: coordinate.default(-3).describe("Bottom of the y range."),
   yMax: coordinate.default(3).describe("Top of the y range."),
 };
+
+/** What the kernel's field names mean on a picture (Scene.axes); every tool fills it. */
+type Axes = NonNullable<Scene["axes"]>;
+const PLANAR_AXES: Axes = { x: "x", y: "y", t: "t" };
+const SECOND_ORDER_AXES: Axes = { x: "x", y: "x'", t: "t" };
+const firstOrderAxes = (spec: FirstOrderSpec): Axes => ({ x: "t", y: "y", t: spec.kind === "differential" ? "parameter" : "t" });
 /** analyze_second_order: the vertical range is the velocity x' (round P), so its parameters are named xpMin / xpMax. */
 const secondOrderBoxShape = {
   xMin: coordinate.default(-3).describe("Left end of the x range (position, horizontal axis)."),
@@ -190,9 +230,12 @@ export type ToolDeps = {
 type ResolvedDeps = Required<ToolDeps>;
 export const DEFAULT_BUDGET_MS = 2000;
 
-/** `vertical` names the vertical pair in the messages: yMin / yMax, or xpMin / xpMax on a second-order picture. */
-function resolveBox(b: BoxInput, vertical: "y" | "xp" = "y"): Box {
-  if (!(b.xMin < b.xMax)) throw new ToolInputError(`xMin (${b.xMin}) must be smaller than xMax (${b.xMax}).`);
+/**
+ * `vertical` / `horizontal` name the pairs in the messages: yMin / yMax, or xpMin / xpMax on a
+ * second-order picture; xMin / xMax, or tMin / tMax on a first-order one.
+ */
+function resolveBox(b: BoxInput, vertical: "y" | "xp" = "y", horizontal: "x" | "t" = "x"): Box {
+  if (!(b.xMin < b.xMax)) throw new ToolInputError(`${horizontal}Min (${b.xMin}) must be smaller than ${horizontal}Max (${b.xMax}).`);
   if (!(b.yMin < b.yMax)) throw new ToolInputError(`${vertical}Min (${b.yMin}) must be smaller than ${vertical}Max (${b.yMax}).`);
   const w = b.xMax - b.xMin;
   const h = b.yMax - b.yMin;
@@ -382,7 +425,7 @@ export function analyzePlanar(
   const td = detectTimeDependence(sys, box, { checkpoint, snapshotT });
   if (td.dependsOnT) {
     const field = sampleField(sys, box, density, density, snapshotT, checkpoint);
-    const scene: Scene = { kind: "analyze_system", locale, system: spec, box, field, timeDependent: { snapshotT, maxRelDeviation: td.maxRelDeviation }, ...(second ? { secondOrder: second } : {}) };
+    const scene: Scene = { kind: "analyze_system", locale, system: spec, axes: second ? SECOND_ORDER_AXES : PLANAR_AXES, box, field, timeDependent: { snapshotT, maxRelDeviation: td.maxRelDeviation }, ...(second ? { secondOrder: second } : {}) };
     const note = fill(second ? L.tool.timeDependentSecond : L.tool.timeDependent, { t: fmt(snapshotT), evidence: timeDependenceEvidence(L, td) });
     const shown = second ? second.reduced : { f: spec.f, g: spec.g };
     const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: shown.f, g: shown.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
@@ -394,6 +437,7 @@ export function analyzePlanar(
     kind: "analyze_system",
     locale,
     system: spec,
+    axes: second ? SECOND_ORDER_AXES : PLANAR_AXES,
     box,
     field,
     equilibria: withUniqueness(sys, eq.points, box, checkpoint),
@@ -441,7 +485,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "of a critical point, eigenvalues of the linearization, or long-term behavior of a 2D autonomous system. " +
         "For a single first-order equation dy/dt = g(t, y) use analyze_first_order instead. " +
         NON_AUTONOMOUS_RULE + " " +
-        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
         g: expression.describe("Right-hand side of y' (dy/dt)."),
@@ -501,7 +545,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; " +
         'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name (v is reserved). ' +
         FRACTIONAL_POWER_NOTE + " " +
-        SECOND_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        SECOND_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         equation: z
           .string()
@@ -546,9 +590,14 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "(completed, left the viewing box, reached an equilibrium, blew up in finite time, hit the step limit). " +
         "USE THIS whenever a student asks what happens to a solution starting at a given point, where a trajectory " +
         "goes, whether it approaches an equilibrium or a limit cycle, or wants a solution curve drawn. " +
+        "PLANAR SYSTEMS ONLY: the result speaks x and y. For a single first-order equation dy/dt = g(t, y) or " +
+        "M dt + N dy = 0, or a second-order equation x'' = F(t, x, x'), do NOT reduce it by hand into f and g and " +
+        "call this tool (the student's t would come back as x, or x' as y): use query_solution with mode first / " +
+        "diff / second, whose result speaks the student's notation and whose curve the widget draws (a far " +
+        "target draws the whole curve). " +
         "Default is both directions with an adaptive Dormand-Prince integrator; use method 'rk4' only when a " +
         "fixed-step classic RK4 is explicitly wanted. " +
-        EXPRESSION_RULES + " " + BOX_RULES + " Integration stops when the trajectory leaves the box. " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        EXPRESSION_RULES + " " + BOX_RULES + " Integration stops when the trajectory leaves the box. " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
         g: expression.describe("Right-hand side of y' (dy/dt)."),
@@ -603,6 +652,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           kind: "trace_trajectory",
           locale: input.locale,
           system: spec,
+          axes: PLANAR_AXES,
           box,
           start,
           trajectories,
@@ -621,7 +671,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           return t.nonUnique ? [line, L.tool.nonUniqueTrajectory] : [line];
         });
         if (td.dependsOnT) {
-          const traced = input.direction === "both" ? L.tool.tracedBoth : input.direction === "forward" ? L.tool.tracedForward : L.tool.tracedBackward;
+          // trace_trajectory always starts at t = 0 (the shells and query_solution start at their own t0).
+          const traced = fill(input.direction === "both" ? L.tool.tracedBoth : input.direction === "forward" ? L.tool.tracedForward : L.tool.tracedBackward, { t0: "0" });
           lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced }));
         }
         return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: spec.g })}\n${lines.join("\n")}`, scene);
@@ -644,7 +695,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "system without an equilibrium analysis, or to render a picture in the widget. For equilibria and stability " +
         "use analyze_system, which also returns a field. " +
         NON_AUTONOMOUS_RULE + " " +
-        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
         g: expression.describe("Right-hand side of y' (dy/dt)."),
@@ -669,6 +720,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           kind: "sample_field",
           locale: input.locale,
           system: spec,
+          axes: PLANAR_AXES,
           box,
           field,
           ...(td.dependsOnT ? { timeDependent: { snapshotT: input.t, maxRelDeviation: td.maxRelDeviation } } : {}),
@@ -715,7 +767,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "fully valid (many important equations, e.g. Riccati dy/dt = t^2 + y^2, have no closed form). " +
         "Variables: y is the unknown function, t the independent variable (write t, never x; x is rejected). " +
         "Provide exactly one of `expr` or the pair `M`, `N`. " +
-        FIRST_ORDER_EXPRESSION_RULES + " " + FIRST_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        FIRST_ORDER_EXPRESSION_RULES + " " + FIRST_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + FIRST_ORDER_NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         expr: expression.optional().describe("Right-hand side g(t, y) of dy/dt = g(t, y). The independent variable is t; x is rejected. Omit when giving M and N."),
         M: expression.optional().describe("M(t, y) in M(t, y) dt + N(t, y) dy = 0. Variables t and y only. Requires N."),
@@ -732,7 +784,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
       guarded(d, (checkpoint) => {
         const locale = input.locale;
         const L = labels(locale);
-        const box = resolveBox(input);
+        // The horizontal range is the t range: tMin / tMax, or the older xMin / xMax.
+        const box = resolveBox({ xMin: input.tMin ?? input.xMin, xMax: input.tMax ?? input.xMax, yMin: input.yMin, yMax: input.yMax }, "y", "t");
         const hasExpr = typeof input.expr === "string";
         const hasMN = typeof input.M === "string" || typeof input.N === "string";
         if (hasExpr === hasMN) {
@@ -778,6 +831,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           kind: "analyze_first_order",
           locale,
           system: systemSpec,
+          axes: firstOrderAxes(spec),
           box,
           field,
           fieldStyle: spec.kind === "differential" ? "segments" : "arrows",
@@ -819,6 +873,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           // Per line: the sentence, then the plateau / probe-count notes and the uniqueness sentence
           // when they apply (nothing is printed for a bounded uniqueness result).
           for (const s of eq.solutions) lines.push(...constantSolutionLines(L, s, spec));
+          // A differential form has no direction: say once how "approach" / "leave" were read (P2.3).
+          if (spec.kind === "differential") lines.push(L.tool.stabilityReadingDiff);
         } else {
           lines.push(noConstantSentence(L, eq.autonomous, eq.untestableReason, eq.identicallyZero));
         }
@@ -854,8 +910,10 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "box, blew up, reached an equilibrium, span ended), when the run stopped before the target time, or when a " +
         "periodic-looking solution may cross again beyond the span. " +
         "USE THIS for any 'value at a time' or 'when does it reach a value' question about a specific solution: such a " +
-        "question must call this tool and is never answered from a closed form; use trace_trajectory to see " +
-        "the whole curve, analyze_first_order / analyze_system for equilibria and stability. " +
+        "question must call this tool and is never answered from a closed form; to draw one solution of an equation " +
+        "(first, diff or second) call this tool with a far target (the widget draws the whole curve), use " +
+        "trace_trajectory only for a planar system, and analyze_first_order / analyze_system / analyze_second_order " +
+        "for constant solutions, equilibria and stability. " +
         "Inputs: `mode` selects the equation form and which expression parameters are read: 'first' (expr: dy/dt = " +
         "g(t, y)), 'diff' (M and N: M dt + N dy = 0), 'system' (f and g: x' = f, y' = g), 'second' (equation: x'' = " +
         "F(t, x, x') or a full equation, reduced with v = x' to x' = v, v' = F as analyze_second_order does). " +
@@ -870,10 +928,12 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "'diff' the curve M dt + N dy = 0 has no time and no direction: tSpan is the length of the curve's own " +
         "parameter followed on each side of the start (dt = N per unit of it), the hits are points (t, y) of the " +
         "picture, and the summary names the two sides, never a direction or a time reached. " +
-        EXPRESSION_RULES + " For first / diff the variables are t and y only (x is rejected; write t). " +
-        "For 'second' the unknown is x(t) with derivatives x' and x'' (v means x'), t is the independent variable, " +
-        "and y is rejected; the viewing box's vertical range may be given as xpMin / xpMax (the x' range). " +
-        BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE,
+        "EXPRESSION SYNTAX BY MODE. system: " + EXPRESSION_RULES + " first / diff: " + FIRST_ORDER_EXPRESSION_RULES +
+        " A fractional power of a negative base (y^(2/3) at y < 0) is undefined in this tool; for the real branch " +
+        "write abs(y)^(2/3) or sign(y)*abs(y)^p. second: the unknown is x(t) with derivatives x' and x'' (v means " +
+        "x'), t is the independent variable and may appear in the equation, and y is rejected; the rest as for " +
+        "analyze_second_order. " +
+        QUERY_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         mode: z.enum(["first", "diff", "system", "second"]).describe("Which form the equation is given in: first (expr), diff (M, N), system (f, g), second (equation)."),
         expr: expression.optional().describe("mode first: the right-hand side g(t, y) of dy/dt = g(t, y)."),
@@ -893,8 +953,15 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             value: coordinate.describe("The target value."),
           })
           .describe("What is asked: the value at a time (kind 't' for a system) or the crossings of a coordinate value."),
-        tSpan: z.number().positive().max(1000).default(20).describe("Time span integrated in each direction (0 < tSpan <= 1000)."),
+        tSpan: z
+          .number()
+          .positive()
+          .max(1000)
+          .default(20)
+          .describe("Span integrated on each side of the start (0 < tSpan <= 1000): a time span for system / second, the t span for first, and for diff the span of the curve's own parameter (dt = N per unit of it), NOT a t interval; enlarge it when a target is not reached."),
         ...boxShape,
+        tMin: coordinate.optional().describe("mode first / diff: left end of the t range (horizontal axis; the same as xMin)."),
+        tMax: coordinate.optional().describe("mode first / diff: right end of the t range (horizontal axis; the same as xMax)."),
         xpMin: coordinate.optional().describe("mode second: bottom of the x' range (used instead of yMin)."),
         xpMax: coordinate.optional().describe("mode second: top of the x' range (used instead of yMax)."),
         locale: localeSchema,
@@ -907,10 +974,13 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const L = labels(input.locale);
         const firstOrder = input.mode === "first" || input.mode === "diff";
         const secondMode = input.mode === "second";
-        // A second-order picture's vertical range is x' (xpMin / xpMax when given); the kernel's box calls it y.
+        // A second-order picture's vertical range is x' (xpMin / xpMax when given); a first-order
+        // picture's horizontal range is t (tMin / tMax when given); the kernel's box calls them y and x.
         const box = secondMode
           ? resolveBox({ xMin: input.xMin, xMax: input.xMax, yMin: input.xpMin ?? input.yMin, yMax: input.xpMax ?? input.yMax }, input.xpMin !== undefined || input.xpMax !== undefined ? "xp" : "y")
-          : resolveBox(input);
+          : firstOrder
+            ? resolveBox({ xMin: input.tMin ?? input.xMin, xMax: input.tMax ?? input.xMax, yMin: input.yMin, yMax: input.yMax }, "y", input.tMin !== undefined || input.tMax !== undefined ? "t" : "x")
+            : resolveBox(input);
         const need = (name: "expr" | "M" | "N" | "f" | "g" | "equation"): string => {
           const v = input[name];
           if (typeof v !== "string") throw new ToolInputError(`mode '${input.mode}' needs \`${name}\`.`);
@@ -971,7 +1041,12 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         } else {
           target = { kind: input.target.kind === "t" ? "time" : input.target.kind, value: input.target.value };
         }
-        const result = querySolution(sys, start, target, { tSpan: input.tSpan, stopBox: fixedStopBox(box), t0: startTime, checkpoint });
+        // The kernel's clock: the student's start time on a planar or second-order picture; on an
+        // explicit first-order picture the student's t itself (t' = 1, so starting the clock at t0
+        // makes every t / tEnd field the t coordinate); on a differential form it stays a parameter
+        // starting at 0 (Scene.axes.t = "parameter" says so).
+        const kernelT0 = firstOrderSpec?.kind === "explicit" ? h : startTime;
+        const result = querySolution(sys, start, target, { tSpan: input.tSpan, stopBox: fixedStopBox(box), t0: kernelT0, checkpoint });
         const traced: TrajectoryView[] = [result.forward, result.backward].map((leg, i) => ({
           direction: i === 0 ? "forward" : "backward",
           points: thin(leg.points, 1000),
@@ -993,6 +1068,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           kind: "query_solution",
           locale: input.locale,
           system: spec,
+          axes: firstOrderSpec ? firstOrderAxes(firstOrderSpec) : secondOrder ? SECOND_ORDER_AXES : PLANAR_AXES,
           box,
           start,
           trajectories,
@@ -1012,16 +1088,20 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
               : fill(L.tool.queryHeaderSystem, { f: spec.f, g: spec.g, start: formatPoint(start), t0: fmt(startTime), target: targetText }),
         );
         if (secondOrder) lines.unshift(fill(L.tool.secondOrderReduced, { equation: secondOrder.equation, g: secondOrder.reduced.g }));
+        const differential = firstOrderSpec?.kind === "differential";
+        // A differential form has no direction: said before the sides are listed.
+        if (differential) lines.push(L.tool.differentialUndirected);
         lines.push(...queryLines(scene, L));
+        // The advice about tSpan is for the model only (the web page has no such control).
+        if (result.note === "stopped_before_target") lines.push(L.tool.queryStoppedBeforeTool);
         // Where each leg got to. The kernel's tEnd is its integration parameter: the student's t
         // only on a planar picture. On an explicit first-order picture the t reached is the end
         // point's horizontal coordinate; on a differential form there is no direction and no t
         // number at all, only the two end points (round P2.1).
-        const differential = firstOrderSpec?.kind === "differential";
         if (differential) {
           for (const [i, t] of trajectories.entries()) {
             const end = t.points[t.points.length - 1];
-            lines.push(fill(L.tool.queryLegDiff, { side: i === 0 ? L.tool.sideOne : L.tool.sideOther, end: formatPoint(end), status: trajectoryStatus(t, L, undefined, true) }));
+            lines.push(fill(L.tool.queryLegDiff, { side: i === 0 ? L.tool.sideOne : L.tool.sideOther, end: formatPoint(end), status: trajectoryStatus(t, L, undefined, "differential") }));
           }
         } else {
           for (const t of trajectories) {
@@ -1029,13 +1109,16 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
             const direction = t.direction === "forward" ? L.tool.forward : L.tool.backward;
             lines.push(
               firstOrder
-                ? fill(L.tool.queryLegFirst, { direction, t: fmt(end.x, 3), end: formatPoint(end), status: trajectoryStatus(t, L) })
-                : fill(L.tool.queryLeg, { direction, tEnd: fmt(t.tEnd, 3), end: pointText(L, end, secondMode), status: trajectoryStatus(t, L, timeDependent) }),
+                ? fill(L.tool.queryLegFirst, { direction, t: fmt(end.x, 3), end: formatPoint(end), status: trajectoryStatus(t, L, undefined, "explicit") })
+                : fill(L.tool.queryLeg, { direction, tEnd: fmt(t.tEnd, 3), end: pointText(L, end, secondMode), status: trajectoryStatus(t, L, timeDependent, secondMode ? "second" : "planar") }),
             );
           }
         }
         if (trajectories.some((t) => t.nonUnique)) lines.push(L.tool.nonUniqueTrajectory);
-        if (timeDependent && td) lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced: L.tool.tracedBoth }));
+        if (timeDependent && td) {
+          const traced = fill(L.tool.tracedBoth, { t0: fmt(startTime) });
+          lines.push(fill(secondMode ? L.tool.timeDependentTrajectorySecond : L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced }));
+        }
         return ok(lines.join("\n"), scene);
       }),
   );

@@ -20,7 +20,7 @@ import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
@@ -272,6 +272,8 @@ const SECOND_ORDER_SENTENCES: Partial<Record<NonNullable<ParseError["code"]>, ke
   second_order_implicit_product: "secondOrderImplicitProduct",
   // The professor's case (round P): y has no meaning in x'' = F(t, x, x').
   second_order_y_symbol: "secondOrderYSymbol",
+  // The reduction's own cross-check failed: worded without the reduction's private names (P2.6).
+  second_order_internal: "secondOrderInternal",
 };
 
 function compile(form: Form, L: LabelTable): Compiled {
@@ -654,9 +656,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
 
       {urlProblems && urlProblems.length > 0 ? (
         <p role="alert" data-url-problems style={{ padding: "8px 12px", margin: "0 0 14px", background: "#fffbeb", color: "#92400e", border: "1px solid #fde68a", borderRadius: 6 }}>
-          {fill(L.ui.urlProblems, {
-            list: urlProblems.map((p) => `${p.param}${L.tool.parenOpen}${L.ui[REASON_LABEL[p.reason]]}${L.tool.parenClose}`).join(L.tool.listSeparator),
-          })}
+          {/* A link too long as a whole has no parameter to name: its own sentence, not "query (...)". */}
+          {urlProblems.some((p) => p.reason === "queryTooLong")
+            ? L.ui.urlQueryTooLong
+            : fill(L.ui.urlProblems, {
+                list: urlProblems.map((p) => `${p.param}${L.tool.parenOpen}${L.ui[REASON_LABEL[p.reason]]}${L.tool.parenClose}`).join(L.tool.listSeparator),
+              })}
         </p>
       ) : null}
 
@@ -759,7 +764,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           </div>
           {/* Initial value: (t0, y0) on a first-order picture, (x0, y0) on a planar one; Enter in either field adds too. */}
           <fieldset style={{ display: "grid", gap: 6, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-initial-value>
-            <legend style={{ padding: "0 4px" }}>{L.ui.initialValue}</legend>
+            {/* A second-order equation names its initial values x(t₀), x'(t₀); when no t₀ field is shown (autonomous) the legend says t₀ = 0. */}
+            <legend style={{ padding: "0 4px" }}>{second && !scene?.timeDependent ? L.ui.initialValueSecondAutonomous : L.ui.initialValue}</legend>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, alignItems: "end" }}>
               <label style={labelStyle}>
                 <span>{ivNames.first}</span>
@@ -770,7 +776,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                 <input value={initialValue.second} onChange={(e) => setInitialValue((prev) => ({ ...prev, second: e.target.value }))} onKeyDown={addOnEnter} style={inputStyle} inputMode="decimal" name="initialSecond" />
               </label>
               <button type="button" onClick={addInitialValue} style={buttonStyle} disabled={compiled.error !== null} data-add-solution>
-                {L.ui.addSolution}
+                {words.add}
               </button>
             </div>
             {initialValueError ? (
@@ -935,7 +941,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                 yMax: formatNumber((scene.featuresBox ?? scene.box).y.max, 3),
               })}{" "}
               <Info label={L.ui.details} data-info="features-box">
-                {L.ui.featuresBoxDetail}
+                {featuresBoxDetail(L, picture)}
               </Info>
             </p>
           ) : null}
@@ -978,7 +984,12 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
   return (
     <section style={{ marginTop: 14 }} data-query-result data-query-note={view.note}>
       <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.querySolution}</h2>
-      <p style={{ margin: "0 0 6px" }}>{fill(L.ui.queryHeader, { start: pointText(L, run.start, second), target: queryTargetText(view, L, second) })}</p>
+      {/* On a non-autonomous picture the curve starts at the snapshot time: said, so the absolute t of every hit has its origin. */}
+      <p style={{ margin: "0 0 6px" }}>
+        {scene.timeDependent
+          ? fill(L.ui.queryHeaderAt, { start: pointText(L, run.start, second), t0: formatNumber(scene.timeDependent.snapshotT, 4), target: queryTargetText(view, L, second) })
+          : fill(L.ui.queryHeader, { start: pointText(L, run.start, second), target: queryTargetText(view, L, second) })}
+      </p>
       {view.hits.length ? (
         <ul style={{ margin: "0 0 6px", paddingLeft: 20 }}>
           {view.hits.map((hit, i) => (
@@ -1066,6 +1077,10 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
             ))}
           </ul>
         )}
+        {/* A differential form has no direction: say once how "approach" / "leave" were read (P2.3). */}
+        {fo.spec?.kind === "differential" && fo.solutions.length > 0 ? (
+          <p style={{ margin: "6px 0 0", fontSize: 13, color: "#555" }} data-stability-reading-diff>{L.tool.stabilityReadingDiff}</p>
+        ) : null}
         {constantSolutionNotices(L, fo).map((note) => (
           <p key={note} style={{ margin: "6px 0 0", fontSize: 13, color: "#555" }} data-constant-notice>{note}</p>
         ))}

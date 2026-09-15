@@ -109,10 +109,11 @@ describe("tools/list", () => {
     expect(t.description).toMatch(/x is rejected/);
     expect(t.description).not.toMatch(/dy\/dx|\(x, y\)|M dx/);
     const props = t.inputSchema.properties as Record<string, { description?: string }>;
-    // parameter NAMES are unchanged (no aliases); only their descriptions say t
-    expect(Object.keys(props).sort()).toEqual(["M", "N", "density", "expr", "locale", "params", "xMin", "xMax", "yMin", "yMax"].sort());
-    expect(props.xMin.description).toMatch(/t range/);
-    expect(props.xMax.description).toMatch(/t range/);
+    // Round P2.2: the t range is named tMin / tMax; the older xMin / xMax are still read as the same range.
+    expect(Object.keys(props).sort()).toEqual(["M", "N", "density", "expr", "locale", "params", "tMin", "tMax", "xMin", "xMax", "yMin", "yMax"].sort());
+    expect(props.tMin.description).toMatch(/t range/);
+    expect(props.tMax.description).toMatch(/t range/);
+    expect(props.xMin.description).toMatch(/same as tMin/);
     expect(props.expr.description).toMatch(/dy\/dt = g\(t, y\)/);
     expect(props.M.description).toMatch(/M\(t, y\)/);
     expect(props.N.description).toMatch(/N\(t, y\)/);
@@ -693,9 +694,9 @@ describe("trace_trajectory", () => {
     expect(end.x).toBe(0);
     expect(end.y).toBeCloseTo(Math.sin(1), 5);
     expect(r.scene.timeDependent?.snapshotT).toBe(0);
-    expect(r.text).toContain("the trajectory starts at t = 0");
+    expect(r.text).toContain("the curve starts at t = 0");
     const zh = await call("trace_trajectory", { f: "0", g: "cos(t)", x0: 0, y0: 0, direction: "forward", tSpan: 1, locale: "zh" });
-    expect(zh.text).toContain("轨线从 t = 0 出发");
+    expect(zh.text).toContain("曲线从 t = 0 出发");
     const autonomous = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1, locale: "en" });
     expect(autonomous.scene.timeDependent).toBeUndefined();
     expect(autonomous.text).not.toMatch(/non-autonomous/);
@@ -994,15 +995,17 @@ describe("[J-fix2] summary wording", () => {
   it("the non-autonomous trajectory sentence names the direction actually traced", async () => {
     const L = labels("en");
     const base = { f: "y", g: "-x + sin(t)", x0: 1, y0: 0, tSpan: 1 };
+    // trace_trajectory always starts at t = 0; the sentences carry that number (P2 sweep: no hard-coded 0 in the label).
+    const at0 = (template: string) => fill(template, { t0: "0" });
     const forward = await call("trace_trajectory", { ...base, direction: "forward", locale: "en" });
-    expect(forward.text).toContain(L.tool.tracedForward);
-    expect(forward.text).not.toContain(L.tool.tracedBackward);
-    expect(forward.text).not.toContain(L.tool.tracedBoth);
+    expect(forward.text).toContain(at0(L.tool.tracedForward));
+    expect(forward.text).not.toContain(at0(L.tool.tracedBackward));
+    expect(forward.text).not.toContain(at0(L.tool.tracedBoth));
     const backward = await call("trace_trajectory", { ...base, direction: "backward", locale: "en" });
-    expect(backward.text).toContain(L.tool.tracedBackward);
-    expect(backward.text).not.toContain(L.tool.tracedForward);
+    expect(backward.text).toContain(at0(L.tool.tracedBackward));
+    expect(backward.text).not.toContain(at0(L.tool.tracedForward));
     const both = await call("trace_trajectory", { ...base, direction: "both", locale: "zh" });
-    expect(both.text).toContain(labels("zh").tool.tracedBoth);
+    expect(both.text).toContain(at0(labels("zh").tool.tracedBoth));
     expect(both.text).not.toContain("{traced}");
     // The no-change evidence sentence stands alone: it names no analysis "above".
     for (const locale of ["en", "zh"] as const) {
@@ -1445,7 +1448,7 @@ describe("query_solution (round N)", () => {
     expect(ts).toHaveLength(6);
     [-5, -3, -1, 1, 3, 5].forEach((k, i) => expect(Math.abs(ts[i] - (k * Math.PI) / 2)).toBeLessThan(1e-6));
     expect(r.text).toContain(labels("en").tool.queryMoreBeyond);
-    expect(r.text).toMatch(/^Solution of the system x' = y, y' = -x through \(1, 0\) \(at t = 0\), asked for x = 0\./);
+    expect(r.text).toMatch(/^Solution of the system x' = y, y' = -x with \(x\(0\), y\(0\)\) = \(1, 0\), asked for x = 0\./);
     expect(r.text).toMatch(/\nt = 1\.570796 \(±[0-9.e-]+\): \(x, y\) = \(-?[0-9.e-]+, -1\) \(±/);
     expect(r.scene.trajectories!.every((t) => t.status === "completed")).toBe(true);
   });
@@ -1495,7 +1498,8 @@ describe("query_solution (round N)", () => {
     expect(r.scene.query!.hits).toHaveLength(1);
     expect(Math.abs(r.scene.query!.hits[0].x + 1)).toBeLessThan(1e-6);
     expect(Math.abs(r.scene.query!.hits[0].y)).toBeLessThan(1e-6);
-    expect(r.text).toMatch(/\nt = 3\.141593 \(±0\): \(x, y\) = \(-1, -?[0-9.e-]+\) \(±/);
+    // A time target lands on t exactly: no "(±0)" bracket after the time (P2 sweep).
+    expect(r.text).toMatch(/\nt = 3\.141593: \(x, y\) = \(-1, -?[0-9.e-]+\) \(±/);
     const far = await call("query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, tSpan: 10, target: { kind: "t", value: 15 } });
     expect(far.scene.query!.note).toBe("stopped_before_target");
     expect(far.scene.query!.hits).toEqual([]);
@@ -1513,7 +1517,9 @@ describe("query_solution (round N)", () => {
     expect(late.scene.query!.hits[0].t).toBe(2);
     expect(late.scene.query!.hits[0].y).toBeCloseTo(1.5, 8);
     expect(late.scene.timeDependent?.snapshotT).toBe(1);
-    expect(late.text).toContain("(at t = 1)");
+    expect(late.text).toContain("with (x(1), y(1)) = (0, 0)");
+    // The non-autonomous note starts the curve at the student's t0, not at a hard-coded 0.
+    expect(late.text).toContain(fill(labels("en").tool.tracedBoth, { t0: "1" }));
   });
 
   it("mode second reduces the equation first and mode diff takes M and N", async () => {
@@ -1700,7 +1706,10 @@ describe("[P1] second-order notation in the tools (the professor's correction: t
     expect(r.scene.query!.hits[0].x).toBeCloseTo(2 / 3, 8);
     expect(r.scene.query!.hits[0].y).toBeCloseTo(1.5, 8);
     expect(r.text).toContain("with x(1) = 0, x'(1) = 0");
-    expect(r.text).toContain(labels("en").tool.timeDependentTrajectory.slice(0, 30));
+    // The second-order note speaks of the equation and starts the curve at t0 = 1.
+    expect(r.text).toContain(labels("en").tool.timeDependentTrajectorySecond.slice(0, 30));
+    expect(r.text).toContain(fill(labels("en").tool.tracedBoth, { t0: "1" }));
+    expect(r.text).not.toContain("non-autonomous system");
   });
 });
 
@@ -1745,6 +1754,107 @@ describe("[P2.1] a first-order picture never prints the kernel's integration par
       expect(r.text, locale).toContain(fill(L.tool.queryLegFirst, { direction: L.tool.backward, t: "-2", end: formatPoint(legs[1].points.at(-1)!), status: L.status.completed }));
       expect(r.text, locale).not.toMatch(/t = 2 \(±|t = 2（±/);
       expect(r.text, locale).not.toContain(L.tool.completedDiff);
+    }
+  });
+});
+
+describe("[P2 sweep] what Claude reads: axes, the kernel clock, the t range, the descriptions", () => {
+  it("every visual tool's Scene carries axes naming the kernel's fields for the student", async () => {
+    const planar = await call("analyze_system", { f: "y", g: "-x", density: 5 });
+    expect(planar.scene.axes).toEqual({ x: "x", y: "y", t: "t" });
+    expect((await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1 })).scene.axes).toEqual({ x: "x", y: "y", t: "t" });
+    expect((await call("sample_field", { f: "y", g: "-x", density: 5 })).scene.axes).toEqual({ x: "x", y: "y", t: "t" });
+    expect((await call("analyze_first_order", { expr: "y", density: 5 })).scene.axes).toEqual({ x: "t", y: "y", t: "t" });
+    expect((await call("analyze_first_order", { M: "y", N: "2", density: 5 })).scene.axes).toEqual({ x: "t", y: "y", t: "parameter" });
+    expect((await call("analyze_second_order", { equation: "x'' = -x", density: 5 })).scene.axes).toEqual({ x: "x", y: "x'", t: "t" });
+    expect((await call("query_solution", { mode: "first", expr: "y", t0: 0, y0: 1, target: { kind: "t", value: 1 } })).scene.axes).toEqual({ x: "t", y: "y", t: "t" });
+    expect((await call("query_solution", { mode: "diff", M: "y", N: "2", t0: 0, y0: 1, target: { kind: "t", value: 1 } })).scene.axes).toEqual({ x: "t", y: "y", t: "parameter" });
+    expect((await call("query_solution", { mode: "second", equation: "x'' = -x", x0: 1, xp0: 0, target: { kind: "t", value: 1 } })).scene.axes).toEqual({ x: "x", y: "x'", t: "t" });
+    expect((await call("query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, target: { kind: "t", value: 1 } })).scene.axes).toEqual({ x: "x", y: "y", t: "t" });
+  });
+
+  it("explicit first order: the kernel clock IS the student's t, so hits[].t equals the t coordinate and tEnd is a t (t0 = 1, dy/dt = y, y(3) = e^2)", async () => {
+    // tSpan 4 from t0 = 1 reaches t = 5 forward and t = -3 backward, so the crossing t = 3 lies inside the span.
+    const r = await call("query_solution", { mode: "first", expr: "y", t0: 1, y0: 1, tSpan: 4, target: { kind: "t", value: 3 } });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.query!.hits).toHaveLength(1);
+    const [hit] = r.scene.query!.hits;
+    expect(hit.x).toBeCloseTo(3, 9);
+    expect(hit.t).toBeCloseTo(3, 9);
+    expect(hit.y).toBeCloseTo(Math.exp(2), 4);
+    expect(r.scene.trajectories!.map((l) => l.tEnd)).toEqual([5, -3]);
+    // The hit line is a point (t, y): t = 3 with no bracket.
+    expect(r.text).toMatch(/\nt = 3, y = 7\.3890[0-9]* \(±/);
+  });
+
+  it("the t range of a first-order picture is tMin / tMax (xMin / xMax still read), and an inverted one is refused by those names", async () => {
+    const r = await call("analyze_first_order", { expr: "y*(1 - y)", tMin: 0, tMax: 6, yMin: -0.5, yMax: 2, density: 5 });
+    expect(r.isError).toBeFalsy();
+    expect(r.scene.box).toEqual({ x: { min: 0, max: 6 }, y: { min: -0.5, max: 2 } });
+    expect(r.text).toContain("t ∈ [0, 6]");
+    const old = await call("analyze_first_order", { expr: "y*(1 - y)", xMin: 0, xMax: 6, density: 5 });
+    expect(old.scene.box!.x).toEqual({ min: 0, max: 6 });
+    const bad = await call("analyze_first_order", { expr: "y", tMin: 5, tMax: 0 });
+    expect(bad.isError).toBe(true);
+    expect(bad.text).toMatch(/tMin \(5\) must be smaller than tMax \(0\)/);
+    const q = await call("query_solution", { mode: "first", expr: "y", t0: 0, y0: 1, tMin: -1, tMax: 4, target: { kind: "t", value: 1 } });
+    expect(q.scene.box!.x).toEqual({ min: -1, max: 4 });
+    const qBad = await call("query_solution", { mode: "diff", M: "y", N: "2", t0: 0, y0: 1, tMin: 2, tMax: 1, target: { kind: "t", value: 1 } });
+    expect(qBad.isError).toBe(true);
+    expect(qBad.text).toMatch(/tMin \(2\) must be smaller than tMax \(1\)/);
+  });
+
+  it("the descriptions tell the model to relay the text, read axes, never quote system or keys; trace_trajectory is planar only; query_solution's box and expressions are per mode", async () => {
+    const { tools } = await client.listTools();
+    const by = Object.fromEntries(tools.map((t) => [t.name, t.description!]));
+    for (const name of ["analyze_system", "analyze_second_order", "analyze_first_order", "trace_trajectory", "sample_field", "query_solution"]) {
+      expect(by[name], name).toMatch(/`axes` field/);
+      expect(by[name], name).toMatch(/never quote `system`/);
+      expect(by[name], name).toMatch(/bounded_at_tested_scales/);
+      expect(by[name], name).not.toMatch(/contains a "caveat"/);
+    }
+    expect(by.trace_trajectory).toMatch(/PLANAR SYSTEMS ONLY/);
+    expect(by.trace_trajectory).toMatch(/use query_solution with mode first \/ diff \/ second/);
+    expect(by.analyze_first_order).toMatch(/no estimating constant solutions/);
+    expect(by.analyze_first_order).toMatch(/tMin < tMax/);
+    expect(by.query_solution).toMatch(/EXPRESSION SYNTAX BY MODE/);
+    expect(by.query_solution).toMatch(/tMin \/ tMax/);
+    expect(by.query_solution).toMatch(/xpMin \/ xpMax the x' range/);
+    expect(by.query_solution).toMatch(/the curve's own parameter/);
+    const q = tools.find((t) => t.name === "query_solution")!;
+    const props = q.inputSchema.properties as Record<string, { description?: string }>;
+    expect(props.tSpan.description).toMatch(/NOT a t interval/);
+    expect(Object.keys(props)).toEqual(expect.arrayContaining(["tMin", "tMax"]));
+  });
+
+  it("a differential-form query says the form has no direction, and the tool-only tSpan advice follows a stopped-before-target note only in the tool", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const L = labels(locale);
+      // y = e^(-s) along the curve: 2 units of the parameter each way reach y = e^2 = 7.39 and e^-2, never 10.
+      const r = await call("query_solution", { mode: "diff", M: "y", N: "2", t0: 0, y0: 1, tSpan: 2, target: { kind: "y", value: 10 }, locale });
+      expect(r.text, locale).toContain(L.tool.differentialUndirected);
+      expect(r.scene.query!.note, locale).toBe("not_reached_in_span");
+      expect(r.text, locale).toContain(L.tool.queryNotReachedDiff);
+      expect(r.text, locale).not.toContain(L.tool.queryNotReached);
+    }
+    const far = await call("query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1, target: { kind: "t", value: 5 } });
+    expect(far.scene.query!.note).toBe("stopped_before_target");
+    expect(far.text).toContain(labels("en").tool.queryStoppedBefore);
+    expect(far.text).toContain(labels("en").tool.queryStoppedBeforeTool);
+    // The shared sentence itself no longer names the tool parameter.
+    for (const locale of ["en", "zh"] as const) expect(labels(locale).tool.queryStoppedBefore).not.toContain("tSpan");
+  });
+
+  it("a differential form with a constant solution says how approach / leave were read; the summary of a second-order singular point names (x, x')", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const L = labels(locale);
+      // y dt + 2 dy = 0: dy/dt = -y/2, so y = 0 is a stable constant solution.
+      const r = await call("analyze_first_order", { M: "y", N: "2", yMin: -1, yMax: 1, density: 5, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.firstOrder!.solutions.map((s) => s.y), locale).toEqual([0]);
+      expect(r.text, locale).toContain(L.tool.stabilityReadingDiff);
+      const explicit = await call("analyze_first_order", { expr: "-y/2", yMin: -1, yMax: 1, density: 5, locale });
+      expect(explicit.text, locale).not.toContain(L.tool.stabilityReadingDiff);
     }
   });
 });

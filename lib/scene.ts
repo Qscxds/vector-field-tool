@@ -15,8 +15,11 @@ export type SceneKind = "ping" | "sample_field" | "analyze_system" | "trace_traj
 
 /**
  * query_solution only: what was asked and what the numerical solution gave (lib/core/query). The
- * target kind is the STUDENT's: "t" is the horizontal coordinate of a first-order scene and the
- * time of a planar one. `hits` are drawn as markers by the shells; `note` is a key worded by them.
+ * target kind is the STUDENT's: "t" is the t coordinate of a first-order scene and the time of a
+ * planar or second-order one; "y" is the velocity x' on a second-order scene. `hits` are drawn as
+ * markers by the shells; `note` is a key worded by them. A hit's `t` / `error.t` are the kernel's
+ * clock: the student's t on a planar, second-order or explicit first-order scene, the curve's own
+ * parameter on a differential form (Scene.axes.t = "parameter"), never printed as t there.
  */
 export type QueryView = {
   target: { kind: "t" | "x" | "y"; value: number };
@@ -32,8 +35,11 @@ export type TrajectoryView = {
   /** Accepted integration steps before downsampling. */
   steps: number;
   /**
-   * Time reached (absolute). The start time is 0, except in the interactive shells over a
-   * non-autonomous system, where a traced curve starts at the displayed snapshot time.
+   * The kernel's clock at the end of the curve (absolute): the student's t on a planar or
+   * second-order scene (query_solution starts it at the student's t0, trace_trajectory at 0, the
+   * shells at the displayed snapshot time) and on an explicit first-order scene (the clock is the
+   * t coordinate there); the curve's own parameter on a differential form (Scene.axes.t =
+   * "parameter"), which no shell or summary prints as a t.
    */
   tEnd: number;
   /**
@@ -109,6 +115,15 @@ export type Scene = {
    * compileSystem unchanged.
    */
   system?: SystemSpec;
+  /**
+   * What the kernel's field names mean on this picture (round P2, lib/coordinate-names): every
+   * `.x` of a point, box or sample is the coordinate named `axes.x` (t on a first-order picture),
+   * every `.y` is `axes.y` (x' on a second-order picture), and every `t` / `tEnd` / `error.t` of a
+   * trajectory or hit is `axes.t`: "t" = the student's time or t coordinate, "parameter" = the
+   * curve's own parameter on a differential form, which is NOT the student's t. The tool
+   * descriptions tell the model to read the student's names from here, never from the field names.
+   */
+  axes?: { x: "x" | "t"; y: "y" | "x'"; t: "t" | "parameter" };
   box?: Box;
   /** The box the equilibria / first-order features were computed for, when it differs from `box` (interactive shells recompute after a pause). */
   featuresBox?: Box;

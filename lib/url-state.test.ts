@@ -292,3 +292,19 @@ describe("non-finite literals (round N.3 d)", () => {
     expect(reasons(decodeState("m=first&g=y-1e300", D).problems)).toEqual([]);
   });
 });
+
+describe("[P2] t0 on a first-order link", () => {
+  it("is reported as unused (a first-order picture has no snapshot time) and never written for such a link", () => {
+    for (const q of ["m=first&g=y&t0=1", "m=diff&M=t&N=y&t0=2"]) {
+      const { state, problems } = decodeState(q, D);
+      expect(problems).toEqual([{ param: "t0", reason: "unusedInMode" }]);
+      expect(state.snapshotT).toBe(0);
+    }
+    // A planar or second-order link keeps it.
+    expect(decodeState("t0=1.5", D).state.snapshotT).toBe(1.5);
+    expect(decodeState("m=second&eq=-x&t0=1.5", D).state.snapshotT).toBe(1.5);
+    // Encoding a first-order state never emits t0, whatever the snapshot value in memory.
+    expect(encodeState(withDefaults({ mode: "first", g: "y", snapshotT: 2 }))).toBe("m=first&g=y");
+    expect(encodeState(withDefaults({ snapshotT: 2 }))).toBe("t0=2");
+  });
+});

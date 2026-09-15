@@ -30,11 +30,12 @@ export function queryLines(scene: Pick<Scene, "system" | "query" | "secondOrder"
   const lines: string[] = query.hits.map((hit) => {
     const error = formatNumber(hit.error.position, 2);
     // The displayed time uncertainty: at least the position error over the speed (never the bare
-    // Brent bracket); 0 for a prescribed time.
-    const tError = formatNumber(timeUncertainty(hit), 2);
+    // Brent bracket); a prescribed time (a time target) is exact and gets no bracket at all.
+    const tUncertainty = timeUncertainty(hit);
+    const t = `${formatNumber(hit.t, 6)}${tUncertainty > 0 ? fill(L.tool.timeError, { error: formatNumber(tUncertainty, 2) }) : ""}`;
     return firstOrder
       ? fill(L.tool.queryHitFirst, { t: formatNumber(hit.x, 6), y: formatNumber(hit.y, 6), error })
-      : fill(hitTemplate, { t: formatNumber(hit.t, 6), tError, x: formatNumber(hit.x, 6), y: formatNumber(hit.y, 6), error });
+      : fill(hitTemplate, { t, x: formatNumber(hit.x, 6), y: formatNumber(hit.y, 6), error });
   });
   const note = queryNoteText(query.note, L, firstOrder && scene.fieldStyle === "segments");
   if (note) lines.push(note);
@@ -50,7 +51,7 @@ export function queryLines(scene: Pick<Scene, "system" | "query" | "secondOrder"
 export function queryNoteText(note: QueryNote, L: LabelTable, differential = false): string | null {
   const notes: Record<QueryNote, string | null> = {
     ok: null,
-    not_reached_in_span: L.tool.queryNotReached,
+    not_reached_in_span: differential ? L.tool.queryNotReachedDiff : L.tool.queryNotReached,
     stopped_before_target: L.tool.queryStoppedBefore,
     possibly_more_beyond_span: differential ? L.tool.queryMoreBeyondDiff : L.tool.queryMoreBeyond,
     target_is_start: L.tool.queryTargetIsStart,

@@ -219,7 +219,10 @@ describe("label tables", () => {
     expect(uniquenessSentence(L, { verdict: "untestable", exponent: NaN }, { y: 0 })).toBeNull();
     expect(uniquenessSentence(L, undefined, { y: 0 })).toBeNull();
     expect(uniquenessSentence(L, { verdict: "unbounded", exponent: 0.5 }, { y: 0 })).toBe(fill(L.uniqueness.unbounded, { y: "0", alpha: "0.5" }));
-    expect(uniquenessSentence(L, { verdict: "borderline", exponent: 0.1234 }, { point: { x: 1, y: 2 } })).toBe(fill(L.uniqueness.borderlinePoint, { point: "(1, 2)", alpha: "0.12" }));
+    // The borderline sentence names the two thresholds it sits between (the kernel's frozen 0.25 and 0.1), P2.6.
+    expect(uniquenessSentence(L, { verdict: "borderline", exponent: 0.1234 }, { point: { x: 1, y: 2 } })).toBe(fill(L.uniqueness.borderlinePoint, { point: "(1, 2)", alpha: "0.12", unbounded: "0.25", bounded: "0.1" }));
+    expect(uniquenessSentence(L, { verdict: "borderline", exponent: 0.1234 }, { point: { x: 1, y: 2 } })).toContain("0.25");
+    expect(uniquenessSentence(L, { verdict: "borderline", exponent: 0.1234 }, { point: { x: 1, y: 2 } })).not.toMatch(/\{\w+\}/);
   });
 
   it("the non-autonomous sentences never claim equilibria are undefined for such systems, and say what the tool does instead (J review C.6)", () => {

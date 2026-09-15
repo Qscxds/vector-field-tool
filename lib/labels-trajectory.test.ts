@@ -3,7 +3,7 @@ import { compileSystem } from "./core/parse";
 import { toSystem, type FirstOrderSpec } from "./core/slope-field";
 import { traceFixed } from "./interactive";
 import { fill, labels } from "./labels";
-import { groupTrajectories, statusSentence, trajectoryLines, trajectoryMode, trajectoryStatus } from "./labels-trajectory";
+import { groupTrajectories, statusPictureOf, statusSentence, trajectoryLines, trajectoryMode, trajectoryStatus } from "./labels-trajectory";
 import type { Scene, TrajectoryView } from "./scene";
 
 const en = labels("en");
@@ -183,19 +183,40 @@ describe("non-autonomous status wording (round N.3 b)", () => {
 });
 
 describe("[P2.1] differential-form statuses never speak of time, and its low-speed stop is a singular point", () => {
-  it("statusSentence with differential = true rewords completed, max_steps and reached_equilibrium; the others are unchanged", () => {
+  it("statusSentence on a differential form rewords completed, max_steps, reached_equilibrium and blew_up; the others are unchanged", () => {
     for (const L of [en, zh]) {
-      expect(statusSentence("completed", L, undefined, true)).toBe(L.tool.completedDiff);
-      expect(statusSentence("max_steps", L, undefined, true)).toBe(L.tool.maxStepsDiff);
-      expect(statusSentence("reached_equilibrium", L, undefined, true)).toBe(L.tool.reachedSingularDiff);
-      for (const status of ["left_box", "blew_up", "singular", "domain_edge", "arc_length"] as const) {
-        expect(statusSentence(status, L, undefined, true)).toBe(L.status[status]);
+      expect(statusSentence("completed", L, undefined, "differential")).toBe(L.tool.completedDiff);
+      expect(statusSentence("max_steps", L, undefined, "differential")).toBe(L.tool.maxStepsDiff);
+      expect(statusSentence("reached_equilibrium", L, undefined, "differential")).toBe(L.tool.reachedSingularDiff);
+      expect(statusSentence("blew_up", L, undefined, "differential")).toBe(L.tool.blewUpDiff);
+      for (const status of ["left_box", "singular", "domain_edge", "arc_length"] as const) {
+        expect(statusSentence(status, L, undefined, "differential")).toBe(L.status[status]);
       }
-      // Without the flag nothing changes.
+      // A planar picture keeps the shared sentences.
       expect(statusSentence("completed", L)).toBe(L.status.completed);
+      expect(statusSentence("blew_up", L, undefined, "planar")).toBe(L.status.blew_up);
       expect(L.tool.completedDiff).not.toMatch(/requested time|指定时间/);
       expect(L.tool.maxStepsDiff).not.toMatch(/requested time|指定时间/);
     }
+  });
+
+  it("statusSentence on an explicit first-order picture says y becomes infinite, and on a second-order one speaks of x and x'", () => {
+    for (const L of [en, zh]) {
+      expect(statusSentence("blew_up", L, undefined, "explicit")).toBe(L.tool.blewUpFirst);
+      expect(statusSentence("completed", L, undefined, "explicit")).toBe(L.status.completed);
+      expect(statusSentence("blew_up", L, undefined, "second")).toBe(L.tool.blewUpSecond);
+      expect(statusSentence("reached_equilibrium", L, undefined, "second")).toBe(L.tool.reachedEquilibriumSecond);
+      expect(statusSentence("reached_equilibrium", L, { snapshotT: 1, maxRelDeviation: 1 }, "second")).toBe(L.tool.stoppedNonAutonomousSecond);
+      for (const text of [L.tool.blewUpSecond, L.tool.reachedEquilibriumSecond, L.tool.stoppedNonAutonomousSecond]) {
+        expect(text).not.toMatch(/(^|[^A-Za-z'一-鿿])y(?![A-Za-z])/);
+        expect(text).not.toMatch(/position|位置|system|系统/);
+      }
+    }
+    // statusPictureOf reads the scene.
+    expect(statusPictureOf({ system: { f: "y", g: "-x" } })).toBe("planar");
+    expect(statusPictureOf({ system: { f: "y", g: "-x" }, secondOrder: { equation: "x'' = -x", reduced: { f: "v", g: "-x" } } })).toBe("second");
+    expect(statusPictureOf({ system: { f: "1", g: "y", variables: "ty" }, fieldStyle: "arrows" })).toBe("explicit");
+    expect(statusPictureOf({ system: { f: "y", g: "-(t)", variables: "ty" }, fieldStyle: "segments" })).toBe("differential");
   });
 
   it("trajectoryLines of a differential-form scene uses the reworded statuses on both sides", () => {

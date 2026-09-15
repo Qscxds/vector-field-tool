@@ -69,10 +69,13 @@ export const OTHER_PRIME_MESSAGE =
 export const Y_IN_SECOND_ORDER_MESSAGE =
   "In a second-order equation the variables are t (the independent variable), x and x' (dx/dt, also written v); y has no meaning here. Write x' for the derivative of x.";
 export const V_PARAMETER_MESSAGE = 'Parameter name "v" is reserved in a second-order equation: v stands for x\'.';
+/** The reduction's own cross-check failed: said without the reduction's private names (E0, a), round P2.6. */
+export const INTERNAL_CHECK_MESSAGE =
+  "The tool could not reduce this equation reliably (its own check of the reduction failed). Try writing it as x'' = F with F on the right-hand side, or report the equation.";
 export const HIGHER_DERIVATIVE_MESSAGE =
   "Only the first and second derivatives x' and x'' are supported; x''' and higher cannot be reduced to a planar system.";
 export const PLACEHOLDER_TYPED_MESSAGE =
-  "xd and xdd are internal names; write x' and x'' for the derivatives of x.";
+  "\"xd\" / \"xdd\" is not a symbol of this problem: write x' for the derivative of x and x'' for the second derivative (a constant needs another name).";
 export const UNDEFINED_AT_SAMPLES_MESSAGE =
   "The equation is undefined (not a finite number) at most of the sample points used to check it, so it cannot be reduced safely.";
 
@@ -481,10 +484,10 @@ export function reduceSecondOrder(input: string, params?: Record<string, number>
     recompiled = compileScalar(g, params);
   } catch (error) {
     const reason = error instanceof Error ? studentNotation(error.message) : String(error);
-    throw new ParseError(raw, `Internal check failed: the reduced right-hand side could not be compiled (${reason}).`);
+    throw new ParseError(raw, `${INTERNAL_CHECK_MESSAGE} (${reason})`, "second_order_internal");
   }
   if (!matchesReference(recompiled, samples, reference)) {
-    throw new ParseError(raw, "Internal check failed: the reduced right-hand side does not reproduce -E0/a at the sample points.");
+    throw new ParseError(raw, INTERNAL_CHECK_MESSAGE, "second_order_internal");
   }
 
   const spec: SystemSpec = params ? { f: "y", g, params } : { f: "y", g };

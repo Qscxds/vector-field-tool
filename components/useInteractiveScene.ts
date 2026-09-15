@@ -29,6 +29,7 @@ import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
 import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
+import { coordinateNames } from "@/lib/coordinate-names";
 import { curveWords, labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, pinchAt, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
@@ -227,10 +228,13 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
 
   const scene = useMemo<Scene | null>(() => {
     if (!sys || !spec || !viewport || !field) return null;
+    // What the kernel's field names mean on this picture (lib/scene axes): the same contract the tools fill.
+    const names = coordinateNames({ system: spec, secondOrder });
     return {
       kind,
       locale,
       system: spec,
+      axes: { x: names.hv, y: names.vv, t: firstOrder?.kind === "differential" ? "parameter" : "t" },
       box: viewport.box,
       featuresBox: effectiveFeatureBox ?? undefined,
       field,

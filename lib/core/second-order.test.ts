@@ -291,7 +291,7 @@ describe("reduceSecondOrder", () => {
     expect(() => compileScalar("xdd")).toThrow(ParseError);
     expect(() => compileScalar("xd + y", undefined, { variables: "ty" })).toThrow(ParseError);
     const e = failure("xdd + x = 0");
-    expect(e.message).toMatch(/internal names/);
+    expect(e.message).toMatch(/not a symbol of this problem/);
     expect(e.code).toBe("second_order_placeholder_typed");
   });
 

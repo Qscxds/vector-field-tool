@@ -13,7 +13,7 @@ import type { IntegrationStatus } from "./core/integrate";
 import type { EquilibriumSolution } from "./core/slope-field";
 import type { Complex, Locale } from "./core/types";
 import { hasFractionalPower, PROBES_NOTED, type FirstOrderSpec } from "./core/slope-field";
-import type { UniquenessVerdict } from "./core/uniqueness";
+import { BORDERLINE_EXPONENT, UNBOUNDED_EXPONENT, type UniquenessVerdict } from "./core/uniqueness";
 import type { Scene } from "./scene";
 
 export type { Locale };
@@ -64,7 +64,12 @@ export type LabelTable = {
     // First-order pictures (round P2.1): the kernel's integration parameter is never printed as t.
     | "queryLegFirst" | "queryLegDiff" | "sideOne" | "sideOther" | "completedDiff" | "maxStepsDiff" | "reachedSingularDiff" | "queryMoreBeyondDiff"
     // Round P2.3: the phase-plane equilibrium of a second-order equation is a constant solution.
-    | "equilibriaSecondNote",
+    | "equilibriaSecondNote"
+    // Round P2 sweep: differential-form and second-order wordings of shared sentences, and the
+    // tool-only advice that must not reach a web page.
+    | "blewUpDiff" | "queryNotReachedDiff" | "stabilityReadingDiff" | "queryStoppedBeforeTool"
+    | "reachedEquilibriumSecond" | "blewUpSecond" | "stoppedNonAutonomousSecond" | "timeDependentTrajectorySecond"
+    | "blewUpFirst" | "timeError",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -82,7 +87,11 @@ export type LabelTable = {
     | "equalScale" | "equalScaleDetailFirst" | "equalScaleDetailSystem" | "equalScaleDetailSecond"
     | "equalScaleWarningFirst" | "equalScaleWarningPlane" | "shownRangeEqual" | "shownRangeFilled"
     // Round P2.5: a first-order picture shows solution curves, a phase plane shows trajectories.
-    | "lastSolution" | "clearSolutions" | "querySolutionCurve" | "queryNoSolution" | "clickToRemoveSolution" | "holdToRemoveSolution"
+    | "lastSolution" | "clearSolutions" | "querySolutionCurve" | "queryNoSolution" | "clickToRemoveSolution" | "holdToRemoveSolution" | "addTrajectory"
+    // Round P2 sweep: the query header with a start time, the initial-value legend of an autonomous
+    // second-order equation, the reduction's internal-check failure, the too-long link.
+    | "queryHeaderAt" | "initialValueSecondAutonomous" | "secondOrderInternal" | "urlQueryTooLong"
+    | "featuresBoxDetailFirst" | "featuresBoxDetailSecond"
     | "lhsInExpressionSystem" | "towardT" | "trajectorySides"
     | "equilibriaTruncated" | "singularitiesTruncated"
     | "nonUniqueTrajectory"
@@ -128,7 +137,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       stable: "稳定（两侧的解都趋向它）",
       unstable: "不稳定（两侧的解都离开它）",
       semi_stable: "半稳定（一侧趋向、一侧离开）",
-      varies: "稳定性随 t 变化（在观察范围内两侧解的走向不一致）",
+      varies: "稳定性随 t 变化（在观察范围内，有些 t 处两侧的解趋向它，另一些 t 处离开它）",
       edge_approach: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解趋向它",
       edge_leave: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解离开它",
       edge_varies: "定义域边界上的常数解：方程只在这条线的{side}有定义，该侧的解是趋向还是离开它随 t 变化（在观察范围内两种情况都出现）",
@@ -147,13 +156,13 @@ export const LABELS: Record<Locale, LabelTable> = {
     },
     status: {
       completed: "积分到指定时间结束",
-      left_box: "轨线离开了观察范围后停止",
-      reached_equilibrium: "轨线趋近一个平衡点后停止（速度降到起始速度的 1e-8 以下）",
+      left_box: "离开了观察范围后停止",
+      reached_equilibrium: "趋近一个平衡点后停止（速度降到起始速度的 1e-8 以下）",
       blew_up: "解的位置在有限时间内发散（离开了有限范围），在最后一个有限点停止",
       singular: "在最后一个有限点停止：向量场在这里无定义或无穷大，无法继续积分",
       domain_edge: "到达向量场定义域的边界后停止（场在这一点有限，再往前就无定义）",
       arc_length: "画到指定长度后停止",
-      max_steps: "在到达指定时间前停止（步数或步长耗尽），解仍然有界",
+      max_steps: "在到达指定时间前停止：数值方法在这里需要的步数超过了允许的上限（解在这里变化得很快），解仍然有界",
     },
     warning: {
       none_found: "在观察范围内没有找到平衡点。",
@@ -167,7 +176,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonHyperbolic: "雅可比矩阵至少有一个特征值在数值精度内为零（行列式约等于零），这个平衡点是非双曲的。Hartman–Grobman 定理不适用，线性化不足以判定它的稳定性，需要中心流形或 Lyapunov 函数等非线性方法。",
       notFinite: "在这一点上雅可比矩阵无法求出有限值（向量场在附近奇异或未定义），因此无法给出任何分类。",
       repeatedRoot: "两个特征值在数值精度内重合：判别式在雅可比矩阵各元素的估计误差之内为零。它们是真正的重根（星形结点：每个方向都是特征方向；或退化结点），还是极其接近的两个相异实根（此时实际上是一个普通的结点），数值上无法判定。请把这里的分类当作「重根或近重根」，而不是确定的类型。",
-      domainEdge: "这个平衡点位于向量场定义域的边缘：向量场在它的一侧有定义，在另一侧没有定义（例如 x' = sqrt(x) 在 x = 0 处）。这里不存在线性化（导数只有单侧的），所以无法给出任何分类；请用定义域内一侧的解的走向来讨论它。",
+      domainEdge: "这个平衡点位于向量场定义域的边缘：向量场在它的一侧有定义，在另一侧没有定义（例如右端含 sqrt(x) 时的 x = 0 处）。这里不存在线性化（导数只有单侧的），所以无法给出任何分类；请用定义域内一侧的解的走向来讨论它。",
     },
     form: {
       separable: "可分离变量方程",
@@ -181,9 +190,9 @@ export const LABELS: Record<Locale, LabelTable> = {
     },
     uniqueness: {
       unbounded: "在 y = {y} 处 ∂g/∂y 无界（差商随靠近该点按 δ^−{alpha} 增长），Lipschitz 条件不成立，解的唯一性不能保证——经过这一点可能有不止一条解曲线。",
-      borderline: "在 y = {y} 处差商的增长指数约为 {alpha}，落在阈值附近：这一点的唯一性不能担保（可能只是数值噪声，也可能 Lipschitz 条件确实不成立）。",
+      borderline: "在 y = {y} 处差商的增长指数约为 {alpha}，接近判定为无界的阈值 {unbounded}（低于 {bounded} 才算在测试尺度上有界）：这一点的唯一性不能担保（可能只是数值噪声，也可能 Lipschitz 条件确实不成立）。",
       unboundedPoint: "在平衡点 {point} 处向量场的导数无界（差商随靠近该点按 δ^−{alpha} 增长），Lipschitz 条件不成立，解的唯一性不能保证——经过这一点可能有不止一条轨线。",
-      borderlinePoint: "在平衡点 {point} 处差商的增长指数约为 {alpha}，落在阈值附近：这一点的唯一性不能担保（可能只是数值噪声，也可能 Lipschitz 条件确实不成立）。",
+      borderlinePoint: "在平衡点 {point} 处差商的增长指数约为 {alpha}，接近判定为无界的阈值 {unbounded}（低于 {bounded} 才算在测试尺度上有界）：这一点的唯一性不能担保（可能只是数值噪声，也可能 Lipschitz 条件确实不成立）。",
     },
     tool: {
       systemHeader: "系统 x' = {f}，y' = {g}，观察范围 x∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]。",
@@ -195,9 +204,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       trajectoryHeader: "从 {start} 出发，系统 x' = {f}，y' = {g}。",
       forward: "正向（t 增大）",
       backward: "逆向（t 减小）",
-      trajectoryLine: "{direction}：积到 t = {tEnd}，终点 {end}，{status}。共 {steps} 步。",
+      trajectoryLine: "{direction}：积到 t = {tEnd}，终点 {end}，{status}。",
       sampleFieldLine: "在 {nx}×{ny} 网格上采样了向量场 ({f}, {g})。最大模长 {maxMag}，{singular} 个采样点无定义或无穷大。",
-      widgetDraws: "图像已交给 widget 绘制。",
+      widgetDraws: "图像已画出。",
       firstOrderHeader: "方程 {equation}，观察范围 t∈[{xMin}, {xMax}]，y∈[{yMin}, {yMax}]。",
       differentialUndirected: "微分形式没有天然的正方向，方向场画成无向线段。",
       directionSingular: "方向场奇点（M = N = 0，此处方向无定义）：{points}{truncated}。",
@@ -218,7 +227,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       parenOpen: "（",
       parenClose: "）",
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
-      timeDependent: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}采样场是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场本工具不做这项分析，因此没有给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
+      timeDependent: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}采样场是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场本工具不做这项分析，因此没有给出。",
       timeDependentTrajectory: "这是非自治系统：右端出现了 t，向量场随 t 变化。{evidence}{traced}从同一点在另一个时刻出发会得到不同的曲线。",
       secondOrderReduced: "二阶方程 {equation}：令 v = x'，则 x' = v，v' = {g}。",
       timeDependenceMeasured: "在观察范围内取若干时刻采样，向量场的最大相对变化为 {deviation}。",
@@ -233,31 +242,31 @@ export const LABELS: Record<Locale, LabelTable> = {
       fractionalPowerHint: "提示：这里负数的分数次幂没有定义，例如 y^(2/3) 在 y < 0 时；要取实数分支，请写 abs(y)^(2/3) 或 sign(y)*abs(y)^p。",
       noConstantAllZero: "在观察范围内没有找到常数解：右端在每个采样点的计算结果都恰为 0（那里它恒为 0，或低于最小可表示的数）或无定义，因此常数解和方程是否自治都无法检验。",
       formsExcludedLine: "按定义排除的形式（括号内为原因）：{list}。",
-      tracedBoth: "轨线从 t = 0 出发：正向部分是 t > 0 时的解，逆向部分是 t < 0 时的解。",
-      tracedForward: "轨线从 t = 0 出发并正向积分，因此它是 t > 0 时的解。",
-      tracedBackward: "轨线从 t = 0 出发并逆向积分，因此它是 t < 0 时的解。",
+      tracedBoth: "曲线从 t = {t0} 出发：正向部分是 t > {t0} 时的解，逆向部分是 t < {t0} 时的解。",
+      tracedForward: "曲线从 t = {t0} 出发并正向积分，因此它是 t > {t0} 时的解。",
+      tracedBackward: "曲线从 t = {t0} 出发并逆向积分，因此它是 t < {t0} 时的解。",
       identicallyZero: "右端恒等于 0：每一条水平线 y = c 都是常数解，方向场是平的。",
       queryHeaderFirst: "方程 {equation} 经过 (t, y) = ({t0}, {y0}) 的解，求 {target}。",
-      queryHeaderSystem: "系统 x' = {f}，y' = {g} 经过 {start}（t = {t0}）的解，求 {target}。",
+      queryHeaderSystem: "系统 x' = {f}，y' = {g} 满足 (x({t0}), y({t0})) = {start} 的解，求 {target}。",
       queryTargetT: "t = {value}",
       queryTargetX: "x = {value}",
       queryTargetY: "y = {value}",
       queryHitFirst: "t = {t}，y = {y}（±{error}）",
-      queryHitSystem: "t = {t}（±{tError}）：(x, y) = ({x}, {y})（±{error}）",
-      queryAccuracy: "以上是数值解的取值与穿越点：精度来自积分器的容差（rtol 1e-6），括号里的 ± 是估计值而不是严格上界；越过目标的位置是沿数值解重新积分求出的，不是在折线上线性插值。",
+      queryHitSystem: "t = {t}：(x, y) = ({x}, {y})（±{error}）",
+      queryAccuracy: "以上是数值解的取值与穿越点：精度来自数值积分本身（每步相对误差约 1e-6），括号里的 ± 是估计值而不是严格上界；越过目标的位置是沿数值解重新积分求出的，不是在折线上线性插值。",
       queryNotReached: "在积分的时间范围内没有到达目标：两个方向的数值解都没有穿过它。下面列出每个方向积到了哪里、为什么停下。",
-      queryStoppedBefore: "无法把解一直跟到目标时刻：积分在此之前就停止了（见下面的停止原因）。如果停止原因是「积分到指定时间结束」，说明时间范围先用完了，请加大 tSpan。",
+      queryStoppedBefore: "无法把解一直跟到目标时刻：积分在此之前就停止了（见下面的停止原因）。如果停止原因是「积分到指定时间结束」，说明积分的时间范围在到达目标前先用完了。",
       queryMoreBeyond: "同一方向出现了三次或更多穿越，看起来是周期性的：在积分范围之外可能还有更多穿越点。",
       queryTargetIsStart: "目标就是出发点本身。",
       queryLeg: "{direction}：积到 t = {tEnd}，终点 {end}，{status}。",
       stoppedNonAutonomous: "在该时刻速度降到接近零（低于起始速度的 1e-8）后停止；这是非自治系统，这里不是平衡点：向量场在这一点会随 t 变化",
       refineCapped: "平衡点搜索达到了它能细分的区域数上限：有些向量场变号的区域没有搜索，可能漏掉平衡点。",
       secondOrderHeader: "相平面：横轴 x ∈ [{xMin}, {xMax}]，纵轴 x' ∈ [{xpMin}, {xpMax}]。",
-      timeDependentSecond: "这是非自治方程：右端 F 含 t，相平面里的方向场随 t 变化。{evidence}图上画的是 t = {t} 时刻的快照。平衡点（即常数解 x ≡ c，物体静止）与线性化稳定性只对自治方程有定义，因此这里不给出。要看另一个时刻的场，请用参数 t 指定快照时刻。",
+      timeDependentSecond: "这是非自治方程：方程含 t（上面 v' = … 的右端含 t），相平面里的方向场随 t 变化。{evidence}图上画的是 t = {t} 时刻的快照。平衡点（即常数解 x ≡ c，物体静止）与线性化稳定性只对自治方程有定义，因此这里不给出。",
       pointSecond: "(x, x') = {point}",
       queryHeaderSecond: "方程 {equation}，初值 x({t0}) = {x0}、x'({t0}) = {xp0}，求 {target}。",
       queryTargetXp: "x' = {value}",
-      queryHitSecond: "t = {t}（±{tError}）：(x, x') = ({x}, {y})（±{error}）",
+      queryHitSecond: "t = {t}：(x, x') = ({x}, {y})（±{error}）",
       queryLegFirst: "{direction}：积到 t = {t}，终点 (t, y) = {end}，{status}。",
       queryLegDiff: "{side}：终点 (t, y) = {end}，{status}。",
       sideOne: "一侧",
@@ -266,7 +275,17 @@ export const LABELS: Record<Locale, LabelTable> = {
       maxStepsDiff: "在走完指定跨度前停止（步数或步长耗尽），解仍然有界",
       reachedSingularDiff: "趋近一个 M = N = 0 的点（方向场在那里无定义）后停止",
       queryMoreBeyondDiff: "起点的同一侧出现了三次或更多穿越，看起来是周期性的：在积分范围之外可能还有更多穿越点。",
-      equilibriaSecondNote: "相平面里的平衡点 (x, x') = (c, 0) 就是常数解 x ≡ c：物体停在 x = c 不动。",
+      equilibriaSecondNote: "相平面里的平衡点都在横轴上，(x, x') = (c, 0)：每一个就是常数解 x ≡ c，物体停在 x = c 不动。",
+      blewUpDiff: "曲线在指定跨度内跑向无穷远（离开了有限范围），在最后一个有限点停止",
+      queryNotReachedDiff: "在沿曲线走过的跨度内没有到达目标：起点两侧的数值解都没有穿过它。下面列出每一侧走到了哪里、为什么停下。",
+      stabilityReadingDiff: "微分形式本身没有方向：上面的「趋向」「离开」是按 t 增大的方向读的，来自这条线两侧 dy/dt = −M/N 的符号（N ≠ 0 的地方）。",
+      queryStoppedBeforeTool: "请加大 tSpan。",
+      reachedEquilibriumSecond: "趋近一个平衡点 (x, x') = (c, 0) 后停止（x' 和 x'' 都降到起始值的 1e-8 以下）",
+      blewUpSecond: "x 或 x' 在有限时间内发散（离开了有限范围），在最后一个有限点停止",
+      stoppedNonAutonomousSecond: "在该时刻 x' 和 x'' 都降到接近零（低于起始值的 1e-8）后停止；这是非自治方程，这里不是平衡点：方程随 t 变化",
+      timeDependentTrajectorySecond: "这是非自治方程：方程含 t，相平面里的方向场随 t 变化。{evidence}{traced}从同一个 (x, x') 在另一个时刻出发会得到不同的曲线。",
+      blewUpFirst: "y 在有限的 t 处发散（离开了有限范围），在最后一个有限点停止",
+      timeError: "（±{error}）",
     },
     ui: {
       title: "向量场 / 相图",
@@ -303,20 +322,20 @@ export const LABELS: Record<Locale, LabelTable> = {
       lastTrajectory: "最近一条轨线：",
       toward: "到 t = {t}，{status}",
       language: "语言",
-      interactionHint: "悬停预览解曲线 · 点击固定 · 点击已固定的轨线可删除 · 滚轮缩放 · 拖动平移 · 双击复位",
+      interactionHint: "悬停预览经过该点的曲线 · 点击固定 · 点击已固定的曲线可删除 · 滚轮缩放 · 拖动平移 · 双击复位",
       hoverUndefined: "此处靠近方向场奇点，方向无定义",
       connectedWaiting: "已连接，等待工具调用…",
       computing: "计算中…",
-      connected: "connected to host",
-      notConnected: "not connected to an MCP host",
-      notRenderedByHost: "This page is meant to be rendered by Claude after calling one of the vector-field tools.",
-      localComputeUnavailable: "本地重算不可用（表达式无法在此环境编译），显示服务器给出的静态图；缩放、平移和悬停已禁用。",
+      connected: "已连接",
+      notConnected: "未连接到 Claude",
+      notRenderedByHost: "请在使用了向量场工具的 Claude 对话中打开这张图。",
+      localComputeUnavailable: "这张图在此处无法重新计算，缩放、平移和悬停已关闭；显示的曲线和数值仍然正确。",
       rangeError: "范围必须是四个有限的数字。",
       xRangeError: "{hv} 范围无效：左端 {min} 必须小于右端 {max}。",
       yRangeError: "{vv} 范围无效：下端 {min} 必须小于上端 {max}。",
       exprError: "表达式「{expr}」有问题：{message}",
       featuresBox: "以下结果按 {hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}] 计算",
-      featuresBoxDetail: "复位时这是输入范围，缩放或平移后是可见范围。平衡点、常数解和方程类型都只在这个范围内扫描；结论依赖于所考察的范围。",
+      featuresBoxDetail: "复位时这是输入范围，缩放或平移后是可见范围。平衡点只在这个范围内扫描；结论依赖于所考察的范围。",
       leftFarBox: "轨线跑到输入范围的 20 倍以外后停止",
       tMin: "t 最小",
       tMax: "t 最大",
@@ -343,13 +362,13 @@ export const LABELS: Record<Locale, LabelTable> = {
       equilibriaTruncated: "平衡点数量超过上限 {max}，只列出前 {max} 个（按 x 坐标排序）；是否构成连续平衡点集是根据全部找到的点判断的，不只是列出的这些。",
       singularitiesTruncated: "方向场奇点数量超过上限 {max}，只列出前 {max} 个（按 t 坐标排序）；是否构成连续奇点集是根据全部找到的点判断的，不只是列出的这些。",
       nonUniqueTrajectory: "这条数值解经过了一个唯一性不成立的点：它只是经过该点的无穷多条解中的一条。积分器沿着其中一条走下去（通常是常数解），无法显示其他的解。",
-      timeDependentNote: "这是非自治系统：右端出现了 t，向量场随 t 变化，图上显示的是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场这里不做这项分析。悬停和点击得到的解曲线从 t = {t} 出发。",
+      timeDependentNote: "这是非自治系统：右端出现了 t，向量场随 t 变化，图上显示的是 t = {t} 时刻的快照。平衡点与线性化稳定性分析是针对自治系统的工具，对随时间变化的向量场这里不做这项分析。悬停和点击得到的轨线从 t = {t} 出发。",
       timeDependentShort: "非自治系统：t = {t} 时刻的快照，不做平衡点分析",
       snapshotT: "快照时刻 t",
       typeSecond: "二阶方程 x'' = F(t, x, x')",
       secondOrderLabel: "x'' = F(t, x, x')，或写成完整方程，例如 x'' + 0.5*x' + x = 0",
       secondOrderReduced: "令 v = x'，则 x' = v，v' = {g}。横轴是 x（位置），纵轴是 x'（速度）。",
-      syntaxHintSecondOrder: "语法：t 是自变量，未知函数是 x(t)，导数用直引号写成 x' 和 x''（x' 也可写成 v）；右端可以含 t，例如 x'' = -x + cos(t)。写完整方程（x'' + 0.5*x' + x = 0）或只写 x'' = F 的右端 F。y 在这里没有含义，会被拒绝。x'' 必须线性出现；这一点以及 x'' 的系数不为零，是在观察范围和一个固定方块内的若干采样点、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段 x''^2 项）检查不到。乘号要写出来（x*x'，不是 xx'），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
+      syntaxHintSecondOrder: "语法：t 是自变量，未知函数是 x(t)，导数用直引号写成 x' 和 x''（x' 也可写成 v）；右端可以含 t，例如 x'' = -x + cos(t)。写完整方程（x'' + 0.5*x' + x = 0）或只写 x'' = F 的右端 F。y 在这里没有含义，会被拒绝。x'' 必须线性出现；这一点以及 x'' 的系数不为零，是在观察范围内的采样点和原点附近几个固定点上、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段 x''^2 项）检查不到。乘号要写出来（x*x'，不是 xx'），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",
       singularitiesContinuum: "找到的方向场奇点排成一条线或一条曲线：方向很可能在整条曲线上都无定义，而不只是在孤立的点上；列表只给出其中的代表点。",
       secondOrderNotAffine: "x'' 必须线性出现，例如 x'' + 0.5*x' + x = 0 或 x'' = -sin(x)；x''^2、sin(x'') 之类无法降阶。",
       secondOrderZeroCoefficient: "x'' 的系数为零（至少在部分采样点和时刻上），方程无法解出 x''。请检查 x'' 是否真的出现，以及它的系数是否恒不为零。",
@@ -358,7 +377,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       secondOrderTooManyEquals: "方程必须恰好包含一个「=」。",
       secondOrderOtherPrime: "只有未知函数 x 可以带撇号：x' 表示 dx/dt，x'' 表示二阶导数。未知函数是 x，t 是自变量。",
       secondOrderHigherDerivative: "只支持一阶和二阶导数 x' 与 x''；x''' 及更高阶导数无法降阶为平面系统。",
-      secondOrderPlaceholderTyped: "xd 和 xdd 是内部名称；请用 x' 和 x'' 表示 x 的导数。",
+      secondOrderPlaceholderTyped: "「xd」「xdd」不是这个问题里的符号：x 的导数写成 x'，二阶导数写成 x''（常数请换一个名字）。",
       secondOrderUndefinedAtSamples: "方程在大多数用于检验的采样点上无定义（不是有限数），无法安全地降阶。",
       secondOrderUnknownSymbol: "未知符号「{name}」。未知函数是 x，它的导数是 x'（dx/dt，也可写成 v），二阶导数是 x''；t 是自变量。允许的符号：t、x、x'、x''、pi、e。",
       secondOrderYSymbol: "二阶方程的变量是 t（自变量）、x 和 x'（dx/dt，也可写成 v）；y 在这里没有含义。请把 x 的导数写成 x'。",
@@ -368,6 +387,13 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryHitSecond: "t = {t}，x = {x}，x' = {y}（±{error}）",
       timeDependentNoteSecond: "这是非自治方程：右端 F 含 t，相平面里的方向场随 t 变化，图上显示的是 t = {t} 时刻的快照。平衡点（即常数解 x ≡ c，物体静止）与线性化稳定性只对自治方程有定义，这里不做这项分析。悬停和点击得到的解曲线从 t = {t} 出发。",
       timeDependentShortSecond: "非自治方程：t = {t} 时刻的快照，不做平衡点分析",
+      addTrajectory: "添加轨线",
+      queryHeaderAt: "从 t = {t0} 时刻经过 {start} 的解，求 {target}：",
+      initialValueSecondAutonomous: "初值（t₀ = 0）",
+      secondOrderInternal: "工具无法可靠地把这个方程降阶（降阶结果没有通过自检）。请试着写成 x'' = F 的形式，或反馈这个方程。",
+      urlQueryTooLong: "链接过长，全部参数已忽略，使用默认值。",
+      featuresBoxDetailFirst: "复位时这是输入范围，缩放或平移后是可见范围。常数解和方程类型都只在这个范围内扫描；结论依赖于所考察的范围。",
+      featuresBoxDetailSecond: "复位时这是输入范围，缩放或平移后是可见范围。平衡点（即常数解 x ≡ c）只在这个范围内扫描；结论依赖于所考察的范围。",
       copyLink: "复制链接",
       copied: "已复制",
       copyLinkFallback: "无法访问剪贴板，请手动复制下面的链接：",
@@ -381,8 +407,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonInvertedRange: "范围下限不小于上限",
       urlReasonTooNarrow: "范围太窄",
       urlReasonBadChoice: "不是允许的取值",
-      urlReasonTooMany: "轨线起点超过 20 个，只保留前 20 个",
-      urlReasonMalformedPair: "有格式错误的轨线起点，已跳过",
+      urlReasonTooMany: "曲线起点超过 20 个，只保留前 20 个",
+      urlReasonMalformedPair: "有格式错误的曲线起点，已跳过",
       urlReasonUnusedInMode: "当前方程类型不使用这个参数",
       openFullPage: "在新窗口打开",
       equationSystem: "x' = {f}，y' = {g}",
@@ -397,7 +423,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       exportSnapshot: "t = {t}",
       exportEntered: "输入范围 {range}",
       exportShown: "显示范围 {range}",
-      interactionHintTouch: "轻点预览解曲线 · 长按固定 · 长按已固定的轨线可删除 · 双指缩放 · 拖动平移 · 双击复位",
+      interactionHintTouch: "轻点预览经过该点的曲线 · 长按固定 · 长按已固定的曲线可删除 · 双指缩放 · 拖动平移 · 双击复位",
       clickToRemove: "点击删除这条轨线",
       holdToRemove: "长按删除这条轨线",
       undo: "撤销",
@@ -434,7 +460,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       stable: "stable (solutions approach it from both sides)",
       unstable: "unstable (solutions leave it on both sides)",
       semi_stable: "semi-stable (approached on one side, left on the other)",
-      varies: "stability varies with t (the sign pattern differs across the viewing range)",
+      varies: "stability varies with t (within the viewing range the solutions approach it for some t and leave it for other t)",
       edge_approach: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side approach it",
       edge_leave: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and the solutions on that side leave it",
       edge_varies: "a constant solution on the edge of the domain: the equation is defined only {side} this line, and whether the solutions on that side approach or leave it changes with t (both happen across the viewing range)",
@@ -459,7 +485,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       singular: "stopped at the last finite point: the vector field is undefined or infinite there, so the integration cannot continue",
       domain_edge: "stopped at the edge of the region where the field is defined (finite here, undefined just beyond)",
       arc_length: "stopped after reaching the requested curve length",
-      max_steps: "stopped before the requested time (step budget or step size exhausted); the solution stayed bounded",
+      max_steps: "stopped before the requested time: the numerical method needed more steps than it is allowed here (the solution changes very fast there); it stayed bounded",
     },
     warning: {
       none_found: "No equilibrium points were found in the viewing box.",
@@ -473,7 +499,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       nonHyperbolic: "At least one eigenvalue of the Jacobian is zero to numerical precision (determinant approximately zero), so this equilibrium is non-hyperbolic. The Hartman–Grobman theorem does not apply and linearization cannot decide its stability; a nonlinear method such as a center manifold or a Lyapunov function is needed.",
       notFinite: "The Jacobian cannot be evaluated to a finite value at this point (the vector field is singular or undefined nearby), so no classification can be given.",
       repeatedRoot: "The two eigenvalues coincide to numerical precision: the discriminant is zero within the estimated error of the Jacobian entries. Whether this is an exact repeated root (a star node, where every direction is an eigendirection, or a degenerate node) or two distinct real roots extremely close together (in which case this is really an ordinary node) cannot be decided numerically. Read this classification as 'repeated or nearly repeated root', not as a definite type.",
-      domainEdge: "This equilibrium lies on the edge of the region where the vector field is defined: the field is defined on one side of it and undefined on the other (for example x' = sqrt(x) at x = 0). No linearization exists there (only a one-sided derivative does), so no classification can be given; discuss it through the behavior of the solutions on the side where the field is defined.",
+      domainEdge: "This equilibrium lies on the edge of the region where the vector field is defined: the field is defined on one side of it and undefined on the other (for example a right-hand side containing sqrt(x), at x = 0). No linearization exists there (only a one-sided derivative does), so no classification can be given; discuss it through the behavior of the solutions on the side where the field is defined.",
     },
     form: {
       separable: "a separable equation",
@@ -487,9 +513,9 @@ export const LABELS: Record<Locale, LabelTable> = {
     },
     uniqueness: {
       unbounded: "At y = {y} the derivative ∂g/∂y is unbounded (the difference quotients grow like δ^−{alpha} as the point is approached), so the Lipschitz condition fails and uniqueness of solutions is not guaranteed: more than one solution curve may pass through this point.",
-      borderline: "At y = {y} the growth exponent of the difference quotients is about {alpha}, near the threshold: uniqueness cannot be vouched for at this point (this may be numerical noise, or the Lipschitz condition may genuinely fail).",
+      borderline: "At y = {y} the growth exponent of the difference quotients is about {alpha}, near the value {unbounded} above which the derivative counts as unbounded (below {bounded} it would count as bounded at the tested scales): uniqueness cannot be vouched for at this point (this may be numerical noise, or the Lipschitz condition may genuinely fail).",
       unboundedPoint: "At the equilibrium {point} the derivative of the vector field is unbounded (the difference quotients grow like δ^−{alpha} as the point is approached), so the Lipschitz condition fails and uniqueness of solutions is not guaranteed: more than one trajectory may pass through this point.",
-      borderlinePoint: "At the equilibrium {point} the growth exponent of the difference quotients is about {alpha}, near the threshold: uniqueness cannot be vouched for at this point (this may be numerical noise, or the Lipschitz condition may genuinely fail).",
+      borderlinePoint: "At the equilibrium {point} the growth exponent of the difference quotients is about {alpha}, near the value {unbounded} above which the derivative counts as unbounded (below {bounded} it would count as bounded at the tested scales): uniqueness cannot be vouched for at this point (this may be numerical noise, or the Lipschitz condition may genuinely fail).",
     },
     tool: {
       systemHeader: "System x' = {f}, y' = {g}; viewing box x ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}].",
@@ -501,9 +527,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       trajectoryHeader: "Starting from {start}, system x' = {f}, y' = {g}.",
       forward: "Forward (t increasing)",
       backward: "Backward (t decreasing)",
-      trajectoryLine: "{direction}: reached t = {tEnd}, end point {end}, {status}. {steps} steps.",
+      trajectoryLine: "{direction}: reached t = {tEnd}, end point {end}, {status}.",
       sampleFieldLine: "Sampled the vector field ({f}, {g}) on a {nx}×{ny} grid. Largest magnitude {maxMag}; {singular} sample points undefined or infinite.",
-      widgetDraws: "The picture is drawn by the widget.",
+      widgetDraws: "The picture is drawn.",
       firstOrderHeader: "Equation {equation}; viewing box t ∈ [{xMin}, {xMax}], y ∈ [{yMin}, {yMax}].",
       differentialUndirected: "The differential form has no natural direction, so the direction field is drawn as undirected segments.",
       directionSingular: "Singular points of the direction field (M = N = 0, direction undefined): {points}{truncated}.",
@@ -524,7 +550,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       parenOpen: " (",
       parenClose: ")",
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
-      timeDependent: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} The sampled field is a snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; this tool does not attempt them for a time-dependent field, so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
+      timeDependent: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} The sampled field is a snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; this tool does not attempt them for a time-dependent field, so none are given.",
       timeDependentTrajectory: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t. {evidence} {traced} Starting from the same point at another time would give a different curve.",
       secondOrderReduced: "Second-order equation {equation}: let v = x'. Then x' = v, v' = {g}.",
       timeDependenceMeasured: "Sampled at several times inside the viewing box, its largest relative change is {deviation}.",
@@ -539,31 +565,31 @@ export const LABELS: Record<Locale, LabelTable> = {
       fractionalPowerHint: "Hint: a fractional power of a negative number is undefined here, e.g. y^(2/3) for y < 0; write abs(y)^(2/3) or sign(y)*abs(y)^p for the real branch.",
       noConstantAllZero: "No constant solution was found in the viewing range: at every sample the right-hand side evaluates to exactly 0 (it is identically 0 there, or below the smallest representable number) or is undefined, so neither constant solutions nor autonomy could be tested.",
       formsExcludedLine: "Forms ruled out by definition (reason in brackets): {list}.",
-      tracedBoth: "Here the trajectory starts at t = 0: the forward part is the solution for t > 0 and the backward part the solution for t < 0.",
-      tracedForward: "Here the trajectory starts at t = 0 and runs forward, so it is the solution for t > 0.",
-      tracedBackward: "Here the trajectory starts at t = 0 and runs backward, so it is the solution for t < 0.",
+      tracedBoth: "Here the curve starts at t = {t0}: the forward part is the solution for t > {t0} and the backward part the solution for t < {t0}.",
+      tracedForward: "Here the curve starts at t = {t0} and runs forward, so it is the solution for t > {t0}.",
+      tracedBackward: "Here the curve starts at t = {t0} and runs backward, so it is the solution for t < {t0}.",
       identicallyZero: "The right-hand side is identically zero: every horizontal line y = c is a constant solution, and the direction field is flat.",
       queryHeaderFirst: "Solution of {equation} through (t, y) = ({t0}, {y0}), asked for {target}.",
-      queryHeaderSystem: "Solution of the system x' = {f}, y' = {g} through {start} (at t = {t0}), asked for {target}.",
+      queryHeaderSystem: "Solution of the system x' = {f}, y' = {g} with (x({t0}), y({t0})) = {start}, asked for {target}.",
       queryTargetT: "t = {value}",
       queryTargetX: "x = {value}",
       queryTargetY: "y = {value}",
       queryHitFirst: "t = {t}, y = {y} (±{error})",
-      queryHitSystem: "t = {t} (±{tError}): (x, y) = ({x}, {y}) (±{error})",
-      queryAccuracy: "These are values and crossings of the NUMERICAL solution: their accuracy comes from the integrator tolerance (rtol 1e-6), and the ± figures are estimates, not bounds; each crossing was found by re-integrating along the numerical solution, never by interpolating linearly between its points.",
+      queryHitSystem: "t = {t}: (x, y) = ({x}, {y}) (±{error})",
+      queryAccuracy: "These are values and crossings of the NUMERICAL solution: their accuracy is that of the numerical integration (relative error about 10⁻⁶ per step), and the ± figures are estimates, not bounds; each crossing was found by re-integrating along the numerical solution, never by interpolating linearly between its points.",
       queryNotReached: "The target was not reached within the integrated span: neither direction of the numerical solution crossed it. Where each direction got to, and why it stopped, is listed below.",
-      queryStoppedBefore: "The solution could not be followed to the target time: the integration stopped before it (see the stop below). If the stop says the integration completed, the span ran out first: ask for a larger tSpan.",
+      queryStoppedBefore: "The solution could not be followed to the target time: the integration stopped before it (see the stop below). If the stop says the integration completed, the integration span ran out before the target.",
       queryMoreBeyond: "Three or more crossings in one direction look periodic: more crossings may exist beyond the integrated span.",
       queryTargetIsStart: "The target is the start point itself.",
       queryLeg: "{direction}: reached t = {tEnd}, end point {end}, {status}.",
       stoppedNonAutonomous: "stopped after the speed fell close to zero at that time (below 1e-8 of its initial value); for a non-autonomous system this is not an equilibrium: the field at that point changes with t",
       refineCapped: "The equilibrium search reached its limit on the number of regions it can subdivide: some regions where the vector field changes sign were not searched, so equilibria may be missing.",
       secondOrderHeader: "Phase plane: x ∈ [{xMin}, {xMax}] horizontally, x' ∈ [{xpMin}, {xpMax}] vertically.",
-      timeDependentSecond: "This is a non-autonomous equation: t appears in F, so the direction field of the phase plane changes with t. {evidence} The picture is a snapshot at t = {t}. Equilibrium points (the constant solutions x ≡ c, the body at rest) and linearized stability are defined for autonomous equations only, so none are given. To see the field at another time, pass the snapshot time in the parameter t.",
+      timeDependentSecond: "This is a non-autonomous equation: t appears in it (in the right-hand side of v' = … above), so the direction field of the phase plane changes with t. {evidence} The picture is a snapshot at t = {t}. Equilibrium points (the constant solutions x ≡ c, the body at rest) and linearized stability are defined for autonomous equations only, so none are given.",
       pointSecond: "(x, x') = {point}",
       queryHeaderSecond: "Solution of {equation} with x({t0}) = {x0}, x'({t0}) = {xp0}, asked for {target}.",
       queryTargetXp: "x' = {value}",
-      queryHitSecond: "t = {t} (±{tError}): (x, x') = ({x}, {y}) (±{error})",
+      queryHitSecond: "t = {t}: (x, x') = ({x}, {y}) (±{error})",
       queryLegFirst: "{direction}: reached t = {t}, end point (t, y) = {end}, {status}.",
       queryLegDiff: "{side}: end point (t, y) = {end}, {status}.",
       sideOne: "One side",
@@ -572,7 +598,17 @@ export const LABELS: Record<Locale, LabelTable> = {
       maxStepsDiff: "stopped before the end of the requested span (step budget or step size exhausted); the solution stayed bounded",
       reachedSingularDiff: "stopped after approaching a point where M = N = 0 (the direction field is undefined there)",
       queryMoreBeyondDiff: "Three or more crossings on one side of the start look periodic: more crossings may exist beyond the integrated span.",
-      equilibriaSecondNote: "An equilibrium (x, x') = (c, 0) of the phase plane is the constant solution x ≡ c: the body stays at x = c, at rest.",
+      equilibriaSecondNote: "The equilibria of the phase plane lie on the x-axis, (x, x') = (c, 0): each one is the constant solution x ≡ c, the body staying at x = c, at rest.",
+      blewUpDiff: "the curve ran off to infinity within the requested span (it left the finite range); stopped at the last finite point",
+      queryNotReachedDiff: "The target was not reached within the span followed along the curve: neither side of the numerical solution crossed it. Where each side got to, and why it stopped, is listed below.",
+      stabilityReadingDiff: "The differential form has no direction of its own: \"approach\" and \"leave\" above are read with t increasing, from the sign of dy/dt = −M/N on each side of the line (where N ≠ 0).",
+      queryStoppedBeforeTool: "Ask for a larger tSpan.",
+      reachedEquilibriumSecond: "stopped after approaching an equilibrium (x, x') = (c, 0): x' and x'' both fell below 1e-8 of their initial size",
+      blewUpSecond: "x or x' diverges in finite time (it left the finite range); stopped at the last finite point",
+      stoppedNonAutonomousSecond: "stopped after x' and x'' both fell close to zero at that time (below 1e-8 of their initial size); for a non-autonomous equation this is not an equilibrium: the equation changes with t",
+      timeDependentTrajectorySecond: "This is a non-autonomous equation: t appears in it, so the direction field of the phase plane changes with t. {evidence} {traced} Starting from the same (x, x') at another time would give a different curve.",
+      blewUpFirst: "y becomes infinite at a finite t (it left the finite range); stopped at the last finite point",
+      timeError: " (±{error})",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -609,20 +645,20 @@ export const LABELS: Record<Locale, LabelTable> = {
       lastTrajectory: "Last trajectory:",
       toward: "to t = {t}, {status}",
       language: "Language",
-      interactionHint: "Hover to preview a solution · click to keep it · click a kept curve to remove it · wheel to zoom · drag to pan · double-click to reset",
+      interactionHint: "Hover to preview the curve through a point · click to keep it · click a kept curve to remove it · wheel to zoom · drag to pan · double-click to reset",
       hoverUndefined: "Near a singular point of the direction field: direction undefined",
       connectedWaiting: "Connected, waiting for a tool call…",
       computing: "Computing…",
-      connected: "connected to host",
-      notConnected: "not connected to an MCP host",
-      notRenderedByHost: "This page is meant to be rendered by Claude after calling one of the vector-field tools.",
-      localComputeUnavailable: "Local recomputation is unavailable (the expression could not be compiled here); showing the server's static picture. Zoom, pan and hover are disabled.",
+      connected: "connected",
+      notConnected: "not connected to Claude",
+      notRenderedByHost: "Open this picture from a Claude conversation that used the vector field tool.",
+      localComputeUnavailable: "This picture cannot be recomputed here, so zoom, pan and hover are off; the curves and numbers shown are still correct.",
       rangeError: "The range must be four finite numbers.",
       xRangeError: "Invalid {hv} range: the left end {min} must be smaller than the right end {max}.",
       yRangeError: "Invalid {vv} range: the lower end {min} must be smaller than the upper end {max}.",
       exprError: "Problem in the expression “{expr}”: {message}",
       featuresBox: "Results for {hv} ∈ [{xMin}, {xMax}], {vv} ∈ [{yMin}, {yMax}]",
-      featuresBoxDetail: "This is the entered range at the home view and the visible range after zooming or panning. Equilibria, constant solutions and equation types are scanned inside this range only; conclusions depend on the range examined.",
+      featuresBoxDetail: "This is the entered range at the home view and the visible range after zooming or panning. Equilibria are scanned inside this range only; conclusions depend on the range examined.",
       leftFarBox: "stopped after running 20 times beyond the entered range",
       tMin: "t min",
       tMax: "t max",
@@ -649,13 +685,13 @@ export const LABELS: Record<Locale, LabelTable> = {
       equilibriaTruncated: "More than {max} equilibria were found; only the first {max} are listed (sorted by x). Whether they form a continuum was judged from all the points found, not only from the listed ones.",
       singularitiesTruncated: "More than {max} singular points of the direction field were found; only the first {max} are listed (sorted by t). Whether they form a continuum was judged from all the points found, not only from the listed ones.",
       nonUniqueTrajectory: "This numerical solution passes through a point where uniqueness fails: it is only one of infinitely many solutions through that point. The integrator follows one of them (typically the constant one) and cannot show the others.",
-      timeDependentNote: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t, and the picture shows the snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; they are not attempted for a time-dependent field. The solution curves you get by hovering and clicking start at t = {t}.",
+      timeDependentNote: "This is a non-autonomous system: t appears in the right-hand side, so the vector field changes with t, and the picture shows the snapshot at t = {t}. Equilibrium points and linearized stability analysis are tools for autonomous systems; they are not attempted for a time-dependent field. The trajectories you get by hovering and clicking start at t = {t}.",
       timeDependentShort: "Non-autonomous: snapshot at t = {t}, no equilibrium analysis",
       snapshotT: "Snapshot time t",
       typeSecond: "Second-order equation x'' = F(t, x, x')",
       secondOrderLabel: "x'' = F(t, x, x'), or a full equation such as x'' + 0.5*x' + x = 0",
       secondOrderReduced: "Let v = x'. Then x' = v, v' = {g}. The horizontal axis is x (position), the vertical axis is x' (velocity).",
-      syntaxHintSecondOrder: "Syntax: t is the independent variable, the unknown is x(t), and its derivatives are written x' and x'' with straight apostrophes (x' may also be written v); the right-hand side may contain t, e.g. x'' = -x + cos(t). Write a full equation (x'' + 0.5*x' + x = 0) or just the right-hand side F of x'' = F. y has no meaning here and is rejected. x'' must appear linearly; this, and that its coefficient never vanishes, is checked numerically at sample points spread over the viewing box and a fixed square, at several times, so a term that is only active away from every sample point (a piecewise x''^2 branch outside the box) cannot be detected. Write multiplication explicitly (x*x', not xx'), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
+      syntaxHintSecondOrder: "Syntax: t is the independent variable, the unknown is x(t), and its derivatives are written x' and x'' with straight apostrophes (x' may also be written v); the right-hand side may contain t, e.g. x'' = -x + cos(t). Write a full equation (x'' + 0.5*x' + x = 0) or just the right-hand side F of x'' = F. y has no meaning here and is rejected. x'' must appear linearly; this, and that its coefficient never vanishes, is checked numerically at sample points inside the entered range and at a few fixed points near the origin, at several times, so a term that is only active away from every sample point (a piecewise x''^2 branch outside the box) cannot be detected. Write multiplication explicitly (x*x', not xx'), powers with ^, functions sin cos exp log sqrt abs …, constants pi and e.",
       singularitiesContinuum: "The singular points found line up along a line or a curve: the direction is most likely undefined on a whole curve, not just at isolated points; the list shows representative points only.",
       secondOrderNotAffine: "x'' must appear linearly, e.g. x'' + 0.5*x' + x = 0 or x'' = -sin(x); x''^2, sin(x'') and the like cannot be reduced.",
       secondOrderZeroCoefficient: "The coefficient of x'' vanishes (at least at some of the sample points and times), so the equation cannot be solved for x''. Check that x'' really appears and that its coefficient is never zero.",
@@ -664,7 +700,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       secondOrderTooManyEquals: "The equation must contain exactly one “=”.",
       secondOrderOtherPrime: "Only the unknown x may carry primes: write x' for dx/dt and x'' for the second derivative. The unknown function is x and t is the independent variable.",
       secondOrderHigherDerivative: "Only the first and second derivatives x' and x'' are supported; x''' and higher cannot be reduced to a planar system.",
-      secondOrderPlaceholderTyped: "xd and xdd are internal names; write x' and x'' for the derivatives of x.",
+      secondOrderPlaceholderTyped: "“xd” / “xdd” is not a symbol of this problem: write x' for the derivative of x and x'' for the second derivative (a constant needs another name).",
       secondOrderUndefinedAtSamples: "The equation is undefined (not a finite number) at most of the sample points used to check it, so it cannot be reduced safely.",
       secondOrderUnknownSymbol: "Unknown symbol “{name}”. The unknown function is x, its derivative is x' (dx/dt, also written v) and its second derivative is x''; t is the independent variable. Allowed symbols: t, x, x', x'', pi, e.",
       secondOrderYSymbol: "In a second-order equation the variables are t (the independent variable), x and x' (dx/dt, also written v); y has no meaning here. Write x' for the derivative of x.",
@@ -674,6 +710,13 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryHitSecond: "t = {t}, x = {x}, x' = {y} (±{error})",
       timeDependentNoteSecond: "This is a non-autonomous equation: t appears in F, so the direction field of the phase plane changes with t, and the picture shows the snapshot at t = {t}. Equilibrium points (the constant solutions x ≡ c, the body at rest) and linearized stability are defined for autonomous equations only; they are not attempted here. The solution curves you get by hovering and clicking start at t = {t}.",
       timeDependentShortSecond: "Non-autonomous equation: snapshot at t = {t}, no equilibrium analysis",
+      addTrajectory: "Add trajectory",
+      queryHeaderAt: "Solution through {start} starting at t = {t0}, asked for {target}:",
+      initialValueSecondAutonomous: "Initial value (t₀ = 0)",
+      secondOrderInternal: "The tool could not reduce this equation reliably (its own check of the reduction failed). Try writing it as x'' = F with F on the right-hand side, or report the equation.",
+      urlQueryTooLong: "The link is too long; all of its parameters were ignored and the defaults are used.",
+      featuresBoxDetailFirst: "This is the entered range at the home view and the visible range after zooming or panning. Constant solutions and equation types are scanned inside this range only; conclusions depend on the range examined.",
+      featuresBoxDetailSecond: "This is the entered range at the home view and the visible range after zooming or panning. Equilibria (the constant solutions x ≡ c) are scanned inside this range only; conclusions depend on the range examined.",
       copyLink: "Copy link",
       copied: "Copied",
       copyLinkFallback: "The clipboard is not available; copy the link below by hand:",
@@ -687,8 +730,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonInvertedRange: "range minimum is not below its maximum",
       urlReasonTooNarrow: "range too narrow",
       urlReasonBadChoice: "not an allowed value",
-      urlReasonTooMany: "more than 20 trajectory starts; only the first 20 kept",
-      urlReasonMalformedPair: "malformed trajectory start skipped",
+      urlReasonTooMany: "more than 20 curve starting points; only the first 20 kept",
+      urlReasonMalformedPair: "malformed curve starting point skipped",
       urlReasonUnusedInMode: "not used by this equation type",
       openFullPage: "Open full page",
       equationSystem: "x' = {f}, y' = {g}",
@@ -703,7 +746,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       exportSnapshot: "t = {t}",
       exportEntered: "entered {range}",
       exportShown: "shown {range}",
-      interactionHintTouch: "Tap to preview a solution · hold to keep it · hold a kept curve to remove it · pinch to zoom · drag to pan · double-tap to reset",
+      interactionHintTouch: "Tap to preview the curve through a point · hold to keep it · hold a kept curve to remove it · pinch to zoom · drag to pan · double-tap to reset",
       clickToRemove: "Click to remove this trajectory",
       holdToRemove: "Hold to remove this trajectory",
       undo: "Undo",
@@ -748,9 +791,10 @@ export function uniquenessSentence(
   subject: { y: number } | { point: { x: number; y: number }; secondOrder?: boolean },
 ): string | null {
   if (!u || (u.verdict !== "unbounded" && u.verdict !== "borderline")) return null;
-  const alpha = formatNumber(u.exponent, 2);
-  if ("y" in subject) return fill(u.verdict === "unbounded" ? L.uniqueness.unbounded : L.uniqueness.borderline, { y: formatNumber(subject.y, 6), alpha });
-  return fill(u.verdict === "unbounded" ? L.uniqueness.unboundedPoint : L.uniqueness.borderlinePoint, { point: pointText(L, subject.point, subject.secondOrder), alpha });
+  // The borderline sentence names the two thresholds it sits between (the kernel's frozen constants), so "near the threshold" is a number the student can see.
+  const values = { alpha: formatNumber(u.exponent, 2), unbounded: formatNumber(UNBOUNDED_EXPONENT, 2), bounded: formatNumber(BORDERLINE_EXPONENT, 2) };
+  if ("y" in subject) return fill(u.verdict === "unbounded" ? L.uniqueness.unbounded : L.uniqueness.borderline, { y: formatNumber(subject.y, 6), ...values });
+  return fill(u.verdict === "unbounded" ? L.uniqueness.unboundedPoint : L.uniqueness.borderlinePoint, { point: pointText(L, subject.point, subject.secondOrder), ...values });
 }
 
 /**
@@ -847,16 +891,18 @@ export function timeDependenceEvidence(L: LabelTable, td: { maxRelDeviation: num
  */
 export function equilibriaNotices(
   L: LabelTable,
-  scene: { warning?: keyof LabelTable["warning"]; truncated?: boolean; equilibria?: readonly unknown[]; singularPoints?: readonly { x: number; y: number }[]; underflowPlateau?: boolean; refineCapped?: boolean },
+  scene: { warning?: keyof LabelTable["warning"]; truncated?: boolean; equilibria?: readonly unknown[]; singularPoints?: readonly { x: number; y: number }[]; underflowPlateau?: boolean; refineCapped?: boolean; secondOrder?: unknown },
 ): string[] {
   const lines: string[] = [];
+  // On a second-order picture every point is named (x, x') = (...), the singular ones too.
+  const secondOrder = Boolean(scene.secondOrder);
   if (scene.warning && !(scene.warning === "hit_limit" && scene.truncated)) lines.push(L.warning[scene.warning]);
   if (scene.truncated) lines.push(fill(L.ui.equilibriaTruncated, { max: scene.equilibria?.length ?? 0 }));
   // The sign-change quadtree's cap (round N): said unless the result is a continuum, where the
   // cap is expected (every sub-cell along the curve shows both sign changes) and the continuum
   // sentence already says that only representatives are listed.
   if (scene.refineCapped && scene.warning !== "possible_continuum" && scene.warning !== "region_of_equilibria") lines.push(L.tool.refineCapped);
-  for (const s of scene.singularPoints ?? []) lines.push(fill(L.tool.singularPoint, { point: formatPoint(s) }));
+  for (const s of scene.singularPoints ?? []) lines.push(fill(L.tool.singularPoint, { point: pointText(L, s, secondOrder) }));
   // Part of the box evaluates to exactly 0 by underflow (lib/core/equilibria underflowPlateau): said once, after the points.
   if (scene.underflowPlateau) lines.push(L.tool.underflowPlateau);
   return lines;
@@ -937,7 +983,7 @@ export function equalScaleTexts(L: LabelTable, mode: PictureMode): { detail: str
 }
 
 /** The words for a kept curve: "solution curve" on a first-order picture, "trajectory" on a phase plane (P2.5). */
-export function curveWords(L: LabelTable, mode: PictureMode): { last: string; clear: string; query: string; none: string; clickToRemove: string; holdToRemove: string } {
+export function curveWords(L: LabelTable, mode: PictureMode): { last: string; clear: string; query: string; none: string; clickToRemove: string; holdToRemove: string; add: string } {
   const first = mode === "first";
   return {
     last: first ? L.ui.lastSolution : L.ui.lastTrajectory,
@@ -946,7 +992,13 @@ export function curveWords(L: LabelTable, mode: PictureMode): { last: string; cl
     none: first ? L.ui.queryNoSolution : L.ui.queryNoTrajectory,
     clickToRemove: first ? L.ui.clickToRemoveSolution : L.ui.clickToRemove,
     holdToRemove: first ? L.ui.holdToRemoveSolution : L.ui.holdToRemove,
+    add: first ? L.ui.addSolution : L.ui.addTrajectory,
   };
+}
+
+/** The ⓘ text behind the features-box line, per picture (P2: no "equilibria" on a first-order picture, no "constant solutions" on a phase plane). */
+export function featuresBoxDetail(L: LabelTable, mode: PictureMode): string {
+  return mode === "first" ? L.ui.featuresBoxDetailFirst : mode === "second" ? L.ui.featuresBoxDetailSecond : L.ui.featuresBoxDetail;
 }
 
 /** A short line with the full text behind a disclosure; `detail` empty means nothing is folded. */

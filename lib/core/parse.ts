@@ -155,7 +155,8 @@ export type ParseErrorCode =
   | "second_order_unknown_symbol"
   | "second_order_implicit_product"
   | "second_order_y_symbol"
-  | "second_order_v_parameter";
+  | "second_order_v_parameter"
+  | "second_order_internal";
 
 export class ParseError extends Error {
   readonly expr: string;

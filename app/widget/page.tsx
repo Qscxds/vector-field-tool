@@ -21,7 +21,7 @@ import { coordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { sceneEquationText } from "@/lib/export-footer";
-import { constantSolutionFolded, constantSolutionNotices, equalScaleTexts, equilibriaNotices, equilibriumDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureModeOf, pointText, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureModeOf, pointText, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
 import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
@@ -262,7 +262,9 @@ function SceneSummary({ scene }: { scene: Scene }) {
     // P2.3: the point (c, 0) of the phase plane is the constant solution x ≡ c.
     if (scene.equilibria?.length) items.push(L.tool.equilibriaSecondNote);
   } else if (scene.system) {
-    items.push(scene.firstOrderSpec || scene.firstOrder ? sceneEquationText(scene, scene.locale ?? "en") : `x' = ${scene.system.f}, y' = ${scene.system.g}`);
+    // The equation in the student's notation through the shared helper (planar included: its
+    // separator follows the locale, P2 sweep).
+    items.push(sceneEquationText(scene, scene.locale ?? "en"));
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
   items.push(...equilibriaNotices(L, scene));
@@ -276,6 +278,8 @@ function SceneSummary({ scene }: { scene: Scene }) {
     // Per line: the sentence, then the plateau / probe-count notes and the uniqueness sentence when
     // they apply; then the zero-plateau notice and the scan resolution.
     for (const s of fo.solutions) items.push(constantSolutionFolded(L, s, fo.spec));
+    // A differential form has no direction: say once how "approach" / "leave" were read (P2.3).
+    if (fo.spec?.kind === "differential" && fo.solutions.length) items.push(L.tool.stabilityReadingDiff);
     items.push(...constantSolutionNotices(L, fo));
     if (fo.singularities?.length) {
       // The truncation is stated once, by the singularitiesTruncated sentence below (as in tools.ts).
@@ -314,7 +318,7 @@ function SceneSummary({ scene }: { scene: Scene }) {
         <p style={{ margin: "2px 0", color: "#52606d" }} data-features-box>
           {featuresBoxLine}{" "}
           <Info label={L.ui.details} data-info="features-box">
-            {L.ui.featuresBoxDetail}
+            {featuresBoxDetail(L, pictureModeOf(scene))}
           </Info>
         </p>
       ) : null}

@@ -161,9 +161,9 @@ function caveatText(locale: Locale, form: OdeForm, verdict: Verdict, samples: nu
   if (locale === "zh") {
     switch (verdict) {
       case "consistent":
-        return `这是数值证据，不是证明：方程只是在 ${samples} 个采样点上与「${FORM_NAME.zh[form]}」的形式一致。采样点碰巧落在特殊位置时，不满足该形式的方程也可能通过检验。向学生转述时请说「在数值上表现得像」，不要说「是」。`;
+        return `这是数值证据，不是证明：方程只是在 ${samples} 个采样点上与「${FORM_NAME.zh[form]}」的形式一致。采样点碰巧落在特殊位置时，不满足该形式的方程也可能通过检验；所以说的是「在数值上表现得像」，不是「是」。`;
       case "borderline":
-        return `临界判断：与「${FORM_NAME.zh[form]}」的最大偏差 ${d} 落在阈值 ${t} 附近一个数量级内。这可能只是浮点舍入，也可能说明方程并不严格属于这种形式（例如带有微小的扰动项）。转述时必须说明这是临界情况，不要当作肯定或否定的结论。`;
+        return `临界判断：与「${FORM_NAME.zh[form]}」的最大偏差 ${d} 落在阈值 ${t} 附近一个数量级内。这可能只是浮点舍入，也可能说明方程并不严格属于这种形式（例如带有微小的扰动项）；这不是肯定或否定的结论。`;
       case "inconsistent":
         return `在采样点上与「${FORM_NAME.zh[form]}」的偏差 ${d} 明显超出阈值 ${t}，因此不支持这种形式。这同样只是采样点上的数值结论。`;
       default:
@@ -173,9 +173,9 @@ function caveatText(locale: Locale, form: OdeForm, verdict: Verdict, samples: nu
   const name = FORM_NAME.en[form];
   switch (verdict) {
     case "consistent":
-      return `Numerical evidence, not a proof: the equation is merely consistent with ${name} at ${samples} sample points. An equation that is not of this form can pass if the points happen to be special. Tell students it "behaves numerically like" this form, not that it "is" one.`;
+      return `Numerical evidence, not a proof: the equation is merely consistent with ${name} at ${samples} sample points. An equation that is not of this form can pass if the points happen to be special; that is why it "behaves numerically like" this form rather than "is" one.`;
     case "borderline":
-      return `Borderline: the largest deviation from ${name}, ${d}, lies within an order of magnitude of the threshold ${t}. This may be floating-point rounding, or the equation may not strictly be of this form (a tiny perturbation term, for instance). Say that it is a borderline case; do not present it as a yes or a no.`;
+      return `Borderline: the largest deviation from ${name}, ${d}, lies within an order of magnitude of the threshold ${t}. This may be floating-point rounding, or the equation may not strictly be of this form (a tiny perturbation term, for instance); it is neither a yes nor a no.`;
     case "inconsistent":
       return `The deviation from ${name} at the sample points, ${d}, is clearly above the threshold ${t}, so this form is not supported. This too is a numerical statement about sample points only.`;
     default:
