@@ -21,7 +21,9 @@
  *   integrator accepted, to the trial time; the polyline is never interpolated linearly between
  *   stored points (the true curve between two accepted points is not a segment). The search
  *   stops when the time bracket is below max(1e-12 |t|, 1e-14 tSpan) or after
- *   MAX_BRACKET_ITERATIONS evaluations; the hit's time error is the final bracket width. Both
+ *   MAX_BRACKET_ITERATIONS evaluations; the hit's time error is the final bracket width. The
+ *   hit's POSITION is then one re-integration from the start to the converged time (round R: the
+ *   bracket decides when, the run from the start decides where, as for a time target). Both
  *   directions are searched and the hits are sorted by t.
  *
  * Error estimates (estimates, not bounds: a global error of an adaptive integrator cannot be
@@ -240,7 +242,13 @@ function bracketHit(sys: CompiledSystem, tr: Trajectory, i: number, direction: 1
     }
     fb = next.f; pb = next.p;
   }
-  return hitAt(sys, b, pb, Math.abs(c - b), o);
+  // Round R: the REPORTED position is one re-integration from the trajectory's own start to the
+  // converged time (the same run a time target gets), not the state reached from the bracket's
+  // left point: the bracket search only decides WHEN; the final bracket width stays the time error.
+  const tStart = tr.times[0];
+  const fromStart = Math.abs(b - tStart) > 0 ? run(sys, tr.points[0], tStart, direction, Math.abs(b - tStart), o) : null;
+  const at = fromStart && fromStart.status === "completed" ? fromStart.points[fromStart.points.length - 1] : pb;
+  return hitAt(sys, b, at, Math.abs(c - b), o);
 }
 
 /** Every crossing of coordinate = value along one direction's polyline; the start point only when `includeStart`. */
