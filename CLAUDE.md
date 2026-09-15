@@ -225,7 +225,14 @@ then-current status; use the current section for superseding decisions. Widget v
   `components/HelpContent.tsx` inside `components/SitePage.tsx` (language toggle in component
   state only, footer, copy button with a read-only fallback). ALL their copy lives in
   `lib/site-text.ts` (zh / en, identical key structure, tested), never in the components; the
-  help page's function list is `ALLOWED_FUNCTIONS` from the parser, never retyped. Metadata:
+  help page's function list is `ALLOWED_FUNCTIONS` from the parser, never retyped. The home
+  page's "What's new" (round S) renders `lib/changelog.ts`: a typed array of entries (ISO date,
+  bilingual title and points, optional bilingual `action` = what the reader must do, drawn in the
+  amber `.site-action` box), newest `HOME_NEWS_COUNT` (3) first. MAINTENANCE: every round APPENDS
+  one entry at the end of `CHANGELOG` and touches no rendering code; a widget version bump gets an
+  `action` telling MCP users to remove and re-add the connector. The same reconnect notice
+  (`home.mcpReconnect` = `help.claude.reconnect`, one constant per language) stands at the head of
+  the home page's Claude paragraph and of the help page's Claude section. Metadata:
   `app/layout.tsx` (metadataBase from `base-url.ts`, title template, OG / twitter defaults),
   per-page `metadata` exports (`/embed` is noindex with no OG card), `app/opengraph-image.tsx`
   (next/og, drawn at build time), `app/icon.svg`, `app/robots.ts` (disallow /embed, /mcp),
@@ -363,7 +370,7 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
 - `app/layout.tsx` patches `history.pushState/replaceState` inside iframes (Next's post-hydration
   replaceState throws SecurityError cross-origin; React 19 would unmount everything). Do not remove.
 - Changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and the user must
-  disconnect / reconnect the connector in Claude (it caches the tool list with the old URI).
+  remove and re-add the connector in Claude (it keeps the widget resource address from when the connector was added: disconnecting and reconnecting is NOT enough), and append a lib/changelog.ts entry whose `action` says so.
 - Local compute in the sandbox works WITHOUT `unsafe-eval`: mathjs `compile()` builds closures, no
   code strings (S spike, `docs/FG-decisions.md`). `new Function` is blocked there; never depend on it.
 - Tools take `locale` (`zh` | `en`, optional, default `en` since round M; H2.9 had it REQUIRED, but

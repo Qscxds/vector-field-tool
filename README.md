@@ -88,7 +88,7 @@ Requires Node >= 20.9 (24 recommended; Vercel's default).
 ```bash
 npm install
 npm run dev          # http://localhost:3000 (the app is at /vector-field)
-npm test             # vitest: 956 tests (954 pass, 2 marked it.fails with derived expectations)
+npm test             # vitest: 960 tests (958 pass, 2 marked it.fails with derived expectations)
 npm run typecheck    # tsc --noEmit
 npm run build        # production build
 npm run smoke        # HTTP smoke test against a running server (default http://localhost:3000/mcp)
@@ -126,7 +126,7 @@ The response is SSE (`event: message` + `data: {...}`). The endpoint is stateles
    build and function logs print a `[base-url] BASE_URL is not set ...` warning in that case.
 5. If the domain sits behind Cloudflare, use a DNS-only record (no proxy), so the MCP responses and
    the widget assets are served unchanged.
-6. Point the Claude connector at `https://tools.<your-domain>/mcp` and reconnect.
+6. Point the Claude connector at `https://tools.<your-domain>/mcp`. After every widget version bump the connector must be REMOVED and added again (Claude keeps the widget resource address from when the connector was added; disconnecting and reconnecting is not enough).
 
 Pushing to `main` deploys production. Afterwards run `npm run smoke -- https://tools.<your-domain>/mcp`.
 
@@ -157,8 +157,8 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   when the student writes in Chinese. Error messages (parameter bounds, unparsable expressions, the
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
-  every user must **disconnect and reconnect the connector** in Claude (it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `p-2`.
+  every user must **remove and re-add the connector** in Claude (it caches the widget resource address from when the connector was added; disconnecting and reconnecting is not enough; it caches the tool list with
+  the old resource URI; the widget silently goes blank otherwise). The current version is `p-2`. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
   y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "use ping
   with hello" tests the transport alone. Inside the widget a kept trajectory can be removed by

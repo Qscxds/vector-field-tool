@@ -2,7 +2,7 @@
 
 **做到哪**：P0 勘察、P1 教授两点、P2 同类漏洞普查、Q 时间序列视图、R 运维（上限 / widget Clear / 范围重追踪 / 命中精度 / 计算中 / CI / 报告问题）全部完成并实测；只有 Q.3 共振响应曲线未做（open-questions #7）。
 **最后一个良好 tag**：`r-ops-done`（之前的：`p1-secondorder-done`、`p2-audit-done`、`q-timeseries-done`）。
-**我需要你手动做的**：`git push origin main --tags`（Vercel 自动部署；GitHub Actions 的 CI 第一次跑）→ `npm run smoke -- https://tools.studycase.net/mcp`（24/24，URI `?v=p-2`）→ 在 Claude 里**断开并重新连接**连接器（widget `o-1` → `p-2`）→ 按第 6 节清单逐步验证。
+**我需要你手动做的**：`git push origin main --tags`（Vercel 自动部署；GitHub Actions 的 CI 第一次跑）→ `npm run smoke -- https://tools.studycase.net/mcp`（24/24，URI `?v=p-2`）→ 在 Claude 里**删除连接器再重新添加**（只断开重连不够；widget `o-1` → `p-2`）→ 按第 6 节清单逐步验证。
 
 > **P1 完成，可以部署回复教授了。** 部署后教授看到的：类型叫「二阶方程 x'' = F(t, x, x')」，右端可含 t（`x'' = -x + cos(t)` 直接可用），范围框是 `x' min / x' max`，纵轴标 `x'`，平衡点写 `(x, x') = (0, 0)`，输入 `x'' = y` 得到「y 在这里没有含义」的提示。
 
@@ -103,7 +103,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 |---|---|
 | R.1 上限 20 条 + 提示，拒绝第 21 条 | 上限进纯 store（`MAX_TRAJECTORIES`，链接的上限从它读）；满了「添加」置灰、初值框下常驻提示、画布悬停提示「已达上限：点击已有曲线可删除」，点击空白不加；widget 共用 |
 | R.1 `/embed` 的 Help 链接 | 顶栏「使用说明」，新标签打开 |
-| R.1 widget 的 Clear 只清自己加的 | 「Clear my curves (n)」，工具画的曲线保留；`WIDGET_VERSION` `p-1 → p-2`（**要重连**） |
+| R.1 widget 的 Clear 只清自己加的 | 「Clear my curves (n)」，工具画的曲线保留；`WIDGET_VERSION` `p-1 → p-2`（**要删除连接器重新添加**） |
 | R.1 改输入范围时重追踪 | `retraceKey` 加入输入范围 |
 | R.1 最终命中从起点重积分一次 | `lib/core/query.ts`：Brent 定 t*，位置用一次从起点到 t* 的重积分；时间误差不变 |
 | R.1 删 `t0` 别名 | P1 已做，确认 |
@@ -138,7 +138,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 7. **报告问题（1 分钟）**：页面底部「报告问题」→ GitHub 新 issue 表单预填「页面：…」「浏览器：…」三行提示（不必真的提交）。失败 → `q-timeseries-done`。
 8. **上限（2 分钟）**：打开带 20 个起点的链接（`…&traj=0.1,0;0.2,0;…;2,0`）→ 「添加」置灰、提示「已保留 20 条曲线（上限）」，悬停画布提示上限，点击空白不加；删一条后能再加。失败 → `q-timeseries-done`。
 9. **计算中（1 分钟）**：平面系统输入 `f = x*y`，`g = x^2 - y` → 输入时右上角「计算中…」随后消失，平衡点列表更新。失败 → `q-timeseries-done`。
-10. **重连连接器 + widget（5 分钟）**：Claude 里断开并重新连接连接器 → 「use trace_trajectory on x' = y, y' = -x from (1, 0)」→ widget 出现工具画的曲线，点画布加一条 → 「Clear my curves (1)」→ 点它只清自己加的。失败 → `q-timeseries-done`（widget 回到 p-1，需再重连）。
+10. **重连连接器 + widget（5 分钟）**：Claude 里删除连接器再重新添加（只断开重连不够） → 「use trace_trajectory on x' = y, y' = -x from (1, 0)」→ widget 出现工具画的曲线，点画布加一条 → 「Clear my curves (1)」→ 点它只清自己加的。失败 → `q-timeseries-done`（widget 回到 p-1，需再删除重加）。
 11. **查询精度（2 分钟）**：Claude 里「dy/dt = y, y(0) = 1, when does y reach 2?」→ t = 0.693147 (ln 2)，y = 2.000000；网页里简谐振子查询 `x = 0` 命中在 ±1e-5 内。失败 → `q-timeseries-done`（撤销 query.ts 的从起点重积分）。
 12. **`/embed`（1 分钟）**：Google Sites 里的嵌入页顶栏有「使用说明」（新标签）、底部「报告问题」；`controls=0` 时仍显示方程与结果。失败 → `q-timeseries-done`。
 
