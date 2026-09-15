@@ -88,6 +88,8 @@ export type SiteText = {
       termsLine: string;
       /** What "equal scale" means in each picture. */
       equalScaleLine: string;
+      /** The time-series view (round Q): what it draws and why the second-order chapter needs it. */
+      timeSeriesLine: string;
       functionsLead: string;
       constantsLine: string;
       piecewiseLine: string;
@@ -185,6 +187,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "网格密度：每个方向上箭头的个数。",
           "箭头：「等长」把每个箭头画成一样长、用颜色表示模长（方向一目了然，快慢看颜色）；「按模长」让箭头长度随模长变化（快的地方箭头长，慢的地方几乎看不见）。",
           "等比：勾选时横轴与纵轴每单位的像素相同，图上的角度就是真实的（一阶方程里是斜率 dy/dt，相平面里是箭头和轨线的真实方向），为此显示范围会向一个方向扩大以填满画布；取消勾选时输入范围正好填满画布，两个方向比例不同，图上会一直显示「横纵比例不同」的提醒。图下方那一行给出实际显示范围，并注明「等比」或「填满」。",
+          "视图（平面系统和二阶方程）：「相平面」画向量场和轨线；「时间序列」以 t 为横轴画每条固定曲线的 x(t)、y(t)（二阶方程画 x(t)，勾选「同时画 x'(t)」再叠加 x'(t)），带图例；「t 起 / t 止」定横轴范围，纵轴范围取输入范围。默认：自治 → 相平面，非自治（右端含 t）→ 时间序列；链接记住你的选择。时间序列里等比没有意义，自动解除并常驻说明；曲线仍按相平面的规则算到 t₀ 前后各 50 个时间单位，超出的部分空白并有说明；点击图像不添加曲线，请用「初值」添加，「清除」「撤销」照常；查询到的点同样标在曲线上。",
           "快照时刻 t：只在平面系统或二阶方程的右端含 t（非自治）时出现，图画的是这一时刻的向量场；二阶方程里这个输入框叫 t₀，初值 x(t₀)、x'(t₀) 和解曲线都从这一时刻出发。一阶方程 dy/dt = g(t, y) 不需要它：t 就是横轴，画的是整张斜率场。",
           "清除解曲线 / 清除轨线（按钮名随图而变）：删掉所有固定下来的曲线。",
           "复制链接：当前方程、范围、语言、视图选项和固定曲线的起点都编在链接里，打开链接就是同一张图。",
@@ -220,6 +223,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         secondOrderLine: "二阶方程里 x'' 必须线性出现（x''^2、sin(x'') 之类无法降阶），而且它的系数不能为零：这两点是在观察范围内的采样点和原点附近几个固定点上、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段项）检查不到。",
         termsLine: "术语按模式区分：平面系统和二阶方程的相平面里说「平衡点」（f = g = 0 的点，有稳定性分类；二阶时它就是常数解 x ≡ c）；一阶方程说「常数解」y = c（它是一个解，不是一个点，稳定性指两侧的解是趋向它还是离开它）；微分形式说「方向场奇点」（M = N = 0，方向无定义，没有稳定性可言）。固定下来的曲线在一阶方程里叫「解曲线」，在相平面里叫「轨线」。",
         equalScaleLine: "「等比」在各模式下的含义：一阶方程里，图上曲线的倾角就是斜率 dy/dt；平面系统里，箭头和轨线的方向是相平面里的真实方向（沿轨线的斜率是 dy/dx，不是随时间的变化率）；二阶方程里同理，沿轨线的斜率是 dx'/dx。",
+        timeSeriesLine: "时间序列视图：横轴 t，纵轴是解的值 x(t)、y(t)（二阶方程为 x(t)、x'(t)）。这是受迫振动、拍频、共振一章要看的图：对非自治方程，相平面只是某一时刻的快照，而 x(t) 才显示振幅随时间的起伏。一阶方程的图本来就是 y 对 t 的图，没有这个切换。",
         functionsLead: "可以使用的函数：",
         constantsLine: "常数：pi 和 e。",
         piecewiseLine: "分段表达式用「条件 ? 值 : 值」，例如 y > 0 ? y : -y。",
@@ -364,6 +368,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "Grid density: the number of arrows in each direction.",
           "Arrows: Uniform draws every arrow at the same length and encodes the magnitude in the color (the direction is easy to read, the speed is in the color); Scaled makes the length follow the magnitude (long where the field is fast, almost invisible where it is slow).",
           "Equal scale: when checked, the horizontal and vertical coordinates have the same pixels per unit, so an angle in the picture is true (the slope dy/dt on a first-order picture, the true direction of arrows and trajectories on a phase plane); to achieve that the displayed range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas exactly, the two directions are scaled differently, and a persistent warning says that the axes are not to the same scale. The line under the picture gives the displayed range with \"(equal scale)\" or \"(filled)\".",
+          "View (planar systems and second-order equations): Phase plane draws the field and the trajectories; Time series draws, against t, every kept curve's x(t) and y(t) (for a second-order equation x(t), plus x'(t) when \"Also draw x'(t)\" is checked), with a legend; \"t from / t to\" set the horizontal range, the vertical range is the entered range. Default: autonomous → phase plane, non-autonomous (t on the right-hand side) → time series; the link remembers your choice. Equal scale has no meaning in a time series and is switched off with a persistent note; the curves are still computed by the phase plane's rule, 50 time units before and after t₀, and the picture is blank beyond that (a note says so); a click on the picture does not add a curve (use Initial value; Clear and Undo work as usual); the points found by a query are marked on the curves too.",
           "Snapshot time t: shown only for a planar system or a second-order equation whose right-hand side contains t (non-autonomous); the picture is then the field at that instant. For a second-order equation the field is called t₀: the initial values x(t₀), x'(t₀) and the solution curves start at that instant. A first-order equation dy/dt = g(t, y) never needs one: t is its horizontal axis and the whole slope field is drawn.",
           "Clear solution curves / Clear trajectories (the button's name follows the picture): removes every kept curve.",
           "Copy link: the equation, the range, the language, the view options and the starting points of the kept curves are all encoded in the link; opening it shows the same picture.",
@@ -399,6 +404,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         secondOrderLine: "In a second-order equation x'' must appear linearly (x''^2, sin(x'') and the like cannot be reduced) and its coefficient must never vanish; both are checked numerically at sample points inside the entered range and at a few fixed points near the origin, at several times, so a term that is only active away from every sample point (a piecewise branch outside the box) cannot be detected.",
         termsLine: "Terms by mode: on the phase plane of a planar system or a second-order equation the tool says \"equilibrium point\" (a point where f = g = 0, with a stability classification; for a second-order equation it is the constant solution x ≡ c); for a first-order equation it says \"constant solution\" y = c (a solution, not a point; its stability is whether the solutions on either side approach or leave it); for a differential form it says \"singular point of the direction field\" (M = N = 0, direction undefined, no stability to speak of). A kept curve is a \"solution curve\" on a first-order picture and a \"trajectory\" on a phase plane.",
         equalScaleLine: "What \"equal scale\" means in each picture: for a first-order equation the angle of a curve is its slope dy/dt; for a planar system the directions of arrows and trajectories are their true directions in the phase plane (the slope along a trajectory is dy/dx, not a rate of change in time); for a second-order equation likewise, the slope along a trajectory being dx'/dx.",
+        timeSeriesLine: "Time-series view: t horizontally, the solution's values x(t), y(t) vertically (x(t) and x'(t) for a second-order equation). This is the picture the chapter on forced oscillations, beats and resonance needs: for a non-autonomous equation the phase plane is only a snapshot at one instant, while x(t) shows how the amplitude rises and falls in time. A first-order picture is already the graph of y against t, so it has no such toggle.",
         functionsLead: "Functions you may use:",
         constantsLine: "Constants: pi and e.",
         piecewiseLine: "Piecewise expressions use \"condition ? value : value\", for example y > 0 ? y : -y.",

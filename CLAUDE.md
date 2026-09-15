@@ -106,6 +106,18 @@ then-current status; use the current section for superseding decisions. Widget v
   `{vv}`, the PNG footer and both shells read them here. `Scene.axes` (filled by every tool and by
   the hook) tells a reader of structuredContent the same thing, plus whether the kernel's t /
   tEnd fields are the student's t or a differential form's own parameter.
+- `lib/time-series.ts` (round Q) the time-series view's pure helpers: `defaultView` (a
+  non-autonomous planar picture opens on it, an autonomous one on the phase plane, a first-order
+  picture never offers it), `seriesOf` / `seriesName` (x(t), y(t); x(t) and x'(t) on request),
+  `timeSeriesBox` (the chosen t range across, the union of the drawn components' entered ranges
+  up, never equal-scale), `seriesCurves` (both legs of a kept curve against `TrajectoryView.times`,
+  the backward leg reversed, the start once), `seriesHits`, `parseTimeRange`.
+  `components/drawTimeSeries.ts` draws it (grid, legend, diamond hits, dashed t₀ line), shared by
+  `components/TimeSeriesCanvas.tsx` (no interaction: a click cannot fix an initial velocity) and
+  `exportTimeSeriesPng`; the footer is `exportTimeSeriesFooterText`. The curves are the SAME kept
+  curves as the phase plane (one store, one Clear / Undo / link) computed by the same rule
+  (t₀ ± CLICK_TSPAN): a wider t range shows blank and a note says so. The widget has no time-series
+  view (tool results carry no `times`).
 - `lib/interactive.ts` pure helpers for the interactive shells: `computeFeatures` for a box,
   `featuresBoxFor` (the features-box rule below), `tracePreview` (hover: fixed ON-SCREEN length,
   2 canvas diagonals, steps only a safety cap) and `traceFixed` (click: stops at 20x the original
@@ -171,9 +183,11 @@ then-current status; use the current section for superseding decisions. Widget v
   static picture if compiling is blocked); `app/page.tsx` home.
 - `lib/url-state.ts` the web shell's URL state (pure): `AppState` (mode first / diff / system /
   second, g f M N eq, the ENTERED box, `locale | null` = no loc in the link (English), equalScale, density,
-  arrowMode, snapshotT, trajectoryStarts) with `DEFAULT_STATE`; `encodeState` (short names,
+  arrowMode, snapshotT, trajectoryStarts, and since round Q `view` (phase / time / null = the
+  default rule) and `timeRange` of the time-series view) with `DEFAULT_STATE`; `encodeState` (short names,
   defaults omitted, readable parentheses; tmin/tmax for first-order pictures, xmin/xmax for planar
-  ones); `decodeState(query, fallback)` never throws: 4096-char query cap, 200-char expressions
+  ones, where tmin/tmax and `view` are the time-series view's and are reported as unused on a
+  first-order link); `decodeState(query, fallback)` never throws: 4096-char query cap, 200-char expressions
   validated through the SAME parser whitelist as the page (compileScalar "ty" / "xy",
   reduceSecondOrder), finite bounded numbers, per-field fallback with reason keys rendered by the
   shell; `buildShareUrl`, `queryFromSearchParams`. A link is a public attack surface: no relaxation.

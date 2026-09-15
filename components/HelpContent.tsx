@@ -57,6 +57,7 @@ export function HelpContent({ initialLocale }: { initialLocale: Locale | null })
       <p>{H.notation.secondOrderLine}</p>
       <p>{H.notation.termsLine}</p>
       <p>{H.notation.equalScaleLine}</p>
+      <p data-help-time-series>{H.notation.timeSeriesLine}</p>
       <p>
         {H.notation.functionsLead}{" "}
         <span data-help-functions>

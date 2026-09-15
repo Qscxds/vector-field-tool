@@ -35,6 +35,11 @@ parameters and results to explanations. The site is English by default; Chinese 
   more crossings may exist beyond the integrated span.
 - **Second-order equations** `x'' = F(t, x, x')` (t is the independent variable), entered as a full equation (`x'' + 0.5*x' + x = 0`) or
   as the right-hand side: reduced with `v = x'` to the planar system `x' = v, v' = F(t, x, v)` and analyzed as one; the phase plane is (x, x').
+- **Time-series view** for planar systems and second-order equations: the kept curves' `x(t)`, `y(t)`
+  (for a second-order equation `x(t)`, with an optional `x'(t)` overlay) against t, with a legend, its
+  own t range (`tmin` / `tmax` in the link) and the query hits marked on the curves. A non-autonomous
+  equation opens on it, an autonomous one on the phase plane (`view=phase|time` in the link). Equal
+  scale is off there, with a persistent note; the curves are the same kept curves as the phase plane.
 - **Equilibria with honest classification**: Jacobian, eigenvalues, trace/determinant class, and a
   caveat wherever the linearization cannot decide (purely imaginary eigenvalues are "center or weak
   spiral", never "center"; a near-zero determinant is "non-hyperbolic"; a repeated root decided within
