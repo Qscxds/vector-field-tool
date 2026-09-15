@@ -1,7 +1,7 @@
 # PQR 轮总结（2026-09-15）
 
-**做到哪**：P0 勘察、P1 教授两点、P2 同类漏洞普查全部完成并实测；Q 时间序列、R 运维进行中（本文件随段落推进更新）。
-**最后一个良好 tag**：`p2-audit-done`（P1 单独的 tag 是 `p1-secondorder-done`）。
+**做到哪**：P0 勘察、P1 教授两点、P2 同类漏洞普查、Q 时间序列视图全部完成并实测；R 运维进行中（本文件随段落推进更新）。
+**最后一个良好 tag**：`q-timeseries-done`（之前的：`p1-secondorder-done`、`p2-audit-done`）。
 **我需要你手动做的**：`git push origin main --tags`（Vercel 自动部署）→ `npm run smoke -- https://tools.studycase.net/mcp` → 在 Claude 里**断开并重新连接**连接器（widget `o-1` → `p-1`；Codex 的 `o-2` 从未部署，直接跳过）。
 
 > **P1 完成，可以部署回复教授了。** 部署后教授看到的：类型叫「二阶方程 x'' = F(t, x, x')」，右端可含 t（`x'' = -x + cos(t)` 直接可用），范围框是 `x' min / x' max`，纵轴标 `x'`，平衡点写 `(x, x') = (0, 0)`，输入 `x'' = y` 得到「y 在这里没有含义」的提示。
@@ -75,6 +75,28 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 | 浏览器 · 网页 | 微分形式圆族预设（en）：单色曲线、「Solution curve (t₀, y₀)」「Clear solution curves」「Last solution curve: one side: followed for the whole requested span along the curve…」；一阶 y' = y²（zh）：「添加解曲线 / 清除解曲线 / 最近一条解曲线」；帮助页（zh）记号一节的四条 + 术语 + 等比段落可见 |
 | MCP | 单元测试覆盖：axes、显式一阶时钟、tMin/tMax、描述规则、微分形式查询摘要、二阶奇点命名、非自治 t₀ |
 
-## 4. 验证清单（按「最快发现问题」排序）
+## 4. Q：时间序列视图
+
+| 要求 | 做了什么 |
+|---|---|
+| Q.1 时间序列视图 | 平面系统与二阶方程新增「视图：相平面 / 时间序列」切换：横轴 t，纵轴是解的值；二阶画 x(t)，勾选「同时画 x'(t)」叠加，平面画 x(t)、y(t)，图例在左上；「t 起 / t 止」定横轴范围（默认 0..20），纵轴取输入范围；默认自治 → 相平面、非自治 → 时间序列；`view` 与 `tmin/tmax` 进链接；等比自动解除并常驻说明；多条曲线复用同一个 store（初值添加、清除、撤销、链接 traj 全部照常）；PNG 导出画同一张图，页脚写 `t ∈ […], x, x' ∈ […]`；一阶模式不提供切换 |
+| Q.2 查询标记 | 查询命中在每条所画分量上标成 (t, 值) 的菱形，颜色同分量 |
+| Q.3 共振响应曲线 | **未做**（新数值扫描，触及内核冻结）→ open-questions #7 |
+| 帮助/README/CLAUDE.md | 控件一节加「视图」条目，记号一节加「时间序列视图」段落；README 加一条；CLAUDE.md 模块图加 `lib/time-series.ts` 与 url-state 的 view/timeRange |
+| 不做 | widget 无时间序列（工具结果不带 times）→ open-questions #8；「同时画 x'(t)」不进 URL → #9；曲线跨度固定 t₀ ± 50，超出常驻说明 → #10 |
+
+提交：``f766bba`（代码）、`6e1741e`（帮助/README/CLAUDE.md）`（代码）+ docs 提交。决策细节在 `docs/PQR-decisions.md` §4。
+
+### Q 验证
+
+| 检查 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | 0 错误 |
+| `npm test` | 40 个文件，953 个测试 = 951 通过 + 2 既有预期失败（P2 时 941；新增 12 个推导测试：time-series 8、url-state 3、export-footer 1） |
+| `npm run build` | 通过（`BASE_URL=http://localhost:3510`） |
+| 浏览器 · 网页 | 拍频预设（en，`traj=0,0`）：打开即时间序列，x(t) 的拍频包络清晰；切「相平面」URL 变 `view=phase`，切回 `view=time`；勾「同时画 x'(t)」出现橙色曲线与图例；「t 止」改 60 → URL `tmax=60`、出现「曲线只算到 t ∈ [-50, 50]」说明；填 `abc` → 红字「t 范围无效…仍用上一个有效范围」；等比复选框置灰未勾选、灰色常驻说明；查询 t = 5 → 结果行 `t = 5.000000, x = -0.768759, x' = 0.708666` 且曲线上出现菱形标记。Van der Pol 平面系统（zh，`view=time&traj=0.1,0;3,3`）：两条曲线各画 x(t)、y(t)，图例 x(t)/y(t)，「t ∈ [0, 20]，x, y ∈ [-4, 4]（时间序列）」，平衡点列表照常。帮助页（zh）：控件「视图」条目与记号「时间序列视图」段落可见 |
+| widget / MCP | 未改（`p-1`）；`lib/scene.ts` 只加了可选字段 `times` |
+
+## 5. 验证清单（按「最快发现问题」排序）
 
 （全部段落结束后给出，每步注明失败回滚到哪个 tag。）
