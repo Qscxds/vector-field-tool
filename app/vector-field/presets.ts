@@ -165,16 +165,16 @@ export const PRESETS: Preset[] = [
     id: "damped2", group: "systems", mode: "second", name: { zh: "阻尼振子（二阶方程）", en: "Damped oscillator (second order)" },
     expressions: { eq: "x'' + 0.5*x' + x = 0" }, box: sq(3), starts: [{ x: 2, y: 0 }],
     note: {
-      zh: "x'' + 0.5x' + x = 0：令 y = x' 得 x' = y，y' = −x − 0.5y，与「阻尼振子（系统）」是同一个系统；原点是稳定螺旋点。",
-      en: "x'' + 0.5x' + x = 0: with y = x' it is x' = y, y' = −x − 0.5y, the same system as 'Damped oscillator (system)'; the origin is a stable spiral.",
+      zh: "x'' + 0.5x' + x = 0：令 v = x' 得 x' = v，v' = −x − 0.5v，与「阻尼振子（系统）」是同一个系统；平衡点 (x, x') = (0, 0)（物体静止）是稳定螺旋点。",
+      en: "x'' + 0.5x' + x = 0: with v = x' it is x' = v, v' = −x − 0.5v, the same system as 'Damped oscillator (system)'; the equilibrium (x, x') = (0, 0) (the body at rest) is a stable spiral.",
     },
   },
   {
     id: "pendulum", group: "systems", mode: "second", name: { zh: "单摆 x'' = −sin x", en: "Pendulum x'' = −sin x" },
     expressions: { eq: "x'' = -sin(x)" }, box: { xMin: -7, xMax: 7, yMin: -3, yMax: 3 }, starts: [{ x: 0, y: 1 }, { x: 0, y: 2.5 }],
     note: {
-      zh: "x'' = −sin x：令 y = x' 得 x' = y，y' = −sin x；x = 2kπ 是中心或弱螺旋（线性化分不清），x = (2k+1)π 是鞍点；能量 y²/2 − cos x 守恒，过 (0, ±2) 的分界线把振动（内）与旋转（外）分开。",
-      en: "x'' = −sin x: with y = x', x' = y, y' = −sin x; x = 2kπ are centers-or-weak-spirals (linearization cannot tell), x = (2k+1)π are saddles; the energy y²/2 − cos x is conserved, and the separatrix through (0, ±2) divides libration (inside) from rotation (outside).",
+      zh: "x'' = −sin x：令 v = x' 得 x' = v，v' = −sin x；(x, x') = (2kπ, 0) 是中心或弱螺旋（线性化分不清），(x, x') = ((2k+1)π, 0) 是鞍点；能量 x'²/2 − cos x 守恒，过 (x, x') = (0, ±2) 的分界线把振动（内）与旋转（外）分开。",
+      en: "x'' = −sin x: with v = x', x' = v, v' = −sin x; (x, x') = (2kπ, 0) are centers-or-weak-spirals (linearization cannot tell), (x, x') = ((2k+1)π, 0) are saddles; the energy x'²/2 − cos x is conserved, and the separatrix through (x, x') = (0, ±2) divides libration (inside) from rotation (outside).",
     },
   },
   {

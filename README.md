@@ -29,8 +29,8 @@ parameters and results to explanations. The site is English by default; Chinese 
   estimate and is marked on the canvas. A target that is never reached says so, with where and why
   each direction stopped (left the box, blew up, span ended); a periodic-looking solution says more
   crossings may exist beyond the integrated span.
-- **Second-order equations** `x'' = F(x, x')`, entered as a full equation (`x'' + 0.5*x' + x = 0`) or
-  as the right-hand side: reduced with `y = x'` to a planar system and analyzed as one.
+- **Second-order equations** `x'' = F(t, x, x')` (t is the independent variable), entered as a full equation (`x'' + 0.5*x' + x = 0`) or
+  as the right-hand side: reduced with `v = x'` to the planar system `x' = v, v' = F(t, x, v)` and analyzed as one; the phase plane is (x, x').
 - **Equilibria with honest classification**: Jacobian, eigenvalues, trace/determinant class, and a
   caveat wherever the linearization cannot decide (purely imaginary eigenvalues are "center or weak
   spiral", never "center"; a near-zero determinant is "non-hyperbolic"; a repeated root decided within

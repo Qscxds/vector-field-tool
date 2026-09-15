@@ -153,7 +153,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       can: [
         "画一阶方程 dy/dt = g(t, y) 或 M dt + N dy = 0 的斜率场，标出常数解并判断其稳定性。",
         "画平面系统 x' = f(x, y)、y' = g(x, y) 的相图，找出平衡点并按线性化分类。",
-        "把二阶方程 x'' = F(x, x') 化为系统来画相图。",
+        "把二阶方程 x'' = F(t, x, x') 化为系统来画相平面（横轴 x，纵轴 x'）。",
         "用数值探测判断一阶方程与哪些教材类型（可分离、线性、恰当、Bernoulli、齐次……）一致，并给出偏差。",
         "悬停预览、点击固定通过任意一点的数值解曲线；滚轮缩放、拖动平移。",
         "每张图都有一个可分享的链接，也可以嵌入到课程网站里。",
@@ -175,7 +175,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         formHeading: "左侧表单",
         form: [
           "预设：按章节分组的例子；选中后方程、范围和固定的轨线一起载入，预设的说明显示成一行，点旁边的 ⓘ 看全文。",
-          "类型：二维系统 x' = f, y' = g；一阶方程 dy/dt = g(t, y)；一阶方程 M dt + N dy = 0；二阶方程 x'' = F(x, x')。切换类型会换成对应的输入框。",
+          "类型：二维系统 x' = f, y' = g；一阶方程 dy/dt = g(t, y)；一阶方程 M dt + N dy = 0；二阶方程 x'' = F(t, x, x')。切换类型会换成对应的输入框。",
           "范围：横轴（x 或 t）和 y 的输入范围。平衡点、常数解和方程类型都在这个范围内扫描。",
           "网格密度：每个方向上箭头的个数。",
           "箭头：「等长」把每个箭头画成一样长、用颜色表示模长（方向一目了然，快慢看颜色）；「按模长」让箭头长度随模长变化（快的地方箭头长，慢的地方几乎看不见）。",
@@ -207,7 +207,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         items: [
           "一阶方程写成 dy/dt = g(t, y)，或者微分形式 M(t, y) dt + N(t, y) dy = 0；t 是自变量，横轴是 t，纵轴是 y。",
           "平面系统写成 x' = f(x, y)，y' = g(x, y)；横轴是 x，纵轴是 y。",
-          "二阶方程写成 x'' = F(x, x')，或者直接写整条方程，例如 x'' + 0.5*x' + x = 0；工具令 y = x' 把它化为系统，横轴是 x（位置），纵轴是 y = x'（速度）。",
+          "二阶方程写成 x'' = F(t, x, x')，或者直接写整条方程，例如 x'' + 0.5*x' + x = 0；t 是自变量，未知函数是 x(t)。工具令 v = x' 把它化为系统 x' = v，v' = F(t, x, v)，横轴是 x（位置），纵轴是 x'（速度）；这个问题里没有 y。",
           "输入的是等号右边的表达式，不要连同「dy/dt =」或「x' =」一起输入。",
           "乘法必须写出来：写 t*y，不能写 ty；幂用 ^，例如 y^2。",
         ],
@@ -330,7 +330,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       can: [
         "Draw the slope field of a first-order equation dy/dt = g(t, y) or M dt + N dy = 0, mark the constant solutions and judge their stability.",
         "Draw the phase portrait of a planar system x' = f(x, y), y' = g(x, y), find the equilibria and classify them by linearization.",
-        "Reduce a second-order equation x'' = F(x, x') to a system and draw its phase portrait.",
+        "Reduce a second-order equation x'' = F(t, x, x') to a system and draw its phase plane (x horizontally, x' vertically).",
         "Probe numerically which textbook types (separable, linear, exact, Bernoulli, homogeneous, ...) a first-order equation is consistent with, and report the deviation.",
         "Hover to preview and click to keep the numerical solution curve through any point; wheel to zoom, drag to pan.",
         "Every picture has a shareable link and can be embedded in a course website.",
@@ -352,7 +352,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         formHeading: "The form on the left",
         form: [
           "Presets: worked examples grouped by chapter. Choosing one loads the equation, the range and any fixed trajectories; the preset's note is shown on one line, and the ⓘ next to it opens the full text.",
-          "Type: a planar system x' = f, y' = g; a first-order equation dy/dt = g(t, y); a first-order equation M dt + N dy = 0; or a second-order equation x'' = F(x, x'). Switching the type switches the input fields.",
+          "Type: a planar system x' = f, y' = g; a first-order equation dy/dt = g(t, y); a first-order equation M dt + N dy = 0; or a second-order equation x'' = F(t, x, x'). Switching the type switches the input fields.",
           "Range: the entered range of the horizontal coordinate (x or t) and of y. Equilibria, constant solutions and equation types are scanned inside it.",
           "Grid density: the number of arrows in each direction.",
           "Arrows: Uniform draws every arrow at the same length and encodes the magnitude in the color (the direction is easy to read, the speed is in the color); Scaled makes the length follow the magnitude (long where the field is fast, almost invisible where it is slow).",
@@ -384,7 +384,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         items: [
           "A first-order equation is written dy/dt = g(t, y), or in differential form M(t, y) dt + N(t, y) dy = 0; t is the independent variable, the horizontal axis is t and the vertical axis is y.",
           "A planar system is written x' = f(x, y), y' = g(x, y); the horizontal axis is x and the vertical axis is y.",
-          "A second-order equation is written x'' = F(x, x'), or as a full equation such as x'' + 0.5*x' + x = 0; the tool sets y = x' and reduces it to a system, with x (position) on the horizontal axis and y = x' (velocity) on the vertical axis.",
+          "A second-order equation is written x'' = F(t, x, x'), or as a full equation such as x'' + 0.5*x' + x = 0; t is the independent variable and the unknown is x(t). The tool sets v = x' and reduces it to the system x' = v, v' = F(t, x, v), with x (position) on the horizontal axis and x' (velocity) on the vertical axis; there is no y in this problem.",
           "Enter only the right-hand side of the equation, never the \"dy/dt =\" or \"x' =\" part.",
           "Multiplication must be written out: t*y, not ty; powers use ^, for example y^2.",
         ],

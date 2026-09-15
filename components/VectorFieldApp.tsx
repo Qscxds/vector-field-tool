@@ -270,6 +270,8 @@ const SECOND_ORDER_SENTENCES: Partial<Record<NonNullable<ParseError["code"]>, ke
   second_order_undefined_at_samples: "secondOrderUndefinedAtSamples",
   second_order_unknown_symbol: "secondOrderUnknownSymbol",
   second_order_implicit_product: "secondOrderImplicitProduct",
+  // The professor's case (round P): y has no meaning in x'' = F(t, x, x').
+  second_order_y_symbol: "secondOrderYSymbol",
 };
 
 function compile(form: Form, L: LabelTable): Compiled {
