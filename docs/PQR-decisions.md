@@ -59,3 +59,56 @@ Codex 的改动以一个 `[P0]` 提交原样固化（作者标注为 Codex 的�
 | 3.8 | 网页端把 `compiled.secondOrder` 传进 hook（`Scene.secondOrder`） | 之前网页 Scene 没有这个字段，PNG 页脚在二阶模式下打印的是内核的 `x' = y, y' = …`（P2 类漏洞，顺手修） |
 | 3.9 | widget 版本直接 `o-1 → p-1`，跳过 Codex 的 `o-2` | o-2 从未部署 |
 | 3.10 | 非自治二阶的网页说明（`timeDependentNoteSecond`）明写「平衡点（即常数解 x ≡ c，物体静止）」 | P2.3 要求把相平面平衡点与常数解的对应说出来，二阶文案先带上 |
+
+（§2 的普查表见下文「2. P2 普查表」——追加在本文件末尾，因为 P0/P1 已先写入。）
+
+## 2. P2 普查表
+
+原则（已写入 CLAUDE.md 架构规则第 9 条）：**学生看到的每一个符号、坐标、数值、术语，都必须是他自己写下的那个问题里存在的东西。归约是实现细节，不是词汇表。**
+
+方法：我先自己核查 P2.1（最可疑），同时派了 6 个只读扫描 agent（按一阶/微分形式/平面系统/二阶/内部枚举名/structuredContent 六个视角）找清单之外的同类漏洞，结果由我逐条读代码核实后取舍；没有跑对抗式复核（任务书要求）。扫描共报 76 条，采纳 60 条，拒绝 3 条（见表末），合并/已修 13 条。
+
+| # | 位置 | 判定 | 漏在哪 / 怎么修 |
+|---|---|---|---|
+| P2.1 | 微分形式：`query_solution` 命中行 `t = … (±tError)` | **有漏 → 已修** | `tError` 是内核参数 s 的不确定度（dt = N ds，与 t 的不确定度差 |N| 倍）。一阶命中是图上一点 (t, y)，两坐标都只到位置误差：命中行改为 `t = …, y = … (±error)`，不再打印参数不确定度（`9cf6839`…`2c5bdde`） |
+| P2.1 | 微分形式：`query_solution` 两条 leg「Forward (t increasing): reached t = {tEnd}」 | **有漏 → 已修** | tEnd 是 s，方向词也不成立。改为「一侧 / 另一侧：终点 (t, y) = …，状态」，不报方向、不报 t；显式一阶改报终点的 t 坐标。推导测试：`y dt + 2 dy = 0` 从 (0, 1) 出发，y(2) = e⁻¹，内核参数 s = 1、跨度 4 到 t = ±8，摘要里不得出现 1、4、−4 作为 t |
+| P2.1 | 微分形式：状态句「integrated to the requested time」「stopped before the requested time」「reached an equilibrium」「diverges in finite time」 | **有漏 → 已修** | 四句改为微分形式专用：沿曲线走完指定跨度（没有时间）、在跨度用完前停止、趋近 M = N = 0 的点（方向场奇点，不是平衡点）、曲线跑向无穷远。两个外壳和工具共用 `statusSentence(…, picture)` |
+| P2.1 | 微分形式：`possibly_more_beyond_span`「in one direction」、`not_reached_in_span`「neither direction」「时间范围」 | **有漏 → 已修** | 微分形式变体：「起点的同一侧」「沿曲线走过的跨度」 |
+| P2.1 | 微分形式：`tSpan` 描述「Time span」 | **有漏 → 已修** | 描述明写 mode diff 的 tSpan 是曲线自身参数的跨度，不是 t 区间 |
+| P2.1 | 微分形式：画布把固定曲线画成蓝/橙两色（正/反向），帮助页说蓝 = t 增大 | **有漏 → 已修** | 无向形式改单色；帮助页标记说明加一句 |
+| P2.1 | 微分形式：structuredContent 的 `hits[].t`、`error.t`、`tEnd` 是 s | **有漏 → 已修（标注法）** | 不改 Vec2 字段名；每个 Scene 加 `axes: { x, y, t }`（微分形式 `t: "parameter"`），描述里的 STRUCTURED_CONTENT_RULE 要求 Claude 只转述文本、按 axes 读名字、不引用 `system`。显式一阶改为把内核时钟起点设为学生的 t₀，使 `hits[].t` 恒等于 t 坐标（推导测试：t₀ = 1，dy/dt = y，t = 3 处 hit.t = hit.x = 3） |
+| P2.1 | 微分形式：常数解的「稳定」措辞 | **无漏，加说明** | 内核按 dy/dt = −M/N 的符号（t 增大方向）判定，数学上成立；加一句「微分形式没有方向：趋向/离开按 t 增大读，来自两侧 dy/dt = −M/N 的符号」，工具与两个外壳同出 |
+| P2.1 | 微分形式：查询摘要没说这种形式无方向 | **有漏 → 已修** | 表头后加既有的 `differentialUndirected` 句 |
+| P2.2 | 一阶：`ty` 解析错误提示「Did you mean x*y」 | **无漏** | `unknownSymbolMessage` 早已按模式用 `t*y`；`describeForbiddenNode` 也说 "t and y only" |
+| P2.2 | 一阶：URL 参数 | **无漏** | I 轮起 `tmin/tmax` 已是一阶模式的名字（解码兼容 xmin）；本轮补：一阶链接里的 `t0` 报 unusedInMode、编码时不再输出 |
+| P2.2 | 一阶：PNG 页脚 / OG 图 / 页面标题 / 范围说明行 | **无漏** | 页脚经 `coordinateNames` 用 t；范围行 `{hv}` = t；OG/标题为静态站名 |
+| P2.2 | 一阶：MCP 参数 `xMin/xMax` 表示 t 范围 | **有漏 → 已修** | `analyze_first_order` 与 `query_solution`（first/diff）接受并文档化 `tMin/tMax`，旧的 `xMin/xMax` 静默读取；错误信息按给出的名字报「tMin (5) must be smaller than tMax (0)」 |
+| P2.2 | 一阶：`query_solution` 描述把平面系统的 EXPRESSION_RULES（"state variables are x and y"）套给一阶 | **有漏 → 已修** | 描述按模式分段；`NEVER_COMPUTE` 一阶版不再说 eigenvalues/trajectories |
+| P2.2 | 一阶：传给 AI 的字段名 `x` 装 t | **有漏 → 已修（标注法）** | 同上 `axes` + STRUCTURED_CONTENT_RULE；`system.f = "1"` 明确禁止引用 |
+| P2.2 | 一阶：显式形式的 `blew_up`「the position diverges」 | **有漏 → 已修** | 显式一阶变体「y 在有限的 t 处发散」 |
+| P2.3 | 平面系统：平衡点 | **无漏** | equilibrium / 平衡点 + 分类 |
+| P2.3 | 一阶：常数解 | **无漏** | constant solution / 常数解 y = c，稳定性为两侧解走向 |
+| P2.3 | 微分形式：方向场奇点 | **无漏** | `singularHeading`「方向场奇点（M = N = 0）」，无稳定性词；查询 leg 的 `reached_equilibrium` 现在也说「M = N = 0 的点」 |
+| P2.3 | 二阶：平衡点 ↔ 常数解 x ≡ c | **有漏 → 已修** | 新句 `equilibriaSecondNote`「相平面里的平衡点都在横轴上 (x, x') = (c, 0)：每一个就是常数解 x ≡ c，物体停在 x = c 不动」进工具摘要、网页平衡点标题下、widget；非自治说明与预设注释也带这层对应 |
+| P2.3 | 二阶：`stoppedNonAutonomous`「非自治系统」、`reached_equilibrium`「speed」、`blew_up`「position」 | **有漏 → 已修** | 二阶变体：说方程、说 x 和 x' |
+| P2.3 | 二阶：`timeDependent` 摘要「t appears in F」（整条方程输入时学生没写 F） | **有漏 → 已修** | 「方程含 t（上面 v' = … 的右端含 t）」 |
+| P2.4 | 等比说明：一句套所有模式 | **有漏 → 已修** | 三个变体：一阶 = 斜率 dy/dt；平面 = 箭头/轨线的真实方向（沿轨线斜率 dy/dx，不是时间变化率）；二阶 = dx'/dx。警告也分两版。时间序列在 Q 段自动解除 |
+| P2.5 | 轨线 vs 解曲线 | **有漏 → 已修** | 一阶图的「最近一条轨线 / 清除轨线 / 轨线（t₀, y₀）/ 点击删除这条轨线 / 添加解曲线」改为「解曲线」系列，相平面保留「轨线」并把「添加解曲线」改成「添加轨线」；共用的交互提示改成中性的「曲线」；平面非自治说明里的「解曲线」改「轨线」；帮助页与 README 同步 |
+| P2.6 | 内部机制名 | **有漏 → 已修** | `refineCapped`「变号搜索…单元数上限…f 和 g」→「平衡点搜索达到它能细分的区域数上限」；`rtol 1e-6` → 「每步相对误差约 1e-6」；`max_steps`「步数或步长耗尽」→ 说明数值方法在这里需要的步数超过上限（解变化快）；`xd/xdd 是内部名称` → 「不是这个问题里的符号」；「一个固定方块」→「原点附近几个固定点」；二阶降阶自检失败的 "Internal check failed: … -E0/a" → 新错误码 + 双语句；`trajectoryLine` 的「共 {steps} 步」删掉；摘要里「请用参数 t 指定快照时刻」「图像已交给 widget 绘制」删掉/中性化；widget 状态栏 "connected to host / MCP host / rendered by Claude"（中文表里竟是英文）改为学生话；`stability.varies` 英文「sign pattern」改为学生话；唯一性 borderline「near the threshold」现在打印两个冻结常数 0.25 / 0.1；`detect-form` caveat 里对 Claude 说的「向学生转述时请说…」删掉（描述里已有）；`queryStoppedBefore` 的「请加大 tSpan」拆成工具专用附加句（网页没有 tSpan）；`(±0)` 时间括号在时间目标时不再打印；链接过长时的 "query (…)" 改成整句 |
+| P2.6 | `region_of_equilibria` / `possible_continuum` / `arc_length` / `domain_edge` / `singular` / `stopped_before_target` / `hit_limit` / `left_box` 等键 | **无漏** | 全部有双语整句，无键名直译；`leftFarBox` 的「20 倍」是解释过的数字，保留（扫描建议删，我拒绝：它告诉学生曲线停在哪） |
+| P2.7 | 初值命名 | **无漏 / 已修** | 一阶 t₀, y₀；平面 x₀, y₀（`t0` 别名已在 P1 删）；二阶 x(t₀), x'(t₀)，自治时图例写「初值（t₀ = 0）」以免 t₀ 没定义；微分形式初值是曲线上一点 (t₀, y₀)，标签正确 |
+| P2.8 | 预设 | **有漏 → 已修** | 新组「二阶方程」：x'' = −x、阻尼振子、单摆、Van der Pol（二阶写法）；「平面系统」组保留同名系统；非自治组加拍频 x'' = −x + 0.5cos(1.2t)（注释附手推解 2.27 sin(0.1t) sin(1.1t)，用积分核对）；两个旧二阶预设注释里的「令 y = x'」改为 v |
+| P2.9 | 帮助页记号一节 | **有漏 → 已修** | 整节重写为四种模式各一条（变量、自变量、坐标轴、画的是什么、用哪个词、非自治怎么办、微分形式为何不报 t），加「术语按模式区分」「等比在各模式下的含义」两段；控件一节的范围/等比/快照/清除说明改对；标记说明加微分形式单色 |
+| 扫描 | 平面 `tracedBoth` 硬编码 "starts at t = 0"，与 t₀ ≠ 0 的表头矛盾 | **有漏 → 已修** | 加 `{t0}` 占位；query_solution 填起始时刻，trace_trajectory 填 0；二阶另有「非自治方程」版 |
+| 扫描 | 网页查询表头在非自治图上不说起始时刻 | **有漏 → 已修** | `queryHeaderAt`「从 t = {t0} 时刻经过 {start} 的解」 |
+| 扫描 | `queryHeaderSystem`「(at t = 0)」括号附注 | **有漏 → 已修** | 写成初值「满足 (x({t0}), y({t0})) = {start}」 |
+| 扫描 | `featuresBoxDetail` 对一阶图说「平衡点」、对平面图说「常数解和方程类型」 | **有漏 → 已修** | 三个变体 |
+| 扫描 | widget 平面场景的方程行硬编码英文逗号 | **有漏 → 已修** | 统一走 `sceneEquationText` |
+| 扫描 | 二阶奇点行 `singularPoint` 打印裸坐标 | **有漏 → 已修** | `equilibriaNotices` 读 `scene.secondOrder` 用 `(x, x') = …` |
+| 扫描 | `caveat.domainEdge` 例子「x' = sqrt(x)」在二阶图上读成另一条方程 | **有漏 → 已修** | 例子改中性「右端含 sqrt(x) 时的 x = 0 处」 |
+| 扫描 | `trace_trajectory` 没有二阶/一阶模式，Claude 可能手工降阶后调用它 | **有漏 → 已修（描述）** | 描述明写 PLANAR SYSTEMS ONLY，方程一律走 `query_solution`（远目标即画整条曲线）；是否给 trace_trajectory 加 mode second 记入 open-questions |
+| 扫描 | NEVER_COMPUTE 让 Claude 读 "caveat" 字段（可能念出键名 repeatedRoot） | **有漏 → 已修** | 改为读文本里「Note:」引出的那句 |
+| 扫描 | 唯一性 `bounded_at_tested_scales` 只在 JSON 里，Claude 可能说「唯一性成立」 | **有漏 → 已修** | STRUCTURED_CONTENT_RULE 明写它是测试尺度上的测量，不是证明 |
+| 扫描 | `leftFarBox`「20 倍」 | **拒绝** | 解释过的数字，对学生有用（曲线停在哪） |
+| 扫描 | 建议把一阶场景的 `hits[].t`/`tEnd` 从 Scene 删掉 | **拒绝（改用标注）** | 改字段形状会波及 widget 与测试；`axes` + 描述规则 + 显式一阶时钟对齐达到同样效果，微分形式的 s 明确标为 parameter |
+| 扫描 | 建议一阶模式所有状态句都改写（completed/singular…） | **拒绝** | 显式一阶的时钟就是 t，「integrated to the requested time」成立；只改了 blew_up 的「position」 |

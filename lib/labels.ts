@@ -336,7 +336,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       exprError: "表达式「{expr}」有问题：{message}",
       featuresBox: "以下结果按 {hv} ∈ [{xMin}, {xMax}]，{vv} ∈ [{yMin}, {yMax}] 计算",
       featuresBoxDetail: "复位时这是输入范围，缩放或平移后是可见范围。平衡点只在这个范围内扫描；结论依赖于所考察的范围。",
-      leftFarBox: "轨线跑到输入范围的 20 倍以外后停止",
+      leftFarBox: "跑到输入范围的 20 倍以外后停止",
       tMin: "t 最小",
       tMax: "t 最大",
       syntaxHintFirstOrder: "语法：变量只有 t（自变量）和 y，写 x 会被拒绝；只输入方程右端，不要写「dy/dt =」。乘号要写出来（t*y，不是 ty），幂用 ^，函数 sin cos exp log sqrt abs 等，常数 pi、e。",

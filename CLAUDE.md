@@ -98,7 +98,14 @@ then-current status; use the current section for superseding decisions. Widget v
   `constantSolutionFolded`, `timeDependentFolded`, `formFolded`, `formatEigenvalues` for the
   "±0.9682i" shorthand); folding is display only, the Scene and the tool summaries keep every word.
 - `lib/labels-query.ts` the query wording shared by the tool summary and the widget
-  (`queryTargetText`, `queryLines` at 6 fixed digits, `queryNoteText` for the note keys).
+  (`queryTargetText` (kind y reads x' on a second-order scene), `queryLines` at 6 fixed digits
+  (a first-order hit is a point (t, y) with no parameter uncertainty; an exact time gets no
+  bracket), `queryNoteText` for the note keys, differential-form aware).
+- `lib/coordinate-names.ts` (round P) the student-facing names of a picture's coordinates from a
+  Scene or a mode: (t, y), (x, y) or (x, x'); the canvas axis names, the range templates' `{hv}` /
+  `{vv}`, the PNG footer and both shells read them here. `Scene.axes` (filled by every tool and by
+  the hook) tells a reader of structuredContent the same thing, plus whether the kernel's t /
+  tEnd fields are the student's t or a differential form's own parameter.
 - `lib/interactive.ts` pure helpers for the interactive shells: `computeFeatures` for a box,
   `featuresBoxFor` (the features-box rule below), `tracePreview` (hover: fixed ON-SCREEN length,
   2 canvas diagonals, steps only a safety cap) and `traceFixed` (click: stops at 20x the original
@@ -150,8 +157,9 @@ then-current status; use the current section for superseding decisions. Widget v
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
   resource + ping + `WIDGET_VERSION` (p-1 since round P); `app/mcp/tools.ts` the six analysis tools
-  (`locale` is optional and defaults to en since round M; analyze_first_order keeps the parameter
-  names xMin/xMax but they are the t range, and its expressions use t and y only; `query_solution`
+  (`locale` is optional and defaults to en since round M; analyze_first_order's t range is
+  tMin/tMax since round P2 (xMin/xMax still read as the same), and its expressions use t and y
+  only; analyze_second_order's x' range is xpMin/xpMax; `query_solution`
   since round N: mode first / diff / system / second, t0 for first-order pictures; for planar ones x0,
   y0 and t0 = the START TIME (default 0, no alias since round P); for second x0 = x(t0), xp0 = x'(t0),
   xpMin/xpMax for the x' range, `target { kind: "t" | "x" | "y", value }` (kind y is the velocity x' in
@@ -228,6 +236,24 @@ then-current status; use the current section for superseding decisions. Widget v
    fixed by loosening a tolerance; record it in open-questions and mark it instead.
 8. Every user-visible string lives in `lib/labels.ts` (or `detect-form.ts` / `NO_FORM_NOTE` for the
    form evidence) in BOTH languages. No hard-coded Chinese or English in tools, pages or components.
+9. **The student's vocabulary only (round P, the professor's rule).** Every symbol, coordinate,
+   number and term a student sees must exist in the problem the student wrote down. The reduction
+   of every mode to the kernel's planar system x' = f(x, y), y' = g(x, y) is an implementation
+   detail, not a vocabulary: on a first-order picture the horizontal coordinate is t (never x) and
+   the kernel's integration parameter is never printed as t (on a differential form it is not t at
+   all: report end points, not "reached t = …"); on a second-order picture the second coordinate
+   is x' (never y), the reduction is shown as "let v = x'", and an equilibrium (c, 0) is the
+   constant solution x ≡ c; a first-order picture shows "solution curves" and a phase plane
+   "trajectories"; "equilibrium point" / "constant solution" / "singular point of the direction
+   field" are three different things; no kernel option, threshold, enum key or mechanism name
+   (rtol, tSpan, step budget, cell cap, xd, s, …) reaches a student, and advice for the model
+   (tool parameters, relay instructions) lives in the tool descriptions or tool-only sentences,
+   never in a shared label. The names of the kernel's fields in structuredContent are declared in
+   `Scene.axes`; the descriptions tell the model to relay the text summary only. Mode-dependent
+   words go through `lib/coordinate-names.ts`, `pictureModeOf` / `curveWords` /
+   `equalScaleTexts` / `featuresBoxDetail` in `lib/labels.ts` and `statusPictureOf` /
+   `statusSentence` in `lib/labels-trajectory.ts`; a new surface must use them, and
+   `lib/labels.test.ts` keeps a no-lone-y test over every second-order key.
 
 ## Kernel freeze (decided 2026-09-09, round M)
 

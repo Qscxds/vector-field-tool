@@ -1,7 +1,7 @@
 # PQR 轮总结（2026-09-15）
 
-**做到哪**：P0 勘察、P1 教授两点全部完成并实测；P2 普查、Q 时间序列、R 运维进行中（本文件随段落推进更新）。
-**最后一个良好 tag**：`p1-secondorder-done`。
+**做到哪**：P0 勘察、P1 教授两点、P2 同类漏洞普查全部完成并实测；Q 时间序列、R 运维进行中（本文件随段落推进更新）。
+**最后一个良好 tag**：`p2-audit-done`（P1 单独的 tag 是 `p1-secondorder-done`）。
 **我需要你手动做的**：`git push origin main --tags`（Vercel 自动部署）→ `npm run smoke -- https://tools.studycase.net/mcp` → 在 Claude 里**断开并重新连接**连接器（widget `o-1` → `p-1`；Codex 的 `o-2` 从未部署，直接跳过）。
 
 > **P1 完成，可以部署回复教授了。** 部署后教授看到的：类型叫「二阶方程 x'' = F(t, x, x')」，右端可含 t（`x'' = -x + cos(t)` 直接可用），范围框是 `x' min / x' max`，纵轴标 `x'`，平衡点写 `(x, x') = (0, 0)`，输入 `x'' = y` 得到「y 在这里没有含义」的提示。
@@ -43,9 +43,37 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 | 浏览器 · widget（mock host，生产构建） | `second_order_damped`（en）、`second_order_forced`（zh，xpMin/xpMax、t = 1 快照）、`query_second`（en，命中 `(x, x') = (±0.866, 0.5)`）：纵轴 `x'`，摘要无 y |
 | 帮助页 | 记号一节的二阶行已改为 F(t, x, x')（整节重写在 P2.9） |
 
-## 3. P2 普查表
+## 3. P2 普查（同类漏洞）
 
-（P2 段填写；完整表在 `docs/PQR-decisions.md` §2。）
+原则已写进 `CLAUDE.md` 架构规则第 9 条：**学生看到的每一个符号、坐标、数值、术语，都必须是他自己写下的那个问题里存在的东西。归约是实现细节，不是词汇表。**
+
+做法：我先自己核查 P2.1（微分形式的内部参数），同时派 6 个只读扫描 agent（一阶 / 微分形式 / 平面系统 / 二阶 / 内部枚举名 / structuredContent 六个视角）找清单之外的同类问题，76 条报告由我逐条读代码取舍（采纳 60，拒绝 3，其余重复/已修）；没有跑对抗式复核。完整的逐条表（有漏 / 无漏 / 已修）在 `docs/PQR-decisions.md` §2，这里是摘要：
+
+| 条目 | 结论 |
+|---|---|
+| P2.1 微分形式的「t」 | **确认是漏，已修。** 查询命中行曾打印内核参数的不确定度当作 t 的不确定度；两条 leg 曾报「Forward (t increasing): reached t = {内核参数}」；四个状态句说「时间」；画布把无向曲线画成两色。现在：命中是点 (t, y)、leg 只报「一侧/另一侧：终点 (t, y)」、状态句改为「沿曲线走完指定跨度」等、单色曲线、摘要先说这种形式无方向、tSpan 描述说明它是曲线参数的跨度。推导测试 `y dt + 2 dy = 0`：y(2) = e⁻¹，内核参数 s = 1、跨度 4 到 t = ±8，摘要里不得出现 1、4、−4 |
+| P2.2 一阶的 x 残留 | 错误提示、URL、页脚、标题本来就对；漏在 MCP 参数名（`xMin/xMax` 装 t 范围 → 加 `tMin/tMax`）、`query_solution` 描述套用平面系统的表达式规则、显式一阶 blew_up 说「position」、传给 AI 的 JSON 字段名（→ 每个 Scene 加 `axes`，描述里加 STRUCTURED_CONTENT_RULE；显式一阶的内核时钟改从学生的 t₀ 起，使 `hits[].t` 恒等于 t 坐标） |
+| P2.3 术语 | 三种模式的词本来就分开；补上二阶「相平面里的平衡点 (c, 0) 就是常数解 x ≡ c（物体静止）」（工具、网页、widget 三处），二阶状态句不再说「system / position / speed」，微分形式的常数解稳定性加一句「按 t 增大方向、来自 dy/dt = −M/N 的符号」 |
+| P2.4 等比说明 | 一句套所有模式是漏；改为三个变体（dy/dt / dy/dx 方向 / dx'/dx），警告也分版 |
+| P2.5 轨线 vs 解曲线 | 一阶图的六处「轨线」改「解曲线」，相平面保留「轨线」；共用提示改中性「曲线」；帮助页与 README 同步 |
+| P2.6 内部机制名 | 清单里的枚举键都已有整句，无漏；扫描另找到 14 处机制名/参数名/给 Claude 的话混在学生句子里（rtol、tSpan、step budget、cell cap、内部名称、固定方块、-E0/a、步数、参数 t、widget、host、sign pattern、未命名阈值、query），全部改掉 |
+| P2.7 初值命名 | 无漏（P1 已改二阶）；自治二阶的图例补「t₀ = 0」 |
+| P2.8 预设 | 新「二阶方程」组（x'' = −x、阻尼、单摆、Van der Pol）与「平面系统」组并列；非自治组加拍频（注释附手推解，积分核对） |
+| P2.9 帮助页记号 | 整节按四种模式重写，加「术语按模式区分」「等比在各模式下的含义」 |
+| 扫描额外发现 | 平面非自治的「starts at t = 0」硬编码、网页查询表头不说起始时刻、featuresBox 详情跨模式、widget 平面方程行硬编码逗号、二阶奇点裸坐标、domainEdge 例子、trace_trajectory 无二阶模式（描述引流到 query_solution）、NEVER_COMPUTE 让 Claude 念 caveat 键、唯一性 bounded 键可能被误读为证明——全部已修 |
+
+提交：`2c5bdde`（P2.1）、`8083d8d`（术语/等比/解曲线/预设）、`0fef027`（扫描批次）、`53b9491`（帮助页）+ docs 提交。
+
+### P2 验证
+
+| 检查 | 结果 |
+|---|---|
+| `npx tsc --noEmit` | 0 错误 |
+| `npm test` | 39 个文件，941 个测试 = 939 通过 + 2 既有预期失败（P1 时 926；新增 15 个推导测试） |
+| `npm run build` | 通过（生产构建，BASE_URL 本地） |
+| `npm run smoke` | 生产构建 24/24 |
+| 浏览器 · 网页 | 微分形式圆族预设（en）：单色曲线、「Solution curve (t₀, y₀)」「Clear solution curves」「Last solution curve: one side: followed for the whole requested span along the curve…」；一阶 y' = y²（zh）：「添加解曲线 / 清除解曲线 / 最近一条解曲线」；帮助页（zh）记号一节的四条 + 术语 + 等比段落可见 |
+| MCP | 单元测试覆盖：axes、显式一阶时钟、tMin/tMax、描述规则、微分形式查询摘要、二阶奇点命名、非自治 t₀ |
 
 ## 4. 验证清单（按「最快发现问题」排序）
 
