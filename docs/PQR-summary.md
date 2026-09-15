@@ -141,3 +141,104 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 10. **重连连接器 + widget（5 分钟）**：Claude 里断开并重新连接连接器 → 「use trace_trajectory on x' = y, y' = -x from (1, 0)」→ widget 出现工具画的曲线，点画布加一条 → 「Clear my curves (1)」→ 点它只清自己加的。失败 → `q-timeseries-done`（widget 回到 p-1，需再重连）。
 11. **查询精度（2 分钟）**：Claude 里「dy/dt = y, y(0) = 1, when does y reach 2?」→ t = 0.693147 (ln 2)，y = 2.000000；网页里简谐振子查询 `x = 0` 命中在 ±1e-5 内。失败 → `q-timeseries-done`（撤销 query.ts 的从起点重积分）。
 12. **`/embed`（1 分钟）**：Google Sites 里的嵌入页顶栏有「使用说明」（新标签）、底部「报告问题」；`controls=0` 时仍显示方程与结果。失败 → `q-timeseries-done`。
+
+## 7. 完整验证输出（R 段末的最终代码状态；git log 截至 docs 提交）
+
+### `npx tsc --noEmit`
+
+```
+tsc exit 0
+```
+
+### `npm test`
+
+```
+
+ Test Files  41 passed (41)
+      Tests  954 passed | 2 expected fail (956)
+   Start at  02:31:43
+   Duration  32.07s (transform 8.76s, setup 0ms, import 67.69s, tests 40.28s, environment 7ms)
+
+```
+
+### `npm run build`（尾部）
+
+```
+✓ Generating static pages using 13 workers (11/11) in 3.1s
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /embed
+├ ƒ /help
+├ ○ /icon.svg
+├ ƒ /mcp
+├ ○ /opengraph-image
+├ ○ /robots.txt
+├ ○ /sitemap.xml
+├ ƒ /vector-field
+└ ○ /widget
+
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+build exit 0
+```
+
+### `git log --oneline o-mcp-done..HEAD`
+
+```
+9ae2bfb [R] docs: decisions (cap, widget Clear, retrace, hit position, computing, CI, report), summary with the ordered verification checklist, open questions, CLAUDE.md module map
+c830845 [R] CI: GitHub Actions (typecheck, test, build on Node 24) and the README badge
+341c473 [R] web shell: computing note (deferred form), retrace on range change, cap notice, /embed Help link, Report a problem; help text
+d50c4df [R] report-issue: the prefilled GitHub issue link (pure, tested)
+6bc9a23 [R] query kernel: a coordinate hit's position from one re-integration from the start
+11798ec [R] store and hook: at most 20 kept curves (notice + hover hint), the widget's own Clear (widget p-2)
+e613abd [Q] docs: decisions (data source, span rule, default view, no widget, Q.3 skipped), summary and open questions
+6e1741e [Q] help, README, CLAUDE.md: the time-series view explained (controls entry, notation paragraph, module map)
+f766bba [Q] time-series view: x(t), y(t) / x'(t) against t for planar systems and second-order equations
+4c903a0 [P2] docs: the student's-vocabulary rule in CLAUDE.md, the audit table, summary and open questions
+53b9491 [P2] help: the notation section rewritten per mode; terms and equal scale explained; README follows
+0fef027 [P2] sweep: what Claude reads, per-picture statuses, tool-only advice, no mechanism names in copy
+8083d8d [P2] terms by picture: solution curves vs trajectories, equal scale per mode, equilibrium = constant solution, second-order presets
+2c5bdde [P2] first-order pictures: the kernel's integration parameter is never printed as t
+1ffc777 [P1] docs: PQR summary (P1 deployable), open questions, decisions section 3
+5ad4c69 [P1] copy: help, home, README and the second-order preset notes say F(t, x, x'), v = x' and (x, x'); web shell maps the y refusal
+8465001 [P1] tools: analyze_second_order and query_solution speak (t, x, x'); xpMin/xpMax, xp0, t0 = start time; widget p-1
+f20cd08 [P1] shells: x' replaces the kernel's y everywhere a second-order picture is shown
+9cf6839 [P1] second-order kernel: x'' = F(t, x, x'), v alias, y refused by name, reduction shown with v
+59365b7 [P0] Codex 2026-09-10 working-tree changes committed as found; PQR decisions section 1
+568eeaa [docs] MNO summary, decisions, open questions; README and CLAUDE.md for the M-O state
+```
+
+### `git tag`（本轮新增：p0-verified、p1-secondorder-done、p2-audit-done、q-timeseries-done、r-ops-done；r-ops-done 打在本节之后的提交上）
+
+```
+a-core-done
+b-tools-done
+c-render-done
+d-webshell-done
+e-widget-done
+f-forms-done
+g-render-done
+g-widget-done
+h1-deploy-ready
+h2-math-done
+h2-reviewed
+i-notation-done
+j-math-done
+k-website-done
+l-mcp-done
+m-english-done
+n-features-done
+night-final
+o-mcp-done
+p0-verified
+p1-secondorder-done
+p2-audit-done
+q-timeseries-done
+s-spike-done
+r-ops-done  (added after this commit)
+```
