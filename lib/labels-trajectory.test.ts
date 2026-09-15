@@ -93,18 +93,20 @@ describe("trajectoryLines for a differential-form scene (circles preset t dt + y
     expect(pair.map((t) => t.status)).toEqual(["completed", "completed"]);
     const lines = trajectoryLines(scene, pair, en);
     expect(lines).toHaveLength(1);
-    expect(lines[0]).toBe(`one side: ${en.status.completed}; other side: ${en.status.completed}`);
+    // Round P2.1: the differential form's "completed" never says "requested time" (the span is the curve's parameter).
+    expect(lines[0]).toBe(`one side: ${en.tool.completedDiff}; other side: ${en.tool.completedDiff}`);
     expect(lines[0]).not.toMatch(/t =/);
     expect(lines[0]).not.toMatch(/forward|backward/i);
     expect(lines[0]).not.toContain(en.tool.forward);
+    expect(lines[0]).not.toContain(en.status.completed);
     const [zhLine] = trajectoryLines(scene, pair, zh);
-    expect(zhLine).toBe(`一侧：${zh.status.completed}；另一侧：${zh.status.completed}`);
+    expect(zhLine).toBe(`一侧：${zh.tool.completedDiff}；另一侧：${zh.tool.completedDiff}`);
     expect(zhLine).not.toContain(zh.tool.forward);
     expect(zhLine).not.toContain("t =");
   });
 
   it("a single trajectory in a differential scene is just its status", () => {
-    expect(trajectoryLines(scene, [pair[0]], en)).toEqual([en.status.completed]);
+    expect(trajectoryLines(scene, [pair[0]], en)).toEqual([en.tool.completedDiff]);
   });
 });
 
@@ -131,7 +133,7 @@ describe("trajectoryLines adds the non-uniqueness sentence once per group (J.2)"
     const planar = trajectoryLines({ system: { f: "sqrt(abs(x))", g: "-y" } }, [tv("forward", true)], en);
     expect(planar).toEqual([`${en.tool.forward} to t = 1, ${en.status.completed}`, en.ui.nonUniqueTrajectory]);
     const diff = trajectoryLines(firstOrderScene({ kind: "differential", M: "-sqrt(y)", N: "1" }), [tv("forward"), tv("backward", true)], en);
-    expect(diff).toEqual([`one side: ${en.status.completed}; other side: ${en.status.completed}`, en.ui.nonUniqueTrajectory]);
+    expect(diff).toEqual([`one side: ${en.tool.completedDiff}; other side: ${en.tool.completedDiff}`, en.ui.nonUniqueTrajectory]);
   });
 });
 
@@ -177,5 +179,33 @@ describe("non-autonomous status wording (round N.3 b)", () => {
     const lines = trajectoryLines(scene, [stopped], en);
     expect(lines).toEqual([`${en.tool.forward} ${fill(en.ui.toward, { t: "1.57", status: en.tool.stoppedNonAutonomous })}`]);
     expect(trajectoryLines({ system: { f: "0", g: "1" } }, [stopped], en)[0]).toContain(en.status.reached_equilibrium);
+  });
+});
+
+describe("[P2.1] differential-form statuses never speak of time, and its low-speed stop is a singular point", () => {
+  it("statusSentence with differential = true rewords completed, max_steps and reached_equilibrium; the others are unchanged", () => {
+    for (const L of [en, zh]) {
+      expect(statusSentence("completed", L, undefined, true)).toBe(L.tool.completedDiff);
+      expect(statusSentence("max_steps", L, undefined, true)).toBe(L.tool.maxStepsDiff);
+      expect(statusSentence("reached_equilibrium", L, undefined, true)).toBe(L.tool.reachedSingularDiff);
+      for (const status of ["left_box", "blew_up", "singular", "domain_edge", "arc_length"] as const) {
+        expect(statusSentence(status, L, undefined, true)).toBe(L.status[status]);
+      }
+      // Without the flag nothing changes.
+      expect(statusSentence("completed", L)).toBe(L.status.completed);
+      expect(L.tool.completedDiff).not.toMatch(/requested time|指定时间/);
+      expect(L.tool.maxStepsDiff).not.toMatch(/requested time|指定时间/);
+    }
+  });
+
+  it("trajectoryLines of a differential-form scene uses the reworded statuses on both sides", () => {
+    const scene = firstOrderScene({ kind: "differential", M: "t", N: "y" });
+    const tv = (direction: "forward" | "backward", status: TrajectoryView["status"]): TrajectoryView => ({ direction, points: [{ x: 1, y: 1 }, { x: 1.5, y: 0.5 }], status, steps: 2, tEnd: 1 });
+    for (const L of [en, zh]) {
+      const [line] = trajectoryLines(scene, [tv("forward", "completed"), tv("backward", "reached_equilibrium")], L);
+      expect(line).toBe(fill(L.ui.trajectorySides, { first: L.tool.completedDiff, second: L.tool.reachedSingularDiff }));
+      expect(line).not.toContain(L.status.completed);
+      expect(line).not.toContain(L.status.reached_equilibrium);
+    }
   });
 });

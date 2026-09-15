@@ -59,7 +59,9 @@ export type LabelTable = {
     | "queryHitFirst" | "queryHitSystem" | "queryAccuracy" | "queryNotReached" | "queryStoppedBefore"
     | "queryMoreBeyond" | "queryTargetIsStart" | "queryLeg" | "stoppedNonAutonomous" | "refineCapped"
     // Second-order mode (round P): the student's problem has t, x and x'; the kernel's y never shows.
-    | "secondOrderHeader" | "timeDependentSecond" | "pointSecond" | "queryHeaderSecond" | "queryTargetXp" | "queryHitSecond",
+    | "secondOrderHeader" | "timeDependentSecond" | "pointSecond" | "queryHeaderSecond" | "queryTargetXp" | "queryHitSecond"
+    // First-order pictures (round P2.1): the kernel's integration parameter is never printed as t.
+    | "queryLegFirst" | "queryLegDiff" | "sideOne" | "sideOther" | "completedDiff" | "maxStepsDiff" | "reachedSingularDiff" | "queryMoreBeyondDiff",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -233,7 +235,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryTargetT: "t = {value}",
       queryTargetX: "x = {value}",
       queryTargetY: "y = {value}",
-      queryHitFirst: "t = {t}（±{tError}），y = {y}（±{error}）",
+      queryHitFirst: "t = {t}，y = {y}（±{error}）",
       queryHitSystem: "t = {t}（±{tError}）：(x, y) = ({x}, {y})（±{error}）",
       queryAccuracy: "以上是数值解的取值与穿越点：精度来自积分器的容差（rtol 1e-6），括号里的 ± 是估计值而不是严格上界；越过目标的位置是沿数值解重新积分求出的，不是在折线上线性插值。",
       queryNotReached: "在积分的时间范围内没有到达目标：两个方向的数值解都没有穿过它。下面列出每个方向积到了哪里、为什么停下。",
@@ -249,6 +251,14 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryHeaderSecond: "方程 {equation}，初值 x({t0}) = {x0}、x'({t0}) = {xp0}，求 {target}。",
       queryTargetXp: "x' = {value}",
       queryHitSecond: "t = {t}（±{tError}）：(x, x') = ({x}, {y})（±{error}）",
+      queryLegFirst: "{direction}：积到 t = {t}，终点 (t, y) = {end}，{status}。",
+      queryLegDiff: "{side}：终点 (t, y) = {end}，{status}。",
+      sideOne: "一侧",
+      sideOther: "另一侧",
+      completedDiff: "沿曲线走完了指定的跨度（微分形式没有时间：这里的跨度是曲线自己的参数）",
+      maxStepsDiff: "在走完指定跨度前停止（步数或步长耗尽），解仍然有界",
+      reachedSingularDiff: "趋近一个 M = N = 0 的点（方向场在那里无定义）后停止",
+      queryMoreBeyondDiff: "起点的同一侧出现了三次或更多穿越，看起来是周期性的：在积分范围之外可能还有更多穿越点。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -521,7 +531,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryTargetT: "t = {value}",
       queryTargetX: "x = {value}",
       queryTargetY: "y = {value}",
-      queryHitFirst: "t = {t} (±{tError}), y = {y} (±{error})",
+      queryHitFirst: "t = {t}, y = {y} (±{error})",
       queryHitSystem: "t = {t} (±{tError}): (x, y) = ({x}, {y}) (±{error})",
       queryAccuracy: "These are values and crossings of the NUMERICAL solution: their accuracy comes from the integrator tolerance (rtol 1e-6), and the ± figures are estimates, not bounds; each crossing was found by re-integrating along the numerical solution, never by interpolating linearly between its points.",
       queryNotReached: "The target was not reached within the integrated span: neither direction of the numerical solution crossed it. Where each direction got to, and why it stopped, is listed below.",
@@ -537,6 +547,14 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryHeaderSecond: "Solution of {equation} with x({t0}) = {x0}, x'({t0}) = {xp0}, asked for {target}.",
       queryTargetXp: "x' = {value}",
       queryHitSecond: "t = {t} (±{tError}): (x, x') = ({x}, {y}) (±{error})",
+      queryLegFirst: "{direction}: reached t = {t}, end point (t, y) = {end}, {status}.",
+      queryLegDiff: "{side}: end point (t, y) = {end}, {status}.",
+      sideOne: "One side",
+      sideOther: "Other side",
+      completedDiff: "followed for the whole requested span along the curve (a differential form has no time: the span is the curve's own parameter)",
+      maxStepsDiff: "stopped before the end of the requested span (step budget or step size exhausted); the solution stayed bounded",
+      reachedSingularDiff: "stopped after approaching a point where M = N = 0 (the direction field is undefined there)",
+      queryMoreBeyondDiff: "Three or more crossings on one side of the start look periodic: more crossings may exist beyond the integrated span.",
     },
     ui: {
       title: "Vector field / phase portrait",

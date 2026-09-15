@@ -965,7 +965,8 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
     stop: "far",
     ...(run.nonUnique ? { nonUnique: true } : {}),
   }));
-  const note = queryNoteText(view.note, L);
+  // A differential form has no direction: its "periodic" note speaks of a side of the start.
+  const note = queryNoteText(view.note, L, scene.fieldStyle === "segments");
   // A second-order picture names its coordinates: the start is (x, x') = (…) and a target on the
   // vertical coordinate reads x' = … (the kernel's y is the velocity).
   const second = variables === "second";

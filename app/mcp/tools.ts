@@ -864,7 +864,10 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "kind 't' (a time), 'x' or 'y' (a coordinate value); for second kind 't' (a time), 'x' (a position) or 'y', " +
         "which there means the VELOCITY x' (the result names it x'). Every returned point of a 'second' query is " +
         "(t, x, x'): the second coordinate is x', never a y of its own. tSpan (default 20, at most 1000) is " +
-        "integrated in EACH direction; the solution is followed up to 20 times beyond the viewing box. " +
+        "integrated in EACH direction; the solution is followed up to 20 times beyond the viewing box. For mode " +
+        "'diff' the curve M dt + N dy = 0 has no time and no direction: tSpan is the length of the curve's own " +
+        "parameter followed on each side of the start (dt = N per unit of it), the hits are points (t, y) of the " +
+        "picture, and the summary names the two sides, never a direction or a time reached. " +
         EXPRESSION_RULES + " For first / diff the variables are t and y only (x is rejected; write t). " +
         "For 'second' the unknown is x(t) with derivatives x' and x'' (v means x'), t is the independent variable, " +
         "and y is rejected; the viewing box's vertical range may be given as xpMin / xpMax (the x' range). " +
@@ -1008,9 +1011,26 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         );
         if (secondOrder) lines.unshift(fill(L.tool.secondOrderReduced, { equation: secondOrder.equation, g: secondOrder.reduced.g }));
         lines.push(...queryLines(scene, L));
-        for (const t of trajectories) {
-          const end = t.points[t.points.length - 1];
-          lines.push(fill(L.tool.queryLeg, { direction: t.direction === "forward" ? L.tool.forward : L.tool.backward, tEnd: fmt(t.tEnd, 3), end: pointText(L, end, secondMode), status: trajectoryStatus(t, L, timeDependent) }));
+        // Where each leg got to. The kernel's tEnd is its integration parameter: the student's t
+        // only on a planar picture. On an explicit first-order picture the t reached is the end
+        // point's horizontal coordinate; on a differential form there is no direction and no t
+        // number at all, only the two end points (round P2.1).
+        const differential = firstOrderSpec?.kind === "differential";
+        if (differential) {
+          for (const [i, t] of trajectories.entries()) {
+            const end = t.points[t.points.length - 1];
+            lines.push(fill(L.tool.queryLegDiff, { side: i === 0 ? L.tool.sideOne : L.tool.sideOther, end: formatPoint(end), status: trajectoryStatus(t, L, undefined, true) }));
+          }
+        } else {
+          for (const t of trajectories) {
+            const end = t.points[t.points.length - 1];
+            const direction = t.direction === "forward" ? L.tool.forward : L.tool.backward;
+            lines.push(
+              firstOrder
+                ? fill(L.tool.queryLegFirst, { direction, t: fmt(end.x, 3), end: formatPoint(end), status: trajectoryStatus(t, L) })
+                : fill(L.tool.queryLeg, { direction, tEnd: fmt(t.tEnd, 3), end: pointText(L, end, secondMode), status: trajectoryStatus(t, L, timeDependent) }),
+            );
+          }
         }
         if (trajectories.some((t) => t.nonUnique)) lines.push(L.tool.nonUniqueTrajectory);
         if (timeDependent && td) lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced: L.tool.tracedBoth }));

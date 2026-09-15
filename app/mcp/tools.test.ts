@@ -7,7 +7,7 @@ import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { beforeAll, describe, expect, it } from "vitest";
 import { NO_FORM_NOTE } from "@/lib/core/detect-form";
-import { constantSolutionNotices, fill, formatPoint, labels, stabilitySentence } from "@/lib/labels";
+import { constantSolutionNotices, fill, formatNumber, formatPoint, labels, stabilitySentence } from "@/lib/labels";
 import type { Scene } from "@/lib/scene";
 import { SlidingWindowLimiter } from "./rate-limit";
 import { createMcpServer } from "./server";
@@ -1407,14 +1407,15 @@ describe("query_solution (round N)", () => {
     expect(r.scene.trajectories![0].stop).toBe("far");
     expect(r.text).toMatch(/^Solution of dy\/dt = y through \(t, y\) = \(0, 1\), asked for t = 2\./);
     // 6 decimals: e^2 = 7.389056 rounds to 7.389056, and the numerical value (within 1e-5 relative) to 7.38905 or 7.38906.
-    expect(r.text).toMatch(/\nt = 2 \(±[0-9.e-]+\), y = 7\.3890[56][0-9]* \(±[0-9.e-]+\)\n/);
+    // Round P2.1: a first-order hit is a point (t, y) known to the position error, with no parameter uncertainty after t.
+    expect(r.text).toMatch(/\nt = 2, y = 7\.3890[56][0-9]* \(±[0-9.e-]+\)\n/);
     expect(r.text).toContain(labels("en").tool.queryAccuracy);
-    expect(r.text).toMatch(/Forward \(t increasing\): reached t = [0-9.]+, end point \([0-9.]+, 60\), stopped after running 20 times beyond the entered range\./);
-    expect(r.text).toMatch(/Backward \(t decreasing\): reached t = -20, end point \(-20, [0-9.e-]+\), integrated to the requested time\./);
+    expect(r.text).toMatch(/Forward \(t increasing\): reached t = [0-9.]+, end point \(t, y\) = \([0-9.]+, 60\), stopped after running 20 times beyond the entered range\./);
+    expect(r.text).toMatch(/Backward \(t decreasing\): reached t = -20, end point \(t, y\) = \(-20, [0-9.e-]+\), integrated to the requested time\./);
     const s = await call("query_solution", { mode: "first", expr: "y", t0: 0, y0: 1, target: { kind: "y", value: 2 } });
     expect(s.scene.query!.hits).toHaveLength(1);
     expect(Math.abs(s.scene.query!.hits[0].x - 0.6931471805599453)).toBeLessThan(1e-6);
-    expect(s.text).toMatch(/\nt = 0\.693147 \(±/);
+    expect(s.text).toMatch(/\nt = 0\.693147, y = /);
   });
 
   it("rejects x as a first-order target kind, x0 on a first-order equation, and a missing expression, readably", async () => {
@@ -1461,8 +1462,8 @@ describe("query_solution (round N)", () => {
       expect(r.text).toContain(L.tool.queryAccuracy);
       expect(r.text).toContain(L.tool.forward);
       // ln 9 = 2.1972246 at 6 decimals, the numerical crossing within 1e-6 of it.
-      if (locale === "zh") expect(r.text).toMatch(/t = 2\.19722[45]（±/);
-      else expect(r.text).toMatch(/t = 2\.19722[45] \(±/);
+      if (locale === "zh") expect(r.text).toMatch(/t = 2\.19722[45]，y = /);
+      else expect(r.text).toMatch(/t = 2\.19722[45], y = /);
     }
   });
 
@@ -1477,7 +1478,7 @@ describe("query_solution (round N)", () => {
     expect(forward.status).toBe("left_box");
     expect(Math.abs(forward.tEnd - 59 / 60)).toBeLessThan(0.01);
     expect(r.text).toContain(labels("en").tool.queryNotReached);
-    expect(r.text).toMatch(/Forward \(t increasing\): reached t = 0\.98[0-9]*, end point \(0\.98[0-9]*, 60\), stopped after running 20 times beyond the entered range\./);
+    expect(r.text).toMatch(/Forward \(t increasing\): reached t = 0\.98[0-9]*, end point \(t, y\) = \(0\.98[0-9]*, 60\), stopped after running 20 times beyond the entered range\./);
   });
 
   it("dy/dt = -y from (0, 1) never reaches y = -1: not reached, forward completed, backward left the far box", async () => {
@@ -1700,5 +1701,50 @@ describe("[P1] second-order notation in the tools (the professor's correction: t
     expect(r.scene.query!.hits[0].y).toBeCloseTo(1.5, 8);
     expect(r.text).toContain("with x(1) = 0, x'(1) = 0");
     expect(r.text).toContain(labels("en").tool.timeDependentTrajectory.slice(0, 30));
+  });
+});
+
+describe("[P2.1] a first-order picture never prints the kernel's integration parameter as t", () => {
+  it("differential form y dt + 2 dy = 0 from (0, 1): dy/dt = -y/2, so the point at t = 2 is (2, e^-1); the parameter span 4 reaches t = ±8 (dt = 2 per unit of it) and the summary names two sides, no direction, no 't = 4'", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const L = labels(locale);
+      const r = await call("query_solution", { mode: "diff", M: "y", N: "2", t0: 0, y0: 1, tSpan: 4, target: { kind: "t", value: 2 }, locale });
+      expect(r.isError, locale).toBeFalsy();
+      expect(r.scene.query!.hits, locale).toHaveLength(1);
+      const [hit] = r.scene.query!.hits;
+      expect(hit.x, locale).toBeCloseTo(2, 6);
+      expect(hit.y, locale).toBeCloseTo(Math.exp(-1), 5);
+      // The kernel's parameter at the hit is s = 1 (t = 2 s): a kernel fact that must not reach the student.
+      expect(hit.t, locale).toBeCloseTo(1, 6);
+      // The hit line is a point (t, y) known to the position error, without the parameter's uncertainty.
+      expect(r.text, locale).toContain(fill(L.tool.queryHitFirst, { t: "2", y: formatNumber(hit.y, 6), error: formatNumber(hit.error.position, 2) }));
+      // The legs: the kernel followed 4 units of its parameter each way, i.e. to t = 8 and t = -8.
+      const legs = r.scene.trajectories!;
+      expect(legs.map((l) => l.tEnd), locale).toEqual([4, -4]);
+      expect(legs[0].points.at(-1)!.x, locale).toBeCloseTo(8, 5);
+      expect(legs[1].points.at(-1)!.x, locale).toBeCloseTo(-8, 5);
+      expect(r.text, locale).toContain(fill(L.tool.queryLegDiff, { side: L.tool.sideOne, end: formatPoint(legs[0].points.at(-1)!), status: L.tool.completedDiff }));
+      expect(r.text, locale).toContain(fill(L.tool.queryLegDiff, { side: L.tool.sideOther, end: formatPoint(legs[1].points.at(-1)!), status: L.tool.completedDiff }));
+      expect(r.text, locale).not.toContain(L.tool.forward);
+      expect(r.text, locale).not.toContain(L.tool.backward);
+      expect(r.text, locale).not.toContain(L.status.completed);
+      expect(r.text, locale).not.toMatch(/t = -?4(?![.0-9])/);
+      expect(r.text, locale).not.toMatch(/t = 1(?![.0-9])/);
+    }
+  });
+
+  it("explicit form dy/dt = y from (0, 1): the legs report the t coordinate reached with the direction words, and the hit line carries no parameter uncertainty", async () => {
+    for (const locale of ["en", "zh"] as const) {
+      const L = labels(locale);
+      const r = await call("query_solution", { mode: "first", expr: "y", t0: 0, y0: 1, tSpan: 2, target: { kind: "t", value: 2 }, locale });
+      expect(r.isError, locale).toBeFalsy();
+      const legs = r.scene.trajectories!;
+      const forwardEnd = legs[0].points.at(-1)!;
+      expect(forwardEnd.x, locale).toBeCloseTo(2, 6);
+      expect(r.text, locale).toContain(fill(L.tool.queryLegFirst, { direction: L.tool.forward, t: "2", end: formatPoint(forwardEnd), status: L.status.completed }));
+      expect(r.text, locale).toContain(fill(L.tool.queryLegFirst, { direction: L.tool.backward, t: "-2", end: formatPoint(legs[1].points.at(-1)!), status: L.status.completed }));
+      expect(r.text, locale).not.toMatch(/t = 2 \(±|t = 2（±/);
+      expect(r.text, locale).not.toContain(L.tool.completedDiff);
+    }
   });
 });

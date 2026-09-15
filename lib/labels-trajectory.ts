@@ -26,15 +26,22 @@ export function trajectoryMode(scene: Pick<Scene, "system" | "fieldStyle">): Tra
  * Over a non-autonomous system (`timeDependent` set on the scene) the integrator's
  * 'reached_equilibrium' only means that the speed fell close to zero at that time: the field
  * there changes with t, so it is worded neutrally instead of as an equilibrium (the status key
- * itself is unchanged; the integrator is not touched).
+ * itself is unchanged; the integrator is not touched). On a differential form (`differential`)
+ * the statuses that speak of time are reworded: the kernel's parameter is not the student's t
+ * (round P2.1), and its "equilibrium" is a point where M = N = 0.
  */
-export function trajectoryStatus(t: TrajectoryView, L: LabelTable, timeDependent?: Scene["timeDependent"]): string {
+export function trajectoryStatus(t: TrajectoryView, L: LabelTable, timeDependent?: Scene["timeDependent"], differential = false): string {
   if (t.status === "left_box" && t.stop === "far") return L.ui.leftFarBox;
-  return statusSentence(t.status, L, timeDependent);
+  return statusSentence(t.status, L, timeDependent, differential);
 }
 
-/** The wording of an integration status, non-autonomous aware (see trajectoryStatus). */
-export function statusSentence(status: TrajectoryView["status"], L: LabelTable, timeDependent?: Scene["timeDependent"]): string {
+/** The wording of an integration status, non-autonomous and differential-form aware (see trajectoryStatus). */
+export function statusSentence(status: TrajectoryView["status"], L: LabelTable, timeDependent?: Scene["timeDependent"], differential = false): string {
+  if (differential) {
+    if (status === "completed") return L.tool.completedDiff;
+    if (status === "max_steps") return L.tool.maxStepsDiff;
+    if (status === "reached_equilibrium") return L.tool.reachedSingularDiff;
+  }
   return status === "reached_equilibrium" && timeDependent ? L.tool.stoppedNonAutonomous : L.status[status];
 }
 
@@ -70,7 +77,7 @@ export function trajectoryLines(scene: Pick<Scene, "system" | "fieldStyle" | "ti
   // once per group, after the status lines.
   const nonUnique = group.some((t) => t.nonUnique) ? [L.ui.nonUniqueTrajectory] : [];
   if (mode === "differential") {
-    const sides = group.map((t) => trajectoryStatus(t, L, scene.timeDependent));
+    const sides = group.map((t) => trajectoryStatus(t, L, scene.timeDependent, true));
     if (sides.length < 2) return [...sides, ...nonUnique];
     return [fill(L.ui.trajectorySides, { first: sides[0], second: sides[1] }), ...nonUnique];
   }
