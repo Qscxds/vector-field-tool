@@ -104,6 +104,10 @@ export function HelpContent({ initialLocale }: { initialLocale: Locale | null })
       <p>{H.embed.publicNote}</p>
 
       <h2 id="claude">{H.claude.heading}</h2>
+      {/* Round S: the reconnect notice first (the widget version changed; remove and re-add the connector). */}
+      <p className="site-action" role="note" data-mcp-reconnect>
+        <strong>{T.home.newsActionLabel}</strong> {H.claude.reconnect}
+      </p>
       <p className="site-note">{H.claude.optional}</p>
       <p>{H.claude.endpointLead}</p>
       <CopySnippet text={MCP_ENDPOINT} locale={locale} label={H.claude.endpointLead} />

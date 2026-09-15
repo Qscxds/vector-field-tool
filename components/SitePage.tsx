@@ -36,6 +36,14 @@ const SITE_STYLE = `
 .site-card strong { color: #1d4ed8; }
 .site-card span { display: block; color: #52606d; font-size: 14px; margin-top: 4px; }
 .site-note { color: #52606d; }
+.site-news { display: grid; gap: 10px; margin: 8px 0; }
+.site-news-entry { padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 8px; }
+.site-news-entry header { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.site-news-entry time { color: #52606d; font-size: 14px; font-variant-numeric: tabular-nums; }
+.site-news-entry ul { margin: 6px 0 0; }
+/* Something the reader must DO (a change-log action, the MCP reconnect notice): set apart from the prose. */
+.site-action { margin: 10px 0; padding: 10px 14px; border: 2px solid #d97706; border-radius: 8px; background: #fffbeb; color: #78350f; }
+.site-action strong { color: #92400e; }
 .site-snippet { position: relative; margin: 8px 0; }
 .site-snippet pre { margin: 0; padding: 12px 14px; background: #f3f4f6; border-radius: 8px; white-space: pre-wrap; word-break: break-all; font-size: 13px; }
 .site-snippet textarea { width: 100%; box-sizing: border-box; font-size: 13px; margin-top: 6px; }

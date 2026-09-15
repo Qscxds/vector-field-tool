@@ -63,6 +63,11 @@ export type SiteText = {
     can: string[];
     limitsHeading: string;
     limits: string[];
+    /** "What's new" (round S): the heading and the label of an entry's action box; the entries are lib/changelog.ts. */
+    newsHeading: string;
+    newsActionLabel: string;
+    /** The MCP reconnect notice at the head of the Claude paragraph (the same sentence as help.claude.reconnect). */
+    mcpReconnect: string;
     claudeLine: string;
     claudeLink: string;
   };
@@ -123,10 +128,28 @@ export type SiteText = {
       heights: string;
       publicNote: string;
     };
-    claude: { heading: string; optional: string; endpointLead: string; steps: string[]; widgetNote: string };
+    claude: {
+      heading: string;
+      /** Round S: at the head of the section. The widget version changed: remove and re-add the connector, or it silently fails to render. */
+      reconnect: string;
+      optional: string;
+      endpointLead: string;
+      steps: string[];
+      widgetNote: string;
+    };
   };
   meta: Record<"homeTitle" | "homeDescription" | "appTitle" | "appDescription" | "helpTitle" | "helpDescription" | "embedTitle" | "ogAlt", string>;
 };
+
+/**
+ * The MCP reconnect notice (round S), shown at the head of the Claude paragraph on the home page,
+ * at the head of the help page's Claude section and in the change log's action box: the widget
+ * version changed, and Claude keeps the widget resource address from when the connector was
+ * ADDED, so disconnecting and reconnecting is not enough; the connector must be removed and added
+ * again, or the widget silently fails to render.
+ */
+const MCP_RECONNECT_ZH = `widget 版本已更新：已经添加过连接器的人必须删除连接器再重新添加（只断开重连不够），否则 widget 会静默不渲染。删除后重新添加的端点：${MCP_ENDPOINT}`;
+const MCP_RECONNECT_EN = `The widget version has changed: if you added the connector before, you must remove it and add it again (disconnecting and reconnecting is not enough), or the widget silently fails to render. The endpoint to add again: ${MCP_ENDPOINT}`;
 
 export const SITE_TEXT: Record<Locale, SiteText> = {
   zh: {
@@ -171,6 +194,9 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         "全部是数值计算，不做符号运算：它不会给出封闭形式的解。",
         "方程类型是数值探测，不是证明：结果只表示「在采样点上与该形式一致」。",
       ],
+      newsHeading: "更新说明",
+      newsActionLabel: "需要你做的：",
+      mcpReconnect: MCP_RECONNECT_ZH,
       claudeLine: "这个工具也可以接到 Claude 上，让 Claude 用它计算而不是猜测；做法见",
       claudeLink: "使用说明的最后一节",
     },
@@ -289,6 +315,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       },
       claude: {
         heading: "连接 Claude（可选）",
+        reconnect: MCP_RECONNECT_ZH,
         optional: "这一步不是必需的：网页本身就能完成全部教学功能。连接之后，Claude 会调用同一套计算内核来回答问题，而不是自己猜数字。",
         endpointLead: "MCP 端点：",
         steps: [
@@ -353,6 +380,9 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         "Everything is numerical, nothing is symbolic: it never gives a closed-form solution.",
         "Equation types are numerical probes, not proofs: a result only says that the equation is consistent with that form at the sampled points.",
       ],
+      newsHeading: "What's new",
+      newsActionLabel: "Action required:",
+      mcpReconnect: MCP_RECONNECT_EN,
       claudeLine: "The tool can also be connected to Claude so that Claude computes with it instead of guessing; see",
       claudeLink: "the last section of the help page",
     },
@@ -471,6 +501,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       },
       claude: {
         heading: "Connecting Claude (optional)",
+        reconnect: MCP_RECONNECT_EN,
         optional: "This step is not required: the web page alone covers everything the course needs. Once connected, Claude calls the same computation kernel to answer questions instead of guessing numbers.",
         endpointLead: "MCP endpoint:",
         steps: [
