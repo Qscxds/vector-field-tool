@@ -22,12 +22,13 @@ import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, curveWords, eigenDirectionLines, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
 import { addParamRow, discoverParams, formatParamValue, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, MAX_SLIDER_STEPS, paramsFromEntries, paramsText, parseSliderRange, removeParamRow, resolveParams, setParamName, setParamText, setSliderField, slideParam, sliderEntries, syncParams, toggleSlider, withSliders, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
 import { kernelQueryKind, parseQueryValue, queryHitText, queryKindName, queryKindsFor, selectedTrajectoryIndex, trajectoryOptionText, type PanelVariables, type UiQueryKind } from "@/lib/query-panel";
+import type { AidFlags } from "@/lib/phase-aids";
 import type { ArrowMode } from "@/lib/render/arrows";
 import { fitViewport } from "@/lib/render/viewport";
 import type { QueryView, Scene, TrajectoryView } from "@/lib/scene";
@@ -433,6 +434,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const [canvasWrapRef, wrapWidth] = useMeasuredWidth();
   const { width: canvasW, height: canvasH } = canvasSize(wrapWidth);
 
+  // Round V: the overlays (nullclines, eigen-directions, separatrices): view options like equal scale, kept in the link.
+  const [aids, setAids] = useState<AidFlags>(initial.aids);
   // Round U: a slider is being dragged (pointer down on it until the pointer is released anywhere).
   const [dragging, setDragging] = useState(false);
   useEffect(() => {
@@ -474,6 +477,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     retraceKey: `${snapshotT}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${paramsKey}|${spans ? `${spans.forward},${spans.backward}` : ""}`,
     dragging,
     traceSpans: spans,
+    // Eigen-directions and separatrices belong to a phase plane; a first-order picture has its nullcline only.
+    aids: planar ? aids : { nullclines: aids.nullclines, eigenDirections: false, separatrices: false },
     query: queryView,
     queryStart: queryRun?.start,
     secondOrder: secondOrderView,
@@ -648,8 +653,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       timeRange,
       params: formParams.entries,
       sliders: sliderEntries(form.params, formParams.entries),
+      aids,
     }),
-    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams],
+    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams, aids],
   );
 
   // Keep the address bar in sync (full page only; an embed's URL belongs to the embedding page):
@@ -980,6 +986,33 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </label>
             </>
           ) : null}
+          {/* Round V: the overlays of the phase plane / slope field (not of the time-series view). All off by default: the picture is full enough. */}
+          {view === "phase" ? (
+            <fieldset style={{ display: "grid", gap: 4, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-aids>
+              <legend style={{ padding: "0 4px" }}>
+                {L.ui.aidsHeading}{" "}
+                <Info label={L.ui.details} data-info="aids">
+                  {formSecond ? L.ui.aidsDetailSecond : form.mode === "system" ? L.ui.aidsDetail : L.ui.aidsDetailFirst}
+                </Info>
+              </legend>
+              <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                <input type="checkbox" checked={aids.nullclines} onChange={(e) => setAids((a) => ({ ...a, nullclines: e.target.checked }))} name="aidNullclines" />
+                <span>{L.ui.aidNullclines}</span>
+              </label>
+              {form.mode === "system" || formSecond ? (
+                <>
+                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    <input type="checkbox" checked={aids.eigenDirections} onChange={(e) => setAids((a) => ({ ...a, eigenDirections: e.target.checked }))} name="aidEigen" />
+                    <span>{L.ui.aidEigen}</span>
+                  </label>
+                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                    <input type="checkbox" checked={aids.separatrices} onChange={(e) => setAids((a) => ({ ...a, separatrices: e.target.checked }))} name="aidSeparatrices" />
+                    <span>{L.ui.aidSeparatrices}</span>
+                  </label>
+                </>
+              ) : null}
+            </fieldset>
+          ) : null}
           <div style={{ color: "#1f2933" }}>
             <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
               {/* Off and disabled in the time-series view (t and a value have different units); the phase plane keeps its setting. */}
@@ -1220,7 +1253,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           ) : null}
           {/* Round U: while a drag's debounce holds the last results, they are dimmed (and "Computing…" floats over the picture). */}
           <div className={featuresPending ? "vf-stale" : undefined} data-features-pending={featuresPending ? "true" : undefined}>
-            {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} /> : null}
+            {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} eigen={aids.eigenDirections && view === "phase"} /> : null}
             {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
           </div>
           {scene && lastGroup ? (
@@ -1456,7 +1489,7 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
 }
 
 /** The equilibria of a planar picture; on a second-order one (`second`) every point reads (x, x') = (…). */
-function EquilibriaList({ scene, L, second }: { scene: Scene; L: LabelTable; second: boolean }) {
+function EquilibriaList({ scene, L, second, eigen = false }: { scene: Scene; L: LabelTable; second: boolean; eigen?: boolean }) {
   const eq = scene.equilibria ?? [];
   return (
     <section style={{ marginTop: 14 }}>
@@ -1482,7 +1515,8 @@ function EquilibriaList({ scene, L, second }: { scene: Scene; L: LabelTable; sec
                   <strong>{pointText(L, p.at, second)}</strong> {L.classification[p.classification]}
                 </>
               }
-              detail={equilibriumDetail(L, p, second)}
+              // Round V: with the eigen-direction overlay on, the ⓘ says which line is which (and that a degenerate node has only one).
+              detail={[...equilibriumDetail(L, p, second), ...(eigen ? eigenDirectionLines(L, p, second) : [])]}
               label={L.ui.details}
               data-info="equilibrium"
             >

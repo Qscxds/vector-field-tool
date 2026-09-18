@@ -15,6 +15,8 @@ import type { Complex, Locale } from "./core/types";
 import { hasFractionalPower, PROBES_NOTED, type FirstOrderSpec } from "./core/slope-field";
 import { BORDERLINE_EXPONENT, UNBOUNDED_EXPONENT, type UniquenessVerdict } from "./core/uniqueness";
 import { paramsText, sceneParams, type ParamEntry } from "./params";
+import { eigenDirections } from "./phase-aids";
+import type { Equilibrium } from "./core/equilibria";
 import type { Scene } from "./scene";
 
 export type { Locale };
@@ -125,6 +127,10 @@ export type LabelTable = {
     | "paramSlider" | "paramSliderOf" | "sliderMin" | "sliderMax" | "sliderStep"
     | "sliderRangeNotANumber" | "sliderRangeOutOfRange" | "sliderRangeInverted" | "sliderRangeBadStep" | "sliderRangeTooManySteps"
     | "urlReasonSliderWithoutParam" | "urlReasonBadStep" | "urlReasonTooManySteps"
+    // Round V: the overlays that let a phase plane explain itself (nullclines, eigen-directions, separatrices).
+    | "aidsHeading" | "aidNullclines" | "aidEigen" | "aidSeparatrices" | "aidsDetail" | "aidsDetailFirst" | "aidsDetailSecond"
+    | "legendStableDirection" | "legendUnstableDirection" | "legendSeparatrixStable" | "legendSeparatrixUnstable"
+    | "eigenDirectionStable" | "eigenDirectionUnstable" | "eigenOne" | "eigenEvery" | "eigenComplex"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
     | "secondOrderImplicitProduct"
@@ -489,6 +495,22 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonSliderWithoutParam: "没有这个名字的参数",
       urlReasonBadStep: "步长要大于 0 且不超过范围的宽度",
       urlReasonTooManySteps: "步长太小（最多 10000 步）",
+      aidsHeading: "在图上显示",
+      aidNullclines: "零斜线",
+      aidEigen: "特征方向",
+      aidSeparatrices: "鞍点的分界线",
+      aidsDetail: "零斜线：x' = 0（实线）和 y' = 0（虚线）两族曲线；它们的交点就是平衡点，所以一眼能看出平衡点为什么在那里。特征方向：在特征值为实数的双曲平衡点处，沿线性化的特征向量画一小段直线（稳定方向实线、箭头朝里；不稳定方向虚线、箭头朝外）；特征值是复数时没有实的特征方向，不画。分界线：从每个鞍点沿特征方向出发的四条曲线（稳定流形实线、不稳定流形虚线，粗黑线）；它们把相平面分成命运不同的区域——初值在分界线这一侧还是那一侧，解的去向完全不同。分界线是数值曲线：从离鞍点极近的一点沿线性化的方向出发积分得到。",
+      aidsDetailSecond: "零斜线：x' = 0（实线）和 x'' = 0（虚线）两族曲线；它们的交点就是平衡点，所以一眼能看出平衡点为什么在那里。特征方向：在特征值为实数的双曲平衡点处，沿线性化的特征向量画一小段直线（稳定方向实线、箭头朝里；不稳定方向虚线、箭头朝外）；特征值是复数时没有实的特征方向，不画。分界线：从每个鞍点沿特征方向出发的四条曲线（稳定流形实线、不稳定流形虚线，粗黑线）；它们把相平面分成命运不同的区域——初值在分界线这一侧还是那一侧，解的去向完全不同。分界线是数值曲线：从离鞍点极近的一点沿线性化的方向出发积分得到。",
+      aidsDetailFirst: "零斜线：dy/dt = 0 的曲线（微分形式是 M = 0 与 N = 0 两族）。解曲线穿过它时切线水平，也就是解的极大、极小点所在的位置；它上方和下方斜率的正负不同。",
+      legendStableDirection: "稳定特征方向",
+      legendUnstableDirection: "不稳定特征方向",
+      legendSeparatrixStable: "分界线（稳定流形）",
+      legendSeparatrixUnstable: "分界线（不稳定流形）",
+      eigenDirectionStable: "稳定特征方向 {v}（λ = {l}）：这条直线上的解径直趋向该点。图上是实线，箭头朝里。",
+      eigenDirectionUnstable: "不稳定特征方向 {v}（λ = {l}）：这条直线上的解径直离开该点。图上是虚线，箭头朝外。",
+      eigenOne: "这是唯一的特征方向：重特征值却只有一个特征方向，这正是「退化结点」的定义特征。",
+      eigenEvery: "这里每个方向都是特征方向（线性化是单位矩阵的倍数），所以不单独画出。",
+      eigenComplex: "特征值是复数，没有实的特征方向可画：解绕着该点转，而不是沿某条直线进出。",
       openFullPage: "在新窗口打开",
       equationSystem: "x' = {f}，y' = {g}",
       equationExplicit: "dy/dt = {g}",
@@ -871,6 +893,22 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonSliderWithoutParam: "there is no parameter of this name",
       urlReasonBadStep: "the step must be greater than 0 and at most the width of the range",
       urlReasonTooManySteps: "the step is too small (at most 10000 steps)",
+      aidsHeading: "Show on the picture",
+      aidNullclines: "Nullclines",
+      aidEigen: "Eigen-directions",
+      aidSeparatrices: "Separatrices of saddles",
+      aidsDetail: "Nullclines: the two families of curves x' = 0 (solid) and y' = 0 (dashed); the equilibria are exactly where they cross, so you can see why the equilibria are where they are. Eigen-directions: at a hyperbolic equilibrium with real eigenvalues, a short line along each eigenvector of the linearization (stable: solid, arrows pointing in; unstable: dashed, arrows pointing out); complex eigenvalues have no real eigen-direction, so nothing is drawn. Separatrices: the four curves that leave each saddle along its eigen-directions (stable manifold solid, unstable manifold dashed, bold and dark); they divide the phase plane into regions with different fates: an initial point on one side of a separatrix and one on the other go to entirely different places. A separatrix is a numerical curve, integrated from a point very close to the saddle on the linearized direction.",
+      aidsDetailSecond: "Nullclines: the two families of curves x' = 0 (solid) and x'' = 0 (dashed); the equilibria are exactly where they cross, so you can see why the equilibria are where they are. Eigen-directions: at a hyperbolic equilibrium with real eigenvalues, a short line along each eigenvector of the linearization (stable: solid, arrows pointing in; unstable: dashed, arrows pointing out); complex eigenvalues have no real eigen-direction, so nothing is drawn. Separatrices: the four curves that leave each saddle along its eigen-directions (stable manifold solid, unstable manifold dashed, bold and dark); they divide the phase plane into regions with different fates: an initial point on one side of a separatrix and one on the other go to entirely different places. A separatrix is a numerical curve, integrated from a point very close to the saddle on the linearized direction.",
+      aidsDetailFirst: "Nullclines: the curve where dy/dt = 0 (for a differential form, the two families M = 0 and N = 0). A solution curve crosses it with a horizontal tangent, so it is where solutions have their maxima and minima; the slope has opposite signs on its two sides.",
+      legendStableDirection: "stable eigen-direction",
+      legendUnstableDirection: "unstable eigen-direction",
+      legendSeparatrixStable: "separatrix (stable manifold)",
+      legendSeparatrixUnstable: "separatrix (unstable manifold)",
+      eigenDirectionStable: "Stable eigen-direction {v} (λ = {l}): solutions on this line run straight into the point. On the picture: solid, arrows pointing in.",
+      eigenDirectionUnstable: "Unstable eigen-direction {v} (λ = {l}): solutions on this line run straight out of the point. On the picture: dashed, arrows pointing out.",
+      eigenOne: "This is the ONLY eigen-direction: a repeated eigenvalue with a single eigen-direction is exactly what makes a node degenerate.",
+      eigenEvery: "Every direction is an eigen-direction here (the linearization is a multiple of the identity), so none is drawn.",
+      eigenComplex: "The eigenvalues are complex, so there is no real eigen-direction to draw: solutions turn around the point instead of running in or out along a line.",
       openFullPage: "Open full page",
       equationSystem: "x' = {f}, y' = {g}",
       equationExplicit: "dy/dt = {g}",
@@ -1151,6 +1189,25 @@ export function curveWords(L: LabelTable, mode: PictureMode): { last: string; cl
 /** The ⓘ text behind the features-box line, per picture (P2: no "equilibria" on a first-order picture, no "constant solutions" on a phase plane). */
 export function featuresBoxDetail(L: LabelTable, mode: PictureMode): string {
   return mode === "first" ? L.ui.featuresBoxDetailFirst : mode === "second" ? L.ui.featuresBoxDetailSecond : L.ui.featuresBoxDetail;
+}
+
+/**
+ * Round V: what the eigen-direction overlay shows at one equilibrium, in words, for the ⓘ of its
+ * line: which direction is the stable and which the unstable one (and how each is drawn), that a
+ * degenerate node has only ONE (its defining feature), that a star node has every direction, that
+ * complex eigenvalues have none. Nothing for a non-hyperbolic point (the linearization decides
+ * nothing there, and its own caveat says so). On a second-order picture a direction is named
+ * (x, x') = (…).
+ */
+export function eigenDirectionLines(L: LabelTable, e: Equilibrium, secondOrder = false): string[] {
+  const report = eigenDirections(e);
+  const lines = report.directions.map((d) =>
+    fill(d.kind === "stable" ? L.ui.eigenDirectionStable : L.ui.eigenDirectionUnstable, { v: pointText(L, d.direction, secondOrder, 3), l: formatNumber(d.eigenvalue, 4) }),
+  );
+  if (report.note === "one") lines.push(L.ui.eigenOne);
+  if (report.note === "every") lines.push(L.ui.eigenEvery);
+  if (report.note === "complex") lines.push(L.ui.eigenComplex);
+  return lines;
 }
 
 /** A short line with the full text behind a disclosure; `detail` empty means nothing is folded. */

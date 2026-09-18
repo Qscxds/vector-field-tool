@@ -29,8 +29,9 @@ import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
 import { deferredOf, featurePolicy, flushDeferred, isStale, requestDeferred } from "@/lib/feature-schedule";
-import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
+import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, fixedStopBox, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
 import { coordinateNames } from "@/lib/coordinate-names";
+import { computeNullclines, eigenDirections, separatrices, type AidFlags, type PhaseAids } from "@/lib/phase-aids";
 import { curveWords, fill, labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, pinchAt, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
@@ -129,6 +130,8 @@ export type InteractiveInput = {
    * Put it in `retraceKey` so a change re-traces the kept curves.
    */
   traceSpans?: { forward: number; backward: number };
+  /** Round V: which overlays (lib/phase-aids) the scene carries; omitted (the widget) = none. */
+  aids?: AidFlags;
 };
 
 export type InteractiveHandlers = {
@@ -175,7 +178,7 @@ export type InteractiveScene = {
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart, secondOrder, dragging = false, traceSpans } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart, secondOrder, dragging = false, traceSpans, aids } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   // Curves that came with the scene (the widget's trace_trajectory result): drawn and cleared with
@@ -272,6 +275,25 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     return result;
   }, [withFeatures, featureInputs, effectiveFeatureBox, locale, snapshotT]);
 
+  // Round V: the overlays, each computed only while it is switched on. Nullclines over the VISIBLE
+  // box at the displayed instant (they follow every zoom and pan like the field does); the
+  // eigen-directions from the equilibria already found; the separatrices of the saddles among
+  // them, traced under the system those equilibria belong to, with an offset relative to the box
+  // the features were computed for and the kept curves' own far stop box.
+  const showNullclines = Boolean(aids?.nullclines);
+  const showEigen = Boolean(aids?.eigenDirections);
+  const showSeparatrices = Boolean(aids?.separatrices);
+  const nullclineSet = useMemo(() => (showNullclines && sys && viewport ? computeNullclines(sys, viewport.box, snapshotT) : undefined), [showNullclines, sys, viewport, snapshotT]);
+  const eigenSet = useMemo(() => (showEigen && features.equilibria ? features.equilibria.flatMap((e) => eigenDirections(e).directions) : undefined), [showEigen, features]);
+  const separatrixSet = useMemo(
+    () => (showSeparatrices && featureInputs.sys && features.equilibria && effectiveFeatureBox && homeBox ? separatrices(featureInputs.sys, features.equilibria, effectiveFeatureBox, fixedStopBox(homeBox)) : undefined),
+    [showSeparatrices, featureInputs, features, effectiveFeatureBox, homeBox],
+  );
+  const phaseAids = useMemo<PhaseAids | undefined>(
+    () => (nullclineSet || eigenSet || separatrixSet ? { ...(nullclineSet ? { nullclines: nullclineSet } : {}), ...(eigenSet ? { eigenDirections: eigenSet } : {}), ...(separatrixSet ? { separatrices: separatrixSet } : {}) } : undefined),
+    [nullclineSet, eigenSet, separatrixSet],
+  );
+
   const scene = useMemo<Scene | null>(() => {
     if (!sys || !spec || !viewport || !field) return null;
     // What the kernel's field names mean on this picture (lib/scene axes): the same contract the tools fill.
@@ -302,8 +324,9 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       start,
       query: queryShown,
       secondOrder,
+      ...(phaseAids ? { aids: phaseAids } : {}),
     };
-  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent, queryShown, secondOrder, firstOrder]);
+  }, [sys, spec, viewport, field, kind, locale, fieldStyle, features, trajectories, start, effectiveFeatureBox, timeDependent, queryShown, secondOrder, firstOrder, phaseAids]);
 
   // Refs so the handlers stay referentially stable (the canvas binds its wheel listener once).
   const viewportRef = useRef(viewport);

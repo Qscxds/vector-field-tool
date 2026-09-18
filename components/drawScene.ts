@@ -10,7 +10,8 @@ import type { Vec2 } from "@/lib/core/types";
 import { arrowPolygon, scaleArrows, type ArrowMode } from "@/lib/render/arrows";
 import { axisNameAnchors } from "@/lib/render/axis-names";
 import { chooseTicks } from "@/lib/render/ticks";
-import { formatNumber, labels } from "@/lib/labels";
+import { formatNumber, labels, pictureModeOf } from "@/lib/labels";
+import { nullclineNames, type EigenDirection, type PhaseAids, type Separatrix } from "@/lib/phase-aids";
 import { worldToScreen, type Viewport } from "@/lib/render/viewport";
 import type { Scene } from "@/lib/scene";
 
@@ -31,7 +32,18 @@ export const COLORS = {
   implicit: "#7c3aed",
   hover: "rgba(14, 116, 144, 0.75)",
   queryHit: "#be123c",
+  // Round V overlays. The two nullcline families and the two kinds of direction / branch differ by
+  // LINE STYLE (solid / dashed), never by hue alone.
+  nullclineF: "#0f766e",
+  nullclineG: "#b45309",
+  aid: "#111827",
 };
+
+/** Round V line styles: the second nullcline family and everything "unstable" is dashed. */
+const NULLCLINE_G_DASH = [7, 4];
+const UNSTABLE_DASH = [9, 5];
+/** Half-length of an eigen-direction line, as a fraction of the canvas's shorter side (the same on screen at every zoom). */
+const EIGEN_HALF_LENGTH = 0.11;
 
 /**
  * Non-uniqueness marks, all data-driven from the Scene (uniqueness verdict "unbounded"):
@@ -61,9 +73,14 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewpo
   }
   drawGrid(ctx, v);
   if (scene.field) drawArrows(ctx, v, scene, arrowMode);
+  // Round V: nullclines under everything that is a solution; separatrices under the kept curves;
+  // eigen-directions under the equilibrium's own marker.
+  if (scene.aids?.nullclines) drawNullclines(ctx, v, scene.aids.nullclines);
   if (scene.firstOrder?.implicit) drawImplicit(ctx, v, scene.firstOrder.implicit.levels);
   if (scene.firstOrder) drawFirstOrderLines(ctx, v, scene);
+  if (scene.aids?.separatrices) drawSeparatrices(ctx, v, scene.aids.separatrices);
   if (scene.trajectories) drawTrajectories(ctx, v, scene);
+  if (scene.aids?.eigenDirections) drawEigenDirections(ctx, v, scene.aids.eigenDirections);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
   if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
   // Last, so the names stay legible over the field. Data-driven (lib/coordinate-names): a
@@ -73,6 +90,136 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewpo
   drawAxisNames(ctx, v, names.hv, names.vv);
   // Data-driven: a non-autonomous scene says which instant the field was sampled at.
   if (scene.timeDependent) drawSnapshotTime(ctx, v, scene.timeDependent.snapshotT);
+  if (scene.aids) drawAidsLegend(ctx, v, scene, scene.aids);
+}
+
+function strokeSegments(ctx: CanvasRenderingContext2D, v: Viewport, segments: readonly [Vec2, Vec2][]): void {
+  ctx.beginPath();
+  for (const [a, b] of segments) {
+    const sa = worldToScreen(v, a);
+    const sb = worldToScreen(v, b);
+    ctx.moveTo(sa.x, sa.y);
+    ctx.lineTo(sb.x, sb.y);
+  }
+  ctx.stroke();
+}
+
+/** f = 0 solid, g = 0 dashed, in two colors: where they cross is where the equilibria are. */
+function drawNullclines(ctx: CanvasRenderingContext2D, v: Viewport, n: NonNullable<PhaseAids["nullclines"]>): void {
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = "round";
+  ctx.setLineDash([]);
+  ctx.strokeStyle = COLORS.nullclineF;
+  strokeSegments(ctx, v, n.f);
+  ctx.setLineDash(NULLCLINE_G_DASH);
+  ctx.strokeStyle = COLORS.nullclineG;
+  strokeSegments(ctx, v, n.g);
+  ctx.setLineDash([]);
+  ctx.lineCap = "butt";
+}
+
+/** The branches of a saddle's manifolds: bold and dark, the stable ones solid, the unstable ones dashed. */
+function drawSeparatrices(ctx: CanvasRenderingContext2D, v: Viewport, branches: readonly Separatrix[]): void {
+  ctx.lineWidth = 2.6;
+  ctx.lineJoin = "round";
+  ctx.strokeStyle = COLORS.aid;
+  for (const b of branches) {
+    if (b.points.length < 2) continue;
+    ctx.setLineDash(b.kind === "unstable" ? UNSTABLE_DASH : []);
+    ctx.beginPath();
+    b.points.forEach((p, i) => {
+      const s = worldToScreen(v, p);
+      if (i === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+/**
+ * A short line through the equilibrium along each eigen-direction, the same length on screen at
+ * every zoom; stable ones solid with arrow heads pointing IN, unstable ones dashed with heads
+ * pointing OUT (so the two read without color, and without the legend).
+ */
+function drawEigenDirections(ctx: CanvasRenderingContext2D, v: Viewport, directions: readonly EigenDirection[]): void {
+  const half = EIGEN_HALF_LENGTH * Math.min(v.width, v.height);
+  ctx.strokeStyle = COLORS.aid;
+  ctx.fillStyle = COLORS.aid;
+  ctx.lineWidth = 2;
+  for (const d of directions) {
+    const c = worldToScreen(v, d.at);
+    const tip = worldToScreen(v, { x: d.at.x + d.direction.x, y: d.at.y + d.direction.y });
+    const len = Math.hypot(tip.x - c.x, tip.y - c.y);
+    if (!(len > 0) || !Number.isFinite(len)) continue;
+    const ux = (tip.x - c.x) / len;
+    const uy = (tip.y - c.y) / len;
+    ctx.setLineDash(d.kind === "unstable" ? UNSTABLE_DASH : []);
+    ctx.beginPath();
+    ctx.moveTo(c.x - half * ux, c.y - half * uy);
+    ctx.lineTo(c.x + half * ux, c.y + half * uy);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    for (const side of [1, -1]) {
+      const outer = { x: c.x + side * half * ux, y: c.y + side * half * uy };
+      const inner = { x: c.x + side * half * 0.55 * ux, y: c.y + side * half * 0.55 * uy };
+      const head = d.kind === "unstable" ? arrowPolygon(inner, outer, 7) : arrowPolygon(outer, inner, 7);
+      if (head.length !== 3) continue;
+      ctx.beginPath();
+      ctx.moveTo(head[0].x, head[0].y);
+      ctx.lineTo(head[1].x, head[1].y);
+      ctx.lineTo(head[2].x, head[2].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
+/** The legend of the overlays that are on (top right, under the snapshot time): a line sample and its name. */
+function drawAidsLegend(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, aids: PhaseAids): void {
+  const L = labels(scene.locale ?? "en");
+  const mode = pictureModeOf(scene);
+  const firstOrder = scene.firstOrderSpec ?? scene.firstOrder?.spec;
+  const names = nullclineNames(mode === "first" ? (firstOrder?.kind === "differential" ? "differential" : "explicit") : mode);
+  const entries: { text: string; color: string; dash: number[]; width: number }[] = [];
+  if (aids.nullclines) {
+    if (names.f) entries.push({ text: names.f, color: COLORS.nullclineF, dash: [], width: 1.8 });
+    entries.push({ text: names.g, color: COLORS.nullclineG, dash: NULLCLINE_G_DASH, width: 1.8 });
+  }
+  if (aids.eigenDirections?.some((d) => d.kind === "stable")) entries.push({ text: L.ui.legendStableDirection, color: COLORS.aid, dash: [], width: 2 });
+  if (aids.eigenDirections?.some((d) => d.kind === "unstable")) entries.push({ text: L.ui.legendUnstableDirection, color: COLORS.aid, dash: UNSTABLE_DASH, width: 2 });
+  if (aids.separatrices?.some((b) => b.kind === "stable")) entries.push({ text: L.ui.legendSeparatrixStable, color: COLORS.aid, dash: [], width: 2.6 });
+  if (aids.separatrices?.some((b) => b.kind === "unstable")) entries.push({ text: L.ui.legendSeparatrixUnstable, color: COLORS.aid, dash: UNSTABLE_DASH, width: 2.6 });
+  if (entries.length === 0) return;
+  ctx.font = TICK_FONT;
+  const sample = 30;
+  const row = 15;
+  const textWidth = entries.reduce((w, e) => Math.max(w, ctx.measureText(e.text).width), 0);
+  const boxW = sample + 8 + textWidth + 12;
+  const boxH = entries.length * row + 8;
+  const x0 = v.width - boxW - 6;
+  const y0 = scene.timeDependent ? 26 : 6;
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.strokeStyle = COLORS.grid;
+  ctx.lineWidth = 1;
+  ctx.fillRect(x0, y0, boxW, boxH);
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  entries.forEach((e, i) => {
+    const y = y0 + 4 + row * i + row / 2;
+    ctx.strokeStyle = e.color;
+    ctx.lineWidth = e.width;
+    ctx.setLineDash(e.dash);
+    ctx.beginPath();
+    ctx.moveTo(x0 + 6, y);
+    ctx.lineTo(x0 + 6 + sample, y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = COLORS.axis;
+    ctx.fillText(e.text, x0 + 6 + sample + 8, y);
+  });
 }
 
 /** "t = 1.5" in the top-right corner: the picture is a snapshot of a field that changes with t. */

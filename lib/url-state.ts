@@ -40,12 +40,16 @@
  *          teacher can hand out "the damped oscillator with a slider on b". A slider needs a
  *          parameter of its name (in p, or free in the equation), min < max, 0 < step <= max - min
  *          and at most 10000 steps; an entry that fails is dropped as a whole and reported.
+ *   aids   the overlays that are switched on (round V), letters joined by ",": n nullclines,
+ *          e eigen-directions, s separatrices of saddles ("aids=n,s"; omitted when none). e and s
+ *          need a phase plane: on a first-order picture they are reported as unused.
  * Unknown parameters are ignored (so /embed's own `controls` never counts as a problem).
  */
 import { compileScalar } from "./core/parse";
 import { reduceSecondOrder } from "./core/second-order";
 import type { Locale, Range, Vec2 } from "./core/types";
 import { DEFAULT_PARAM_VALUE, discoverParams, formatParamValue, MAX_PARAMS, paramNameProblem, paramsRecord, sliderRangeProblem, type ParamEntry, type ParamMode, type SliderEntry } from "./params";
+import { NO_AIDS, type AidFlags } from "./phase-aids";
 import type { ArrowMode } from "./render/arrows";
 import { MAX_TRAJECTORIES } from "./trajectory-store";
 
@@ -84,6 +88,8 @@ export type AppState = {
   params: ParamEntry[];
   /** Round U: the sliders that are shown, by parameter name (`sl` in the link). */
   sliders: SliderEntry[];
+  /** Round V: which overlays are on (`aids` in the link). */
+  aids: AidFlags;
 };
 
 export type UrlProblemReason =
@@ -140,6 +146,7 @@ export const DEFAULT_STATE: AppState = {
   timeRange: { min: 0, max: 20 },
   params: [],
   sliders: [],
+  aids: NO_AIDS,
 };
 
 /**
@@ -255,6 +262,8 @@ export function encodeState(state: AppState): string {
   // Round T: exact values (the shortest decimal that reads back as the same number), so the
   // picture a teacher links to is the picture the reader gets.
   if (state.params.length) q.set("p", state.params.map((e) => `${e.name}:${formatParamValue(e.value)}`).join(","));
+  const aidLetters = [state.aids.nullclines ? "n" : "", !horizontalIsT(state.mode) && state.aids.eigenDirections ? "e" : "", !horizontalIsT(state.mode) && state.aids.separatrices ? "s" : ""].filter(Boolean);
+  if (aidLetters.length) q.set("aids", aidLetters.join(","));
   if (state.sliders.length) q.set("sl", state.sliders.map((e) => `${e.name}:${formatParamValue(e.min)}:${formatParamValue(e.max)}:${formatParamValue(e.step)}`).join(","));
   return readable(q.toString());
 }
@@ -290,7 +299,7 @@ function parseBounded(text: string): Parsed {
 }
 
 function cloneState(s: AppState): AppState {
-  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })), params: s.params.map((e) => ({ ...e })), sliders: s.sliders.map((e) => ({ ...e })) };
+  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })), params: s.params.map((e) => ({ ...e })), sliders: s.sliders.map((e) => ({ ...e })), aids: { ...s.aids } };
 }
 
 /**
@@ -483,6 +492,21 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
       starts.push({ x: x.value as number, y: y.value as number });
     }
     state.trajectoryStarts = starts;
+  }
+
+  // Round V: the overlays. Eigen-directions and separatrices belong to a phase plane.
+  const aids = q.get("aids");
+  if (aids !== null) {
+    const flags: AidFlags = { ...NO_AIDS };
+    for (const letter of aids.split(",").map((a) => a.trim()).filter((a) => a !== "")) {
+      if (letter === "n") flags.nullclines = true;
+      else if (letter === "e" || letter === "s") {
+        if (horizontalT) problem(`aids:${letter}`, "unusedInMode");
+        else if (letter === "e") flags.eigenDirections = true;
+        else flags.separatrices = true;
+      } else problem("aids", "badChoice");
+    }
+    state.aids = flags;
   }
 
   // Round U: the shown sliders, read last: a slider belongs to a parameter the page will have,

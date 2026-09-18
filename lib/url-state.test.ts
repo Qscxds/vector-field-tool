@@ -471,3 +471,32 @@ describe("[U] the shown sliders in the link (sl=name:min:max:step,…)", () => {
     expect(sl("k:0:2:0.1,k:0:4:0.1")).toEqual({ sliders: [{ name: "k", min: 0, max: 2, step: 0.1 }], problems: [{ param: "sl:k", reason: "duplicateParam" }] });
   });
 });
+
+describe("[V] the overlays in the link (aids=n,e,s)", () => {
+  it("omitted when none; letters in a fixed order; e and s are never written for a first-order picture", () => {
+    expect(encodeState(withDefaults({ aids: { nullclines: false, eigenDirections: false, separatrices: false } }))).toBe("");
+    expect(encodeState(withDefaults({ aids: { nullclines: true, eigenDirections: false, separatrices: true } }))).toBe("aids=n,s");
+    expect(encodeState(withDefaults({ aids: { nullclines: true, eigenDirections: true, separatrices: true } }))).toBe("aids=n,e,s");
+    expect(encodeState(withDefaults({ mode: "first", g: "y - t", aids: { nullclines: true, eigenDirections: true, separatrices: true } }))).toBe("m=first&g=y+-+t&aids=n");
+  });
+
+  it("round trip on a phase plane and on a first-order picture", () => {
+    for (const s of [
+      withDefaults({ f: "x", g: "-y", aids: { nullclines: true, eigenDirections: true, separatrices: true } }),
+      withDefaults({ mode: "second", eq: "x'' = -sin(x)", aids: { nullclines: false, eigenDirections: false, separatrices: true } }),
+      withDefaults({ mode: "first", g: "y - t", aids: { nullclines: true, eigenDirections: false, separatrices: false } }),
+    ]) {
+      const { state, problems } = decodeState(encodeState(s), D);
+      expect(problems).toEqual([]);
+      expect(state).toEqual(s);
+    }
+  });
+
+  it("an unknown letter is reported; e and s on a first-order picture are reported as unused, n still applies", () => {
+    expect(decodeState("aids=n,q", D)).toMatchObject({ problems: [{ param: "aids", reason: "badChoice" }], state: { aids: { nullclines: true, eigenDirections: false, separatrices: false } } });
+    expect(decodeState("m=first&g=y&aids=n,e,s", D)).toMatchObject({
+      problems: [{ param: "aids:e", reason: "unusedInMode" }, { param: "aids:s", reason: "unusedInMode" }],
+      state: { aids: { nullclines: true, eigenDirections: false, separatrices: false } },
+    });
+  });
+});

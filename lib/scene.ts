@@ -10,6 +10,7 @@ import type { IntegrationStatus } from "./core/integrate";
 import type { QueryHit, QueryNote } from "./core/query";
 import type { EquilibriumSolution, FirstOrderSpec } from "./core/slope-field";
 import type { Box, Locale, SystemSpec, Vec2, Range } from "./core/types";
+import type { PhaseAids } from "./phase-aids";
 
 export type SceneKind = "ping" | "sample_field" | "analyze_system" | "trace_trajectory" | "analyze_first_order" | "query_solution";
 
@@ -170,6 +171,12 @@ export type Scene = {
   secondOrder?: { equation: string; reduced: { f: string; g: string } };
   /** query_solution only (see QueryView). */
   query?: QueryView;
+  /**
+   * Round V: the optional overlays of the web shell (nullclines, eigen-directions, separatrices;
+   * lib/phase-aids), each present only while the student has it switched on. Drawn by drawScene
+   * with a legend. No tool fills it: a tool's Scene and summary are unchanged.
+   */
+  aids?: PhaseAids;
   /** ping only */
   message?: string;
 };

@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { fill, LABELS, labels, LOCALES } from "./labels";
+import { findEquilibria } from "./core/equilibria";
+import { compileSystem } from "./core/parse";
+import { eigenDirectionLines, fill, LABELS, labels, LOCALES } from "./labels";
 
 function keyPaths(value: unknown, prefix = ""): string[] {
   if (value === null || typeof value !== "object") return [prefix];
@@ -545,5 +547,37 @@ describe("refineCapped notice (round N.3 f)", () => {
       expect(equilibriaNotices(L, { refineCapped: true, truncated: true, equilibria: [1, 2] })).toEqual([fill(L.ui.equilibriaTruncated, { max: 2 }), L.tool.refineCapped]);
       expect(L.tool.refineCapped).toMatch(/[。.]$/);
     }
+  });
+});
+
+describe("[V] eigenDirectionLines: the ⓘ of an equilibrium says which line is which", () => {
+  const eq = (f: string, g: string) => findEquilibria(compileSystem({ f, g }), { x: { min: -2.9, max: 3.1 }, y: { min: -3.05, max: 2.95 } }).points[0];
+
+  it("a saddle names its stable and its unstable direction, how each is drawn, and the eigenvalue (both languages)", () => {
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      const lines = eigenDirectionLines(L, eq("x", "-y"));
+      expect(lines).toHaveLength(2);
+      const stable = lines.find((l) => l.includes("(0, 1)"))!;
+      const unstable = lines.find((l) => l.includes("(1, 0)"))!;
+      expect(stable).toBe(fill(L.ui.eigenDirectionStable, { v: "(0, 1)", l: "-1" }));
+      expect(unstable).toBe(fill(L.ui.eigenDirectionUnstable, { v: "(1, 0)", l: "1" }));
+    }
+  });
+
+  it("a degenerate node has one direction and says that this is what makes it degenerate; a star has every direction; a spiral none", () => {
+    const L = labels("en");
+    const degenerate = eigenDirectionLines(L, eq("-x + y", "-y"));
+    expect(degenerate).toEqual([fill(L.ui.eigenDirectionStable, { v: "(1, 0)", l: "-1" }), L.ui.eigenOne]);
+    expect(eigenDirectionLines(L, eq("x", "y"))).toEqual([L.ui.eigenEvery]);
+    expect(eigenDirectionLines(L, eq("y", "-x - 0.5*y"))).toEqual([L.ui.eigenComplex]);
+  });
+
+  it("on a second-order picture a direction is a pair (x, x'), never a y", () => {
+    const L = labels("en");
+    // x'' = x: x' = v, v' = x, the saddle of x' = y, y' = x: directions (1, 1)/sqrt 2 and (1, -1)/sqrt 2
+    const lines = eigenDirectionLines(L, eq("y", "x"), true);
+    expect(lines.join(" ")).toContain("(x, x') = (0.707, 0.707)");
+    expect(lines.join(" ")).toContain("(x, x') = (0.707, -0.707)");
   });
 });
