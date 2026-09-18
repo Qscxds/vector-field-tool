@@ -339,6 +339,8 @@ export type TraceOptions = {
   stopBox: Box;
   /** Time span per direction; default CLICK_TSPAN. */
   tSpan?: number;
+  /** Round U: another span for the backward direction (the time-series view's t range need not be symmetric about t0); default `tSpan`. */
+  tSpanBackward?: number;
   /** Tag for the stop box so labels can say which box was left. Default "view". */
   stop?: "view" | "far";
   /** Safety cap on steps per direction; default the integrator's own (20000). */
@@ -355,7 +357,7 @@ export type TraceOptions = {
 /** The solution through `start`, forward and backward, under the given stop rules. */
 export function traceBoth(sys: CompiledSystem, start: Vec2, opts: TraceOptions): TrajectoryView[] {
   return ([1, -1] as const).map((direction): TrajectoryView => {
-    const tr = integrateAdaptive(sys, start, opts.tSpan ?? CLICK_TSPAN, {
+    const tr = integrateAdaptive(sys, start, (direction === -1 ? opts.tSpanBackward : undefined) ?? opts.tSpan ?? CLICK_TSPAN, {
       direction,
       box: opts.stopBox,
       h: 0.05,
@@ -386,7 +388,11 @@ export function tracePreview(sys: CompiledSystem, world: Vec2, viewport: Viewpor
   });
 }
 
-/** Fixed trajectory through `world`: extends by the solution's own rule, clipped only by drawing. Starts at `t0` (the snapshot time). */
-export function traceFixed(sys: CompiledSystem, world: Vec2, homeBox: Box, t0 = 0): TrajectoryView[] {
-  return traceBoth(sys, world, { stopBox: fixedStopBox(homeBox), stop: "far", t0 });
+/**
+ * Fixed trajectory through `world`: extends by the solution's own rule, clipped only by drawing.
+ * Starts at `t0` (the snapshot time). `spans` (round U, lib/time-series traceSpans) follows it
+ * further than CLICK_TSPAN when the time-series view's t range asks for it.
+ */
+export function traceFixed(sys: CompiledSystem, world: Vec2, homeBox: Box, t0 = 0, spans?: { forward: number; backward: number }): TrajectoryView[] {
+  return traceBoth(sys, world, { stopBox: fixedStopBox(homeBox), stop: "far", t0, ...(spans ? { tSpan: spans.forward, tSpanBackward: spans.backward } : {}) });
 }

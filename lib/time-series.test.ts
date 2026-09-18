@@ -4,9 +4,10 @@
  */
 import { describe, expect, it } from "vitest";
 import { compileSystem } from "./core/parse";
-import { traceBoth } from "./interactive";
+import { reduceSecondOrder } from "./core/second-order";
+import { CLICK_TSPAN, traceBoth, traceFixed } from "./interactive";
 import type { TrajectoryView } from "./scene";
-import { DEFAULT_TIME_RANGE, defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox } from "./time-series";
+import { DEFAULT_TIME_RANGE, defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox, MAX_TRACE_TSPAN, traceSpans } from "./time-series";
 
 const BOX = { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } };
 
@@ -100,5 +101,45 @@ describe("[Q] the t range fields", () => {
     expect(parseTimeRange("", "5")).toBeNull();
     expect(parseTimeRange("abc", "5")).toBeNull();
     expect(parseTimeRange("0", "Infinity")).toBeNull();
+  });
+});
+
+describe("[U] traceSpans: a kept curve is followed far enough to fill the t range, never less than the phase plane's span, never beyond the cap", () => {
+  it("derived cases (base 50, cap 500)", () => {
+    expect(MAX_TRACE_TSPAN).toBe(500);
+    // the default range 0..20 changes nothing
+    expect(traceSpans({ min: 0, max: 20 }, 0, 50)).toEqual({ forward: 50, backward: 50 });
+    // one envelope of the beats at g = 1.2 (2 pi / 0.1 = 62.8): forward 70, backward still 50
+    expect(traceSpans({ min: 0, max: 70 }, 0, 50)).toEqual({ forward: 70, backward: 50 });
+    // not symmetric about t0, and measured FROM t0: t0 = 10, range -100..200 -> backward 110, forward 190
+    expect(traceSpans({ min: -100, max: 200 }, 10, 50)).toEqual({ forward: 190, backward: 110 });
+    // the cap
+    expect(traceSpans({ min: -1e5, max: 1e5 }, 0, 50)).toEqual({ forward: 500, backward: 500 });
+    // a range that lies wholly before t0 needs nothing forward: the base
+    expect(traceSpans({ min: -80, max: -10 }, 0, 50)).toEqual({ forward: 50, backward: 80 });
+  });
+});
+
+describe("[U.4] resonance with the existing integrator: the amplitude grows as the forcing frequency g approaches the natural frequency 1", () => {
+  // x'' = -x + F cos(g t) from rest: x = F/(g² - 1) (cos t - cos g t) = 2F/(g² - 1) sin((g - 1)t/2) sin((g + 1)t/2).
+  // The envelope 2F/|g² - 1| |sin((g - 1)t/2)| reaches its maximum 2F/|g² - 1| at t = pi/|g - 1|:
+  // g = 1.2: 2.2727 at t = 15.7;  g = 1.05: 9.7561 at t = 62.8. Both lie inside t in [0, 70].
+  const box = { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } };
+  const peak = (g: number) => {
+    const sys = compileSystem(reduceSecondOrder("x'' = -x + F*cos(g*t)", { F: 0.5, g }).spec);
+    const forward = traceFixed(sys, { x: 0, y: 0 }, box, 0, traceSpans({ min: 0, max: 70 }, 0, CLICK_TSPAN))[0];
+    expect(forward.status).toBe("completed");
+    // followed to the end of the t range, not to the phase plane's 50
+    expect(forward.times!.at(-1)).toBeCloseTo(70, 9);
+    return Math.max(...forward.points.map((p) => Math.abs(p.x)));
+  };
+
+  it("the peak of x(t) over t in [0, 70] is just under the envelope's maximum 2F/|g² - 1|, and four times larger at g = 1.05 than at g = 1.2", () => {
+    const at12 = peak(1.2);
+    const at105 = peak(1.05);
+    expect(at12).toBeLessThanOrEqual(1 / 0.44 + 1e-6);
+    expect(at12).toBeGreaterThan(0.95 / 0.44);
+    expect(at105).toBeLessThanOrEqual(1 / 0.1025 + 1e-6);
+    expect(at105).toBeGreaterThan(0.95 / 0.1025);
   });
 });

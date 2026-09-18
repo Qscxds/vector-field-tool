@@ -96,6 +96,25 @@ export function seriesHits(hits: readonly QueryHit[], series: SeriesKey[]): { ke
   return hits.flatMap((h) => series.map((key) => ({ key, at: { x: h.t, y: key === "x" ? h.x : h.y } })));
 }
 
+/**
+ * Round U: the longest a kept curve is followed in one direction, whatever t range is asked for
+ * (a t range of 0..100000 must not freeze the page: the integrator's own step cap would end the
+ * curve anyway, only much later).
+ */
+export const MAX_TRACE_TSPAN = 500;
+
+/**
+ * How far a kept curve of a planar picture is followed from t0, forward and backward: far enough
+ * to fill the t range of the time-series view (the beats of x'' = -x + F cos(g t) near g = 1 need
+ * a range much longer than the phase plane's `base` span to show one envelope), never less than
+ * `base` (the phase plane's own rule, so a short range changes nothing) and never more than
+ * MAX_TRACE_TSPAN.
+ */
+export function traceSpans(timeRange: Range, t0: number, base: number): { forward: number; backward: number } {
+  const clamp = (needed: number) => Math.min(MAX_TRACE_TSPAN, Math.max(base, needed));
+  return { forward: clamp(timeRange.max - t0), backward: clamp(t0 - timeRange.min) };
+}
+
 /** Parses the two t-range fields of the form; null while they are not a valid range (mid-typing). */
 export function parseTimeRange(minText: string, maxText: string): Range | null {
   // An empty field is not a number (Number("") would be 0).
