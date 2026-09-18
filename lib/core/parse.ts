@@ -205,16 +205,31 @@ export interface CompiledSystem {
 
 type Scope = Record<string, number>;
 
+/**
+ * The one rule for a parameter's NAME (round T: the web shell's parameter area and the link's `p`
+ * apply exactly the rule the compiler applies): "invalid" = not an identifier, "reserved" = a
+ * variable (x, y, t in every mode), a constant (pi, e), a whitelisted function, or a name mathjs
+ * or JavaScript would interpret first; null = usable.
+ */
+export function parameterNameProblem(name: string): "invalid" | "reserved" | null {
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) return "invalid";
+  if (
+    VARIABLES.has(name) || ALLOWED_CONSTANTS.has(name) || ALLOWED_FUNCTIONS.has(name) ||
+    RESERVED_NAMES.has(name) || name in Object.prototype || name.startsWith("__")
+  ) {
+    return "reserved";
+  }
+  return null;
+}
+
 function validateParams(expr: string, params: Record<string, number> | undefined): string[] {
   const names = Object.keys(params ?? {});
   for (const name of names) {
-    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+    const problem = parameterNameProblem(name);
+    if (problem === "invalid") {
       throw new ParseError(expr, `Invalid parameter name "${name}".`);
     }
-    if (
-      VARIABLES.has(name) || ALLOWED_CONSTANTS.has(name) || ALLOWED_FUNCTIONS.has(name) ||
-      RESERVED_NAMES.has(name) || name in Object.prototype || name.startsWith("__")
-    ) {
+    if (problem === "reserved") {
       throw new ParseError(expr, `Parameter name "${name}" is reserved.`);
     }
     const value = (params as Record<string, number>)[name];
@@ -430,6 +445,33 @@ export function mentionsSymbol(expr: string, name: string, params?: Record<strin
   parseValidated(expr, params, opts).traverse((n) => {
     if (math.isSymbolNode(n) && n.name === name) found = true;
   });
+  return found;
+}
+
+/**
+ * The FREE symbols of an expression, in order of first appearance: every symbol that is not a
+ * variable of the mode (or of `opts.symbols`), not pi or e, and not the name of a function being
+ * called. These are the names a caller has to supply as `params` before the expression compiles
+ * (round T: the web shell lists them in its parameter area as the student types). Static, like
+ * mentionsSymbol: the text is only PARSED (same length cap, same operator look-alikes), never
+ * validated or evaluated, so `k*foo(y)` still reports k although foo is not an allowed function.
+ * A text that does not parse has no symbols to report: [] (the compile step says what is wrong).
+ * Whether a free symbol is a legal parameter NAME is parameterNameProblem's business.
+ */
+export function freeSymbols(expr: string, opts: ValidateOptions = {}): string[] {
+  if (typeof expr !== "string" || expr.trim() === "" || expr.length > MAX_EXPRESSION_LENGTH) return [];
+  const mode: VariableMode = opts.variables ?? "xy";
+  const bound = new Set<string>([...(opts.symbols ?? MODE_VARIABLES[mode]), ...ALLOWED_CONSTANTS]);
+  const found: string[] = [];
+  try {
+    math.parse(normalizeOperators(expr)).traverse((n: MathNode, path: string | null, parent: MathNode | null) => {
+      if (!math.isSymbolNode(n)) return;
+      if (path === "fn" && parent !== null && math.isFunctionNode(parent)) return;
+      if (!bound.has(n.name) && !found.includes(n.name)) found.push(n.name);
+    });
+  } catch {
+    return [];
+  }
   return found;
 }
 

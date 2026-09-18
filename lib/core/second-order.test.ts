@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { compileScalar, ParseError, type ParseErrorCode } from "./parse";
+import { compileScalar, compileSystem, parameterNameProblem, ParseError, type ParseErrorCode } from "./parse";
 import {
   DOUBLE_EQUALS_MESSAGE,
+  freeSymbolsSecondOrder,
   HIGHER_DERIVATIVE_MESSAGE,
   NOT_LINEAR_IN_XDD_MESSAGE,
   normalizePrimes,
@@ -601,6 +602,46 @@ describe("[J-fix2] notation: x(t), implicit products, unicode operators, no plac
       expect(e.message, input).not.toMatch(/xd/);
       expect(e.expr, input).toBe(input);
       if (e.symbol !== undefined) expect(e.symbol, input).not.toMatch(/xd/);
+    }
+  });
+});
+
+describe("[T] symbolic parameters in a second-order equation", () => {
+  it("derived: x'' = -k*x with k = 2 gives x'' = -6 at x = 3; the damped oscillator with b = 0.25, w = 1 gives -2 at (x, x') = (1, 2)", () => {
+    const hooke = compileSystem(reduceSecondOrder("x'' = -k*x", { k: 2 }).spec);
+    expect(hooke.eval({ x: 3, y: 0 })).toEqual({ x: 0, y: -6 });
+    // x'' = -(2*b*x' + w^2*x) = -(2*0.25*2 + 1*1) = -2; the first component is x' itself (2)
+    const damped = compileSystem(reduceSecondOrder("x'' + 2*b*x' + w^2*x = 0", { b: 0.25, w: 1 }).spec);
+    const value = damped.eval({ x: 1, y: 2 });
+    expect(value.x).toBe(2);
+    expect(value.y).toBeCloseTo(-2, 12);
+  });
+
+  it("freeSymbolsSecondOrder: the names on both sides that are not t, x, x', x'', v, pi, e or a called function", () => {
+    expect(freeSymbolsSecondOrder("x'' + 2*b*x' + w^2*x = F*cos(g*t)")).toEqual(["b", "w", "F", "g"]);
+    expect(freeSymbolsSecondOrder("x'' = -x + F*cos(g*t)")).toEqual(["F", "g"]);
+    // a bare right-hand side, the alias v, unicode primes
+    expect(freeSymbolsSecondOrder("-k*v - x")).toEqual(["k"]);
+    expect(freeSymbolsSecondOrder("x″ + c*x′ + x = 0")).toEqual(["c"]);
+    expect(freeSymbolsSecondOrder("x'' = -sin(x)")).toEqual([]);
+    // a piecewise right-hand side keeps its comparisons: <= is not an equation sign
+    expect(freeSymbolsSecondOrder("x'' = (x <= a ? -x : -k*x)")).toEqual(["a", "k"]);
+  });
+
+  it("y is free but reserved, so it can never be offered as a parameter; the reduction still refuses it in its own words", () => {
+    expect(freeSymbolsSecondOrder("x'' = -y")).toEqual(["y"]);
+    expect(parameterNameProblem("y")).toBe("reserved");
+    expect(() => reduceSecondOrder("x'' = -y")).toThrow(/y has no meaning here/);
+  });
+
+  it("a missing parameter is an unknown-symbol error that names it (the web shell offers it before compiling)", () => {
+    try {
+      reduceSecondOrder("x'' + 2*b*x' + x = 0");
+      throw new Error("expected a ParseError");
+    } catch (e) {
+      expect(e).toBeInstanceOf(ParseError);
+      expect((e as ParseError).code).toBe("second_order_unknown_symbol");
+      expect((e as ParseError).symbol).toBe("b");
     }
   });
 });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, mentionsSymbol, normalizeOperators, ParseError } from "./parse";
+import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, freeSymbols, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, mentionsSymbol, normalizeOperators, parameterNameProblem, ParseError } from "./parse";
 
 const near = (a: number, b: number, eps = 1e-12) => Math.abs(a - b) <= eps;
 
@@ -491,5 +491,56 @@ describe("mentionsSymbol (the static rule for a symbol)", () => {
     expect(mentionsSymbol("x*y", "t")).toBe(false);
     // an expression that does not compile throws the parser's error (x in "ty" mode)
     expect(() => mentionsSymbol("x + t", "t", undefined, ty)).toThrow(ParseError);
+  });
+});
+
+describe("[T] symbolic parameters: the name rule, free symbols, and the value in every mode", () => {
+  it("parameterNameProblem: identifiers pass; variables, constants, functions and JS / mathjs names are reserved", () => {
+    for (const ok of ["k", "L", "Ta", "w0", "_a", "beta", "g", "F"]) expect(parameterNameProblem(ok)).toBeNull();
+    for (const bad of ["", "2k", "k-1", "k l", "k'", "é"]) expect(parameterNameProblem(bad)).toBe("invalid");
+    for (const reserved of ["x", "y", "t", "pi", "e", "sin", "max", "i", "E", "PI", "Infinity", "constructor", "toString", "__proto__", "__k"]) {
+      expect(parameterNameProblem(reserved)).toBe("reserved");
+    }
+  });
+
+  it("the compiler applies the same rule and says which name (readable message)", () => {
+    expect(() => compileScalar("x*y", { x: 1 })).toThrow(/Parameter name "x" is reserved/);
+    expect(() => compileScalar("x*y", { "2k": 1 })).toThrow(/Invalid parameter name "2k"/);
+    expect(() => compileScalar("k*y", { k: Infinity })).toThrow(/Parameter "k" must be a finite number/);
+  });
+
+  it("derived values: k*y at k = 2, y = 3 is 6 in the first-order mode and in a planar system", () => {
+    // "ty": the point's x is t, its y is y. 2*3 = 6 whatever t is.
+    expect(compileScalar("k*y", { k: 2 }, { variables: "ty" })({ x: 0.7, y: 3 })).toBe(6);
+    // planar: f = k*y = 6, g = -k*x = -2*1 = -2; both expressions share the one parameter set
+    const sys = compileSystem({ f: "k*y", g: "-k*x", params: { k: 2 } });
+    expect(sys.eval({ x: 1, y: 3 })).toEqual({ x: 6, y: -2 });
+    // a negative and a fractional value: -0.5*3 = -1.5
+    expect(compileScalar("k*y", { k: -0.5 }, { variables: "ty" })({ x: 0, y: 3 })).toBe(-1.5);
+  });
+
+  it("freeSymbols: exactly the names that are not variables, constants or called functions, in order of appearance", () => {
+    const ty = { variables: "ty" as const };
+    expect(freeSymbols("a*y*(1 - y/K) + c*sin(t)", ty)).toEqual(["a", "K", "c"]);
+    expect(freeSymbols("k*y*(1 - y/L)", ty)).toEqual(["k", "L"]);
+    // a repeated name once; pi and e are constants; sin is a call, not a symbol
+    expect(freeSymbols("e^(-k*t) + pi*k*sin(y)", ty)).toEqual(["k"]);
+    // a function that is not allowed is still not a free SYMBOL (the compile step refuses it)
+    expect(freeSymbols("foo(y)*k", ty)).toEqual(["k"]);
+    expect(freeSymbols("y*(1 - y)", ty)).toEqual([]);
+    // planar mode: x, y and t are variables
+    expect(freeSymbols("a*x - b*x*y")).toEqual(["a", "b"]);
+    expect(freeSymbols("d*x*y - c*y + cos(t)")).toEqual(["d", "c"]);
+    // operator look-alikes are normalized like the compiler does
+    expect(freeSymbols("k×y − m", ty)).toEqual(["k", "m"]);
+  });
+
+  it("freeSymbols: a stray x in first-order mode is free but can never be a parameter; an unparsable text reports nothing", () => {
+    const ty = { variables: "ty" as const };
+    expect(freeSymbols("k*x", ty)).toEqual(["k", "x"]);
+    expect(parameterNameProblem("x")).toBe("reserved");
+    expect(freeSymbols("k*", ty)).toEqual([]);
+    expect(freeSymbols("", ty)).toEqual([]);
+    expect(freeSymbols("k*y".padEnd(600, " "), ty)).toEqual([]);
   });
 });
