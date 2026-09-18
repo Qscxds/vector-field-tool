@@ -1858,3 +1858,81 @@ describe("[P2 sweep] what Claude reads: axes, the kernel clock, the t range, the
     }
   });
 });
+
+describe("[T] every summary says which parameter values the picture was computed for", () => {
+  it("analyze_first_order: the equation line ends with the values, in both languages; the scene keeps the bare equation", async () => {
+    const en = await call("analyze_first_order", { expr: "k*y*(1 - y/L)", params: { k: 0.8, L: 2 }, tMin: 0, tMax: 10, yMin: -0.5, yMax: 3 });
+    expect(en.isError).toBeFalsy();
+    expect(en.text.split("\n")[0]).toBe("Equation dy/dt = k*y*(1 - y/L) with k = 0.8, L = 2; viewing box t ∈ [0, 10], y ∈ [-0.5, 3].");
+    expect(en.scene.firstOrder?.expr).toBe("dy/dt = k*y*(1 - y/L)");
+    expect(en.scene.system?.params).toEqual({ k: 0.8, L: 2 });
+    // Derived: the constant solutions are y = 0 and y = L = 2, whatever k > 0 is.
+    expect(en.scene.firstOrder!.solutions.map((s) => Number(s.y.toFixed(9)))).toEqual([0, 2]);
+    const zh = await call("analyze_first_order", { expr: "k*y*(1 - y/L)", params: { k: 0.8, L: 2 }, locale: "zh" });
+    expect(zh.text.split("\n")[0]).toContain("dy/dt = k*y*(1 - y/L)，其中 k = 0.8、L = 2");
+  });
+
+  it("the differential form names the values of M and N's shared set once", async () => {
+    const r = await call("analyze_first_order", { M: "a*t", N: "b*y", params: { a: 1, b: 4 } });
+    expect(r.text.split("\n")[0]).toContain("(a*t) dt + (b*y) dy = 0 with a = 1, b = 4;");
+  });
+
+  it("no parameters, no 'with': the lines are exactly what they were", async () => {
+    const L = labels("en");
+    const first = await call("analyze_first_order", { expr: "y*(1 - y)" });
+    expect(first.text.split("\n")[0]).toBe(fill(L.tool.firstOrderHeader, { equation: "dy/dt = y*(1 - y)", xMin: "-3", xMax: "3", yMin: "-3", yMax: "3" }));
+    const planar = await call("analyze_system", { f: "y", g: "-x" });
+    expect(planar.text.split("\n")[0]).toBe(fill(L.tool.systemHeader, { f: "y", g: "-x", xMin: "-3", xMax: "3", yMin: "-3", yMax: "3" }));
+    for (const r of [first, planar, await call("sample_field", { f: "y", g: "-x" }), await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0 })]) {
+      expect(r.text).not.toMatch(/\bwith\s*[;.:]/);
+      expect(r.text).not.toContain("Parameter values");
+    }
+    const zh = await call("analyze_system", { f: "y", g: "-x", locale: "zh" });
+    expect(zh.text).not.toContain("其中");
+  });
+
+  it("a spare parameter the equation does not mention is not named", async () => {
+    const r = await call("analyze_first_order", { expr: "k*y", params: { k: 2, unused: 5 } });
+    expect(r.text.split("\n")[0]).toContain("dy/dt = k*y with k = 2;");
+    expect(r.text).not.toContain("unused");
+  });
+
+  it("analyze_system and trace_trajectory: after the system; sample_field: a sentence of its own", async () => {
+    const params = { a: 1, b: 0.5, c: 0.75, d: 0.25 };
+    const lv = await call("analyze_system", { f: "a*x - b*x*y", g: "d*x*y - c*y", params, xMin: -0.5, xMax: 8, yMin: -0.5, yMax: 6 });
+    expect(lv.text.split("\n")[0]).toBe("System x' = a*x - b*x*y, y' = d*x*y - c*y with a = 1, b = 0.5, c = 0.75, d = 0.25; viewing box x ∈ [-0.5, 8], y ∈ [-0.5, 6].");
+    // Derived: the equilibria are (0, 0) and (c/d, a/b) = (3, 2).
+    expect(lv.scene.equilibria!.map((e) => [Number(e.at.x.toFixed(6)), Number(e.at.y.toFixed(6))])).toEqual([[0, 0], [3, 2]]);
+    const tr = await call("trace_trajectory", { f: "y", g: "-k*x", params: { k: 2 }, x0: 1, y0: 0 });
+    expect(tr.text.split("\n")[0]).toBe("Starting from (1, 0), system x' = y, y' = -k*x with k = 2.");
+    const sf = await call("sample_field", { f: "y", g: "-k*x", params: { k: 2 } });
+    expect(sf.text).toContain("Parameter values: k = 2.");
+  });
+
+  it("analyze_second_order: on the reduction line, read from the student's equation", async () => {
+    const r = await call("analyze_second_order", { equation: "x'' + 2*b*x' + w^2*x = 0", params: { b: 0.25, w: 1 } });
+    expect(r.text.split("\n")[0]).toMatch(/^Second-order equation x'' \+ 2\*b\*x' \+ w\^2\*x = 0 with b = 0\.25, w = 1: let v = x'/);
+    // Derived: λ = -b ± i sqrt(w² - b²) = -0.25 ± 0.9682i: a stable spiral.
+    expect(r.scene.equilibria![0].classification).toBe("stable_spiral");
+  });
+
+  it("query_solution: first order after the equation, second order on the reduction line, a planar system as a sentence", async () => {
+    const first = await call("query_solution", { mode: "first", expr: "k*y", params: { k: 2 }, t0: 0, y0: 1, tSpan: 1, target: { kind: "t", value: 0.5 } });
+    expect(first.text.split("\n")[0]).toContain("Solution of dy/dt = k*y with k = 2 through (t, y) = (0, 1)");
+    // Derived: y(0.5) = e^(2*0.5) = e.
+    expect(first.scene.query!.hits[0].y).toBeCloseTo(Math.E, 4);
+    const second = await call("query_solution", { mode: "second", equation: "x'' = -k*x", params: { k: 4 }, x0: 1, xp0: 0, target: { kind: "t", value: 1 } });
+    expect(second.text.split("\n")[0]).toContain("x'' = -k*x with k = 4: let v = x'");
+    expect(second.text.split("\n")[1]).not.toContain("k = 4");
+    // Derived: x(t) = cos(2t), x(1) = cos 2.
+    expect(second.scene.query!.hits[0].x).toBeCloseTo(Math.cos(2), 4);
+    const planar = await call("query_solution", { mode: "system", f: "y", g: "-k*x", params: { k: 4 }, x0: 1, y0: 0, target: { kind: "t", value: 1 } });
+    expect(planar.text.split("\n")[1]).toBe("Parameter values: k = 4.");
+  });
+
+  it("a parameter name that collides with a reserved symbol is a readable error, never a crash", async () => {
+    const r = await call("analyze_first_order", { expr: "t*y", params: { t: 2 } });
+    expect(r.isError).toBe(true);
+    expect(r.text).toContain('Parameter name "t" is reserved');
+  });
+});

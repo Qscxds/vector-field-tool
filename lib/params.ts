@@ -274,6 +274,22 @@ export function paramsInUse(spec: Pick<SystemSpec, "f" | "g" | "params" | "varia
     .map(([name, value]) => ({ name, value }));
 }
 
+/**
+ * The parameters the equation of a Scene uses. A second-order scene is read from the equation the
+ * student gave (its reduced g may have simplified a name away: 0*b*x' still mentions b), every
+ * other scene from its system. The widget, the PNG footer and the tool summaries all go through
+ * here, so they name the same parameters.
+ */
+export function sceneParams(scene: { system?: SystemSpec; secondOrder?: { equation: string } }): ParamEntry[] {
+  const params = scene.system?.params;
+  if (!params) return [];
+  if (!scene.secondOrder) return paramsInUse(scene.system);
+  const mentioned = freeSymbolsSecondOrder(scene.secondOrder.equation);
+  return Object.entries(params)
+    .filter(([name]) => mentioned === null || mentioned.includes(name))
+    .map(([name, value]) => ({ name, value }));
+}
+
 /** "k = 0.8, L = 2" (`separator` is the language's list separator); "" for none. */
 export function paramsText(entries: readonly ParamEntry[], separator = ", "): string {
   return entries.map((e) => `${e.name} = ${formatParamValue(e.value)}`).join(separator);

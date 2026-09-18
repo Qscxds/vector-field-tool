@@ -3,13 +3,14 @@
  * canvas). The footer says what the picture shows so a screenshot pasted into homework still
  * carries its equation, its displayed range and where it came from:
  *   "dy/dt = y*(1 - y) · t ∈ [0, 6], y ∈ [-0.5, 2] · https://example.org"
+ * (an equation with symbolic parameters is followed by their values: "dy/dt = k*y with k = 2", round T)
  * and, for a time-dependent field, the snapshot instant ("t = 0") after the range. When the
  * entered range differs from what the viewport shows (equal-scale margin, zoom, pan) BOTH are
  * printed, labelled: "entered t ∈ [0, 6], y ∈ [-0.5, 2] · shown t ∈ [-0.3, 6.3], y ∈ [-0.5, 2]".
  */
 import { coordinateNames } from "@/lib/coordinate-names";
 import type { Box } from "@/lib/core/types";
-import { fill, labels, type Locale } from "@/lib/labels";
+import { fill, labels, withSceneParams, type Locale } from "@/lib/labels";
 import type { Viewport } from "@/lib/render/viewport";
 import type { Scene } from "@/lib/scene";
 
@@ -44,7 +45,8 @@ export function exportFooterText(scene: Scene, viewport: Viewport, locale: Local
   const { hv, vv } = coordinateNames(scene);
   const parts: string[] = [];
   const equation = sceneEquationText(scene, locale);
-  if (equation) parts.push(equation);
+  // Round T: the parameter values are part of where the picture came from ("… with k = 0.8, L = 2").
+  if (equation) parts.push(withSceneParams(L, equation, scene));
   const range = (box: Box) =>
     fill(L.ui.exportRange, {
       hv,
@@ -73,7 +75,8 @@ export function exportTimeSeriesFooterText(scene: Scene, box: Box, names: string
   const L = labels(locale);
   const parts: string[] = [];
   const equation = sceneEquationText(scene, locale);
-  if (equation) parts.push(equation);
+  // Round T: the parameter values are part of where the picture came from ("… with k = 0.8, L = 2").
+  if (equation) parts.push(withSceneParams(L, equation, scene));
   parts.push(
     fill(L.ui.exportTimeRange, {
       tMin: formatSignificant(box.x.min),

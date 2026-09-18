@@ -28,7 +28,8 @@ import type { Box, SystemSpec } from "@/lib/core/types";
 import { EXACT_PATH_TOL, fixedStopBox, markNonUnique, withUniqueness } from "@/lib/interactive";
 import { queryLines, queryTargetText } from "@/lib/labels-query";
 import { statusSentence, trajectoryStatus } from "@/lib/labels-trajectory";
-import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, pointText, timeDependenceEvidence, uniquenessSentence, type Locale } from "@/lib/labels";
+import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, paramsSentence, pointText, timeDependenceEvidence, uniquenessSentence, withParams, type Locale } from "@/lib/labels";
+import { sceneParams } from "@/lib/params";
 import type { Scene, TrajectoryView } from "@/lib/scene";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
@@ -417,7 +418,7 @@ export function analyzePlanar(
   const sys = compileOrExplain(spec);
   const header = second
     ? fill(L.tool.secondOrderHeader, { xMin: fmt(box.x.min), xMax: fmt(box.x.max), xpMin: fmt(box.y.min), xpMax: fmt(box.y.max) })
-    : fill(L.tool.systemHeader, { f: spec.f, g: spec.g, ...boxValues(box) });
+    : fill(L.tool.systemHeader, { f: spec.f, g: withParams(L, spec.g, sceneParams({ system: spec })), ...boxValues(box) });
   const singularNote = (count: number) => (count ? " " + fill(L.tool.singularSamples, { count }) : "");
   // Non-autonomous (t appears in f or g: the static rule of lib/core/time-dependence): equilibria
   // and linearized stability are tools for autonomous systems and are not attempted. Return only
@@ -570,7 +571,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const reduced = reduceSecondOrder(input.equation, input.params, { box });
         const second = { equation: reduced.equation, reduced: reduced.reduced };
         const { scene, lines } = analyzePlanar(reduced.spec, box, input.density, input.locale, input.t, checkpoint, second);
-        const reduction = fill(L.tool.secondOrderReduced, { equation: reduced.equation, g: reduced.reduced.g });
+        // Round T: the equation line says which parameter values the picture was computed for.
+        const reduction = fill(L.tool.secondOrderReduced, { equation: withParams(L, reduced.equation, sceneParams(scene)), g: reduced.reduced.g });
         return ok([reduction, ...lines].join("\n"), scene);
       }),
   );
@@ -675,7 +677,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           const traced = fill(input.direction === "both" ? L.tool.tracedBoth : input.direction === "forward" ? L.tool.tracedForward : L.tool.tracedBackward, { t0: "0" });
           lines.push(fill(L.tool.timeDependentTrajectory, { evidence: timeDependenceEvidence(L, td), traced }));
         }
-        return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: spec.g })}\n${lines.join("\n")}`, scene);
+        return ok(`${fill(L.tool.trajectoryHeader, { start: formatPoint(start), f: spec.f, g: withParams(L, spec.g, sceneParams(scene)) })}\n${lines.join("\n")}`, scene);
       }),
   );
 
@@ -728,7 +730,9 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const line = fill(L.tool.sampleFieldLine, { nx: field.nx, ny: field.ny, f: spec.f, g: spec.g, maxMag: fmt(field.maxMag), singular: field.singularCount });
         // The snapshot note comes first, so the field line it explains follows it.
         const note = td.dependsOnT ? fill(L.tool.timeDependent, { t: fmt(input.t), evidence: timeDependenceEvidence(L, td) }) + "\n" : "";
-        return ok(`${note}${line} ${L.tool.widgetDraws}`, scene);
+        // Round T: the parameter values as a sentence of their own (the field line names f and g inside parentheses).
+        const values = paramsSentence(L, sceneParams(scene));
+        return ok(`${note}${line}${values ? ` ${values}` : ""} ${L.tool.widgetDraws}`, scene);
       }),
   );
 
@@ -855,7 +859,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         };
 
         const lines: string[] = [];
-        lines.push(fill(L.tool.firstOrderHeader, { equation: equationText, ...boxValues(box) }));
+        lines.push(fill(L.tool.firstOrderHeader, { equation: withParams(L, equationText, sceneParams(scene)), ...boxValues(box) }));
         if (spec.kind === "differential") lines.push(L.tool.differentialUndirected);
         if (field.singularCount) lines.push(fill(L.tool.singularSamples, { count: field.singularCount }));
         if (singular.points.length) {
@@ -1080,14 +1084,22 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         };
         const targetText = queryTargetText(scene.query!, L, secondMode);
         const lines: string[] = [];
+        // Round T: which parameter values the solution was computed for. After the equation on a
+        // first-order header; on the reduction line of a second-order one; a sentence of its own
+        // after a planar header (whose "with (x(t0), y(t0)) = ..." already follows the equation).
+        const paramEntries = sceneParams(scene);
         lines.push(
           firstOrder
-            ? fill(L.tool.queryHeaderFirst, { equation, t0: fmt(start.x), y0: fmt(start.y), target: targetText })
+            ? fill(L.tool.queryHeaderFirst, { equation: withParams(L, equation, paramEntries), t0: fmt(start.x), y0: fmt(start.y), target: targetText })
             : secondOrder
               ? fill(L.tool.queryHeaderSecond, { equation, t0: fmt(startTime), x0: fmt(start.x), xp0: fmt(start.y), target: targetText })
               : fill(L.tool.queryHeaderSystem, { f: spec.f, g: spec.g, start: formatPoint(start), t0: fmt(startTime), target: targetText }),
         );
-        if (secondOrder) lines.unshift(fill(L.tool.secondOrderReduced, { equation: secondOrder.equation, g: secondOrder.reduced.g }));
+        if (secondOrder) lines.unshift(fill(L.tool.secondOrderReduced, { equation: withParams(L, secondOrder.equation, paramEntries), g: secondOrder.reduced.g }));
+        else if (!firstOrder) {
+          const values = paramsSentence(L, paramEntries);
+          if (values) lines.push(values);
+        }
         const differential = firstOrderSpec?.kind === "differential";
         // A differential form has no direction: said before the sides are listed.
         if (differential) lines.push(L.tool.differentialUndirected);

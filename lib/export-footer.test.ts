@@ -174,3 +174,30 @@ describe("[Q] exportTimeSeriesFooterText", () => {
     expect(exportTimeSeriesFooterText(planar, wide, "x, y", "zh", "")).toBe([sceneEquationText(planar, "zh"), "t ∈ [-5, 5.12]，x, y ∈ [-4, 4]"].join(FOOTER_SEPARATOR));
   });
 });
+
+describe("[T] the footer says which parameter values the picture was drawn for", () => {
+  const box = { x: { min: 0, max: 10 }, y: { min: -0.5, max: 3 } };
+  const viewport = { box, width: 720, height: 518 };
+
+  it("a first-order equation with k and L: the values follow the equation, in both languages", () => {
+    const firstOrderSpec: FirstOrderSpec = { kind: "explicit", g: "k*y*(1 - y/L)", params: { k: 0.8, L: 2 } };
+    const scene: Scene = { kind: "analyze_first_order", locale: "en", system: toSystem(firstOrderSpec), firstOrderSpec, box };
+    expect(exportFooterText(scene, viewport, "en", ORIGIN).split(FOOTER_SEPARATOR)[0]).toBe("dy/dt = k*y*(1 - y/L) with k = 0.8, L = 2");
+    expect(exportFooterText(scene, viewport, "zh", ORIGIN).split(FOOTER_SEPARATOR)[0]).toBe("dy/dt = k*y*(1 - y/L)，其中 k = 0.8、L = 2");
+    expect(footer.exportTimeSeriesFooterText(scene, box, "x", "en", ORIGIN).split(FOOTER_SEPARATOR)[0]).toBe("dy/dt = k*y*(1 - y/L) with k = 0.8, L = 2");
+  });
+
+  it("a second-order equation reads the names from the student's equation; a parameter-free footer has no 'with'", () => {
+    const scene: Scene = {
+      kind: "analyze_system",
+      locale: "en",
+      system: { f: "y", g: "-(2 * b * y + w ^ 2 * x)", params: { b: 0.25, w: 1 } },
+      secondOrder: { equation: "x'' + 2*b*x' + w^2*x = 0", reduced: { f: "v", g: "-(2 * b * v + w ^ 2 * x)" } },
+      box,
+    };
+    expect(exportFooterText(scene, viewport, "en", ORIGIN).split(FOOTER_SEPARATOR)[0]).toBe("x'' + 2*b*x' + w^2*x = 0 with b = 0.25, w = 1");
+    const plain = logisticScene();
+    expect(exportFooterText(plain.scene, plain.viewport, "en", ORIGIN)).not.toContain("with");
+    expect(exportFooterText(plain.scene, plain.viewport, "zh", ORIGIN)).not.toContain("其中");
+  });
+});

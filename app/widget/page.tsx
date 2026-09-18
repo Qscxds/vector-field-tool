@@ -21,7 +21,7 @@ import { coordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { sceneEquationText } from "@/lib/export-footer";
-import { constantSolutionFolded, constantSolutionNotices, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureModeOf, pointText, timeDependentFolded, type Folded, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureModeOf, pointText, timeDependentFolded, withSceneParams, type Folded, type Locale } from "@/lib/labels";
 import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import type { Scene, SceneKind } from "@/lib/scene";
@@ -262,13 +262,14 @@ function SceneSummary({ scene }: { scene: Scene }) {
   // A second-order scene shows the reduction step (the equation the student gave, then let v = x':
   // x' = v, v' = g); the kernel's x' = y, y' = g form is never printed for it.
   if (scene.secondOrder) {
-    items.push(fill(L.tool.secondOrderReduced, { equation: scene.secondOrder.equation, g: scene.secondOrder.reduced.g }));
+    // Round T: the equation is followed by the values of its symbolic parameters, as in the tool summary.
+    items.push(fill(L.tool.secondOrderReduced, { equation: withSceneParams(L, scene.secondOrder.equation, scene), g: scene.secondOrder.reduced.g }));
     // P2.3: the point (c, 0) of the phase plane is the constant solution x ≡ c.
     if (scene.equilibria?.length) items.push(L.tool.equilibriaSecondNote);
   } else if (scene.system) {
     // The equation in the student's notation through the shared helper (planar included: its
     // separator follows the locale, P2 sweep).
-    items.push(sceneEquationText(scene, scene.locale ?? "en"));
+    items.push(withSceneParams(L, sceneEquationText(scene, scene.locale ?? "en"), scene));
   }
   if (scene.field?.singularCount) items.push(fill(L.ui.singularNote, { count: scene.field.singularCount }));
   items.push(...equilibriaNotices(L, scene));

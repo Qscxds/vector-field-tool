@@ -21,10 +21,12 @@ export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
 
 /**
  * Bump when the widget HTML changes so MCP hosts drop cached copies. Claude also caches the tool
- * list (with this URI) per connection: after a bump the connector must be disconnected and
- * reconnected, otherwise it reads the old URI, gets "Resource not found" and shows a blank widget.
+ * list (with this URI) from when the connector was ADDED: after a bump the connector must be
+ * removed and added again (disconnecting and reconnecting is not enough), otherwise it reads the
+ * old URI, gets "Resource not found" and shows a blank widget. t-1 (round T): the widget's summary
+ * names the values of the symbolic parameters.
  */
-export const WIDGET_VERSION = "p-2";
+export const WIDGET_VERSION = "t-1";
 export const WIDGET_URI = `ui://vector-field-tool/widget.html?v=${WIDGET_VERSION}`;
 /** Next.js page that becomes the widget HTML (app/widget/page.tsx). */
 const WIDGET_PATH = "/widget";

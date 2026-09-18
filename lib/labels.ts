@@ -14,6 +14,7 @@ import type { EquilibriumSolution } from "./core/slope-field";
 import type { Complex, Locale } from "./core/types";
 import { hasFractionalPower, PROBES_NOTED, type FirstOrderSpec } from "./core/slope-field";
 import { BORDERLINE_EXPONENT, UNBOUNDED_EXPONENT, type UniquenessVerdict } from "./core/uniqueness";
+import { paramsText, sceneParams, type ParamEntry } from "./params";
 import type { Scene } from "./scene";
 
 export type { Locale };
@@ -69,7 +70,9 @@ export type LabelTable = {
     // tool-only advice that must not reach a web page.
     | "blewUpDiff" | "queryNotReachedDiff" | "stabilityReadingDiff" | "queryStoppedBeforeTool"
     | "reachedEquilibriumSecond" | "blewUpSecond" | "stoppedNonAutonomousSecond" | "timeDependentTrajectorySecond"
-    | "blewUpFirst" | "timeError",
+    | "blewUpFirst" | "timeError"
+    // Round T: the values of the symbolic parameters, after the equation or as a sentence of their own.
+    | "withParams" | "paramsLine",
     string
   >;
   /** Web shell and widget interface strings. */
@@ -292,6 +295,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependentTrajectorySecond: "这是非自治方程：方程含 t，相平面里的方向场随 t 变化。{evidence}{traced}从同一个 (x, x') 在另一个时刻出发会得到不同的曲线。",
       blewUpFirst: "y 在有限的 t 处发散（离开了有限范围），在最后一个有限点停止",
       timeError: "（±{error}）",
+      withParams: "{text}，其中 {list}",
+      paramsLine: "参数取值：{list}。",
     },
     ui: {
       title: "向量场 / 相图",
@@ -637,6 +642,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       timeDependentTrajectorySecond: "This is a non-autonomous equation: t appears in it, so the direction field of the phase plane changes with t. {evidence} {traced} Starting from the same (x, x') at another time would give a different curve.",
       blewUpFirst: "y becomes infinite at a finite t (it left the finite range); stopped at the last finite point",
       timeError: " (±{error})",
+      withParams: "{text} with {list}",
+      paramsLine: "Parameter values: {list}.",
     },
     ui: {
       title: "Vector field / phase portrait",
@@ -826,6 +833,25 @@ export function labels(locale: Locale): LabelTable {
 /** Fills `{name}` placeholders. Missing names are left as-is so mistakes stay visible. */
 export function fill(template: string, values: Record<string, string | number>): string {
   return template.replace(/\{(\w+)\}/g, (m, key: string) => (key in values ? String(values[key]) : m));
+}
+
+/**
+ * An equation followed by the values of the parameters it uses, "dy/dt = k*y with k = 2" (round T:
+ * a picture of k*y*(1 - y/L) says which k and L it was drawn for, in every summary, footer and
+ * result line). Without parameters the text comes back unchanged: never an empty "with".
+ */
+export function withParams(L: LabelTable, text: string, entries: readonly ParamEntry[]): string {
+  return entries.length ? fill(L.tool.withParams, { text, list: paramsText(entries, L.tool.listSeparator) }) : text;
+}
+
+/** The parameter values as a sentence of their own ("Parameter values: k = 2."), or null without parameters. */
+export function paramsSentence(L: LabelTable, entries: readonly ParamEntry[]): string | null {
+  return entries.length ? fill(L.tool.paramsLine, { list: paramsText(entries, L.tool.listSeparator) }) : null;
+}
+
+/** withParams for a Scene: the parameters its equation uses (lib/params sceneParams). */
+export function withSceneParams(L: LabelTable, text: string, scene: Pick<Scene, "system" | "secondOrder">): string {
+  return withParams(L, text, sceneParams(scene));
 }
 
 /**
