@@ -22,10 +22,12 @@ export type ExportScenePngInput = {
   footer: string;
   /** Device-pixel scale of the file; 2 gives a crisp picture on high-density screens and in print. */
   scale?: number;
+  /** Round W: the file follows the mode on screen (a clean picture in lecture mode); the footer keeps the equation, the parameter values and the range: provenance, not clutter. */
+  lecture?: boolean;
 };
 
-export function exportScenePng({ scene, viewport, arrowMode, footer, scale = 2 }: ExportScenePngInput): Promise<Blob> {
-  return renderPng(viewport, footer, scale, (ctx, width, height) => drawScene(ctx, scene, viewport, { width, height }, { arrowMode }));
+export function exportScenePng({ scene, viewport, arrowMode, footer, scale = 2, lecture = false }: ExportScenePngInput): Promise<Blob> {
+  return renderPng(viewport, footer, scale, (ctx, width, height) => drawScene(ctx, scene, viewport, { width, height }, { arrowMode, lecture }));
 }
 
 export type ExportTimeSeriesPngInput = {
@@ -34,11 +36,13 @@ export type ExportTimeSeriesPngInput = {
   /** One line of text under the picture (lib/export-footer exportTimeSeriesFooterText). */
   footer: string;
   scale?: number;
+  /** Round W: the file follows the mode on screen. */
+  lecture?: boolean;
 };
 
 /** The time-series picture on screen (the same drawTimeSeries), with the footer strip. */
-export function exportTimeSeriesPng({ viewport, drawing, footer, scale = 2 }: ExportTimeSeriesPngInput): Promise<Blob> {
-  return renderPng(viewport, footer, scale, (ctx) => drawTimeSeries(ctx, viewport, drawing));
+export function exportTimeSeriesPng({ viewport, drawing, footer, scale = 2, lecture = false }: ExportTimeSeriesPngInput): Promise<Blob> {
+  return renderPng(viewport, footer, scale, (ctx) => drawTimeSeries(ctx, viewport, drawing, { lecture }));
 }
 
 function renderPng(viewport: Viewport, footer: string, scale: number, draw: (ctx: CanvasRenderingContext2D, width: number, height: number) => void): Promise<Blob> {

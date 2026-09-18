@@ -43,6 +43,8 @@
  *   aids   the overlays that are switched on (round V), letters joined by ",": n nullclines,
  *          e eigen-directions, s separatrices of saddles ("aids=n,s"; omitted when none). e and s
  *          need a phase plane: on a first-order picture they are reported as unused.
+ *   lecture  1 = lecture mode (round W: the numbers hidden, the conclusions kept; /embed takes it
+ *          too, so a lesson page can embed the projected view directly). Omitted when off.
  * Unknown parameters are ignored (so /embed's own `controls` never counts as a problem).
  */
 import { compileScalar } from "./core/parse";
@@ -90,6 +92,8 @@ export type AppState = {
   sliders: SliderEntry[];
   /** Round V: which overlays are on (`aids` in the link). */
   aids: AidFlags;
+  /** Round W: lecture mode (`lecture=1` in the link). Display only. */
+  lecture: boolean;
 };
 
 export type UrlProblemReason =
@@ -147,6 +151,7 @@ export const DEFAULT_STATE: AppState = {
   params: [],
   sliders: [],
   aids: NO_AIDS,
+  lecture: false,
 };
 
 /**
@@ -264,6 +269,7 @@ export function encodeState(state: AppState): string {
   if (state.params.length) q.set("p", state.params.map((e) => `${e.name}:${formatParamValue(e.value)}`).join(","));
   const aidLetters = [state.aids.nullclines ? "n" : "", !horizontalIsT(state.mode) && state.aids.eigenDirections ? "e" : "", !horizontalIsT(state.mode) && state.aids.separatrices ? "s" : ""].filter(Boolean);
   if (aidLetters.length) q.set("aids", aidLetters.join(","));
+  if (state.lecture) q.set("lecture", "1");
   if (state.sliders.length) q.set("sl", state.sliders.map((e) => `${e.name}:${formatParamValue(e.min)}:${formatParamValue(e.max)}:${formatParamValue(e.step)}`).join(","));
   return readable(q.toString());
 }
@@ -492,6 +498,12 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
       starts.push({ x: x.value as number, y: y.value as number });
     }
     state.trajectoryStarts = starts;
+  }
+
+  const lecture = q.get("lecture");
+  if (lecture !== null) {
+    if (lecture === "0" || lecture === "1") state.lecture = lecture === "1";
+    else problem("lecture", "badChoice");
   }
 
   // Round V: the overlays. Eigen-directions and separatrices belong to a phase plane.

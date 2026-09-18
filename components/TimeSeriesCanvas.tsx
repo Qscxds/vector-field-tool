@@ -13,18 +13,20 @@ import { prepareCanvas } from "./VectorFieldCanvas";
 export type TimeSeriesCanvasProps = {
   viewport: Viewport;
   drawing: TimeSeriesDrawing;
+  /** Round W: lecture mode (larger text on the picture). Display only. */
+  lecture?: boolean;
   className?: string;
 };
 
-export function TimeSeriesCanvas({ viewport, drawing, className }: TimeSeriesCanvasProps) {
+export function TimeSeriesCanvas({ viewport, drawing, lecture = false, className }: TimeSeriesCanvasProps) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const canvas = ref.current;
     if (!canvas) return;
     const ctx = prepareCanvas(canvas, viewport.width, viewport.height);
     if (!ctx) return;
-    drawTimeSeries(ctx, viewport, drawing);
-  }, [viewport, drawing]);
+    drawTimeSeries(ctx, viewport, drawing, { lecture });
+  }, [viewport, drawing, lecture]);
   return (
     <canvas
       ref={ref}

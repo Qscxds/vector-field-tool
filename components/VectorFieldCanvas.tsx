@@ -21,6 +21,8 @@ export type VectorFieldCanvasProps = {
   width?: number;
   height?: number;
   arrowMode?: ArrowMode;
+  /** Round W: lecture mode (larger text on the picture, no numeric labels beside markers). Display only: a change redraws, nothing is recomputed. */
+  lecture?: boolean;
   /** Hover preview curves, drawn on the overlay only. */
   overlay?: TrajectoryView[];
   /** Short text shown on the overlay near the cursor (e.g. "direction undefined here"). */
@@ -58,6 +60,7 @@ export function VectorFieldCanvas({
   width = 640,
   height = 480,
   arrowMode = "unit",
+  lecture = false,
   overlay,
   overlayHint,
   highlight,
@@ -85,8 +88,8 @@ export function VectorFieldCanvas({
     if (!canvas) return;
     const ctx = prepareCanvas(canvas, width, height);
     if (!ctx) return;
-    drawScene(ctx, scene, v, { width, height }, { arrowMode });
-  }, [scene, v, width, height, arrowMode]);
+    drawScene(ctx, scene, v, { width, height }, { arrowMode, lecture });
+  }, [scene, v, width, height, arrowMode, lecture]);
 
   // Overlay: hover curve(s) and hint; cheap to redraw on every pointer frame.
   useEffect(() => {

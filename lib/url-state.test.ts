@@ -500,3 +500,28 @@ describe("[V] the overlays in the link (aids=n,e,s)", () => {
     });
   });
 });
+
+describe("[W] lecture mode in the link (lecture=1)", () => {
+  it("omitted when off; lecture=1 when on; nothing else in the link changes", () => {
+    const off = withDefaults({ mode: "second", eq: "x'' + 2*b*x' + w^2*x = 0", params: [{ name: "b", value: 0.25 }, { name: "w", value: 1 }], sliders: [{ name: "b", min: 0, max: 2, step: 0.01 }] });
+    const on = { ...off, lecture: true };
+    expect(encodeState(off)).not.toContain("lecture");
+    expect(encodeState(on)).toBe(encodeState(off).replace("&sl=", "&lecture=1&sl="));
+    // the professor's handout link: the damped oscillator, a slider on b, lecture mode
+    expect(encodeState(on)).toBe("m=second&eq=x''+%2B+2*b*x'+%2B+w^2*x+%3D+0&p=b:0.25,w:1&lecture=1&sl=b:0:2:0.01");
+  });
+
+  it("round trip; the same query decodes the same way for /embed (one decoder for both routes)", () => {
+    const s = withDefaults({ mode: "first", g: "y*(1 - y)", lecture: true });
+    const { state, problems } = decodeState(encodeState(s), D);
+    expect(problems).toEqual([]);
+    expect(state).toEqual(s);
+    // /embed adds its own controls=0, an unknown parameter to the decoder: ignored, no problem
+    expect(decodeState(`${encodeState(s)}&controls=0`, D)).toEqual({ state: s, problems: [] });
+    expect(decodeState("lecture=0", D)).toMatchObject({ problems: [], state: { lecture: false } });
+  });
+
+  it("anything but 0 or 1 is reported and the page stays in the normal mode", () => {
+    expect(decodeState("lecture=yes", D)).toMatchObject({ problems: [{ param: "lecture", reason: "badChoice" }], state: { lecture: false } });
+  });
+});

@@ -22,7 +22,8 @@ import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionFolded, constantSolutionNotices, curveWords, eigenDirectionLines, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
+import { constantSolutionNotices, curveWords, eigenDirectionLines, equalScaleTexts, equilibriaNotices, featuresBoxDetail, fill, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
+import { constantSolutionLine, equilibriumLine, lectureNotices, lectureQueryShort } from "@/lib/lecture";
 import { addParamRow, discoverParams, formatParamValue, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, MAX_SLIDER_STEPS, paramsFromEntries, paramsText, parseSliderRange, removeParamRow, resolveParams, setParamName, setParamText, setSliderField, slideParam, sliderEntries, syncParams, toggleSlider, withSliders, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
@@ -190,6 +191,13 @@ const VF_STYLE = `
 .vf-slider-range { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
 .vf-slider-range label { display: grid; gap: 2px; font-size: 12px; color: #52606d; }
 .vf-stale { opacity: 0.55; transition: opacity 120ms; }
+.vf-app h2 { font-size: 16px; margin: 0 0 6px; }
+/* Round W: lecture mode, for projecting in class: larger text in the results and the headings. */
+.vf-lecture-toggle { padding: 6px 12px; border: 1px solid #d1d5db; border-radius: 6px; background: #f9fafb; cursor: pointer; font: inherit; }
+.vf-lecture-toggle[aria-pressed="true"] { background: #1f2933; color: #ffffff; border-color: #1f2933; }
+.vf-lecture .vf-results { font-size: 19px; line-height: 1.45; }
+.vf-lecture .vf-results h2 { font-size: 23px; }
+.vf-lecture .vf-results p, .vf-lecture .vf-results li { font-size: inherit !important; }
 .vf-canvas { flex: 1 1 0; min-width: 0; position: relative; }
 .vf-computing { position: absolute; top: 8px; right: 8px; z-index: 1; margin: 0; padding: 2px 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.92); border: 1px solid #e5e7eb; font-size: 12px; color: #52606d; }
 .vf-report { margin: 18px 0 0; font-size: 12px; color: #52606d; }
@@ -434,6 +442,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const [canvasWrapRef, wrapWidth] = useMeasuredWidth();
   const { width: canvasW, height: canvasH } = canvasSize(wrapWidth);
 
+  // Round W: lecture mode. A pure display choice: it is in no dependency list of anything computed,
+  // so switching it recomputes nothing and switching back shows every number at once.
+  const [lecture, setLecture] = useState(initial.lecture);
   // Round V: the overlays (nullclines, eigen-directions, separatrices): view options like equal scale, kept in the link.
   const [aids, setAids] = useState<AidFlags>(initial.aids);
   // Round U: a slider is being dragged (pointer down on it until the pointer is released anywhere).
@@ -654,8 +665,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       params: formParams.entries,
       sliders: sliderEntries(form.params, formParams.entries),
       aids,
+      lecture,
     }),
-    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams, aids],
+    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams, aids, lecture],
   );
 
   // Keep the address bar in sync (full page only; an embed's URL belongs to the embedding page):
@@ -695,8 +707,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               drawing: timeSeriesDrawing,
               footer: exportTimeSeriesFooterText(scene, timeSeriesViewport.box, seriesNames, locale, window.location.origin),
               scale: 2,
+              lecture,
             })
-          : await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer: exportFooterText(scene, viewport, locale, window.location.origin, compiled.box ?? undefined), scale: 2 });
+          : await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer: exportFooterText(scene, viewport, locale, window.location.origin, compiled.box ?? undefined), scale: 2, lecture });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -708,7 +721,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     } catch {
       setDownloadFailed(true);
     }
-  }, [scene, viewport, locale, form.arrowMode, form.mode, presetId, compiled.box, view, timeSeriesViewport, timeSeriesDrawing, seriesNames]);
+  }, [scene, viewport, locale, form.arrowMode, form.mode, presetId, compiled.box, view, timeSeriesViewport, timeSeriesDrawing, seriesNames, lecture]);
   const fallbackInputRef = useRef<HTMLInputElement | null>(null);
   const copyLink = useCallback(async () => {
     const url = buildShareUrl(window.location.origin, "/vector-field", appState);
@@ -744,6 +757,16 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     addInitialValue();
   };
 
+  const lectureToggle = (
+    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+      <button type="button" className="vf-lecture-toggle" aria-pressed={lecture} onClick={() => setLecture((on) => !on)} data-lecture-toggle>
+        {L.ui.lectureMode}
+      </button>
+      <Info label={L.ui.details} data-info="lecture">
+        {L.ui.lectureDetail}
+      </Info>
+    </span>
+  );
   const languageSelect = (
     <label style={{ display: "flex", gap: 6, alignItems: "center", color: "#52606d" }}>
       <span>{L.ui.language}</span>
@@ -755,11 +778,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   );
 
   return (
-    <main className={embed ? "vf-app vf-embed" : "vf-app"} data-embed={embed ? "true" : undefined}>
+    <main className={`vf-app${embed ? " vf-embed" : ""}${lecture ? " vf-lecture" : ""}`} data-embed={embed ? "true" : undefined} data-lecture={lecture ? "true" : undefined}>
       <style>{VF_STYLE}</style>
       {embed ? (
         <div className="vf-topbar">
-          {languageSelect}
+          <span style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+            {languageSelect}
+            {lectureToggle}
+          </span>
           <span style={{ display: "flex", gap: 12 }}>
             {/* R.1: the help page from inside an iframe, in a new tab. */}
             <Link href={`/help?loc=${locale}`} target="_blank" rel="noopener noreferrer" data-help-link>
@@ -774,7 +800,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
         <>
           <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
             <h1 style={{ fontSize: 22, margin: "0 0 4px" }}>{L.ui.title}</h1>
-            {languageSelect}
+            <span style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+              {lectureToggle}
+              {languageSelect}
+            </span>
           </div>
           <p style={{ margin: "0 0 16px", color: "#52606d" }} data-tagline>
             {L.ui.tagline}{" "}
@@ -1152,7 +1181,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           {scene && viewport ? (
             <>
               {view === "time" && timeSeriesViewport ? (
-                <TimeSeriesCanvas viewport={timeSeriesViewport} drawing={timeSeriesDrawing} />
+                <TimeSeriesCanvas viewport={timeSeriesViewport} drawing={timeSeriesDrawing} lecture={lecture} />
               ) : (
                 <VectorFieldCanvas
                   scene={scene}
@@ -1160,6 +1189,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                   width={canvasW}
                   height={canvasH}
                   arrowMode={form.arrowMode}
+                  lecture={lecture}
                   overlay={overlay}
                   overlayHint={hint}
                   highlight={highlight}
@@ -1195,7 +1225,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                   {L.ui.nonUniqueTrajectory}
                 </p>
               ) : null}
-              <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
+              {/* Round W: the displayed range in digits is hidden in lecture mode (the axes carry it). */}
+              <p hidden={lecture} style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
                 {view === "time" && timeSeriesViewport
                   ? fill(L.ui.shownTimeRange, {
                       tMin: formatNumber(timeSeriesViewport.box.x.min, 3),
@@ -1219,13 +1250,15 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {L.ui.fixErrorHint}
             </div>
           )}
+          {/* Round W: everything below the picture is the results block, enlarged in lecture mode. */}
+          <div className="vf-results">
           {/* Round T: which parameter values this picture was computed for (the values in force, not the text being typed). */}
           {scene && shownParamEntries.length > 0 ? (
             <p style={{ margin: "8px 0 0", color: "#1f2933" }} data-equation-params>
               {withParams(L, equationText(shown, L, compiled.secondOrder), shownParamEntries)}
             </p>
           ) : null}
-          {scene?.field && scene.field.singularCount > 0 ? (
+          {scene?.field && scene.field.singularCount > 0 && !lecture ? (
             <p style={{ margin: "8px 0 0", color: "#92400e" }}>{fill(L.ui.singularNote, { count: scene.field.singularCount })}</p>
           ) : null}
 
@@ -1236,7 +1269,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <FoldedLine {...timeDependentFolded(L, scene.timeDependent.snapshotT, second)} label={L.ui.details} data-info="time-dependent" />
             </p>
           ) : null}
-          {scene?.box && !scene.timeDependent ? (
+          {scene?.box && !scene.timeDependent && !lecture ? (
             <p style={{ margin: "12px 0 0", color: "#52606d", fontSize: 12 }} data-features-box>
               {fill(L.ui.featuresBox, {
                 hv,
@@ -1253,15 +1286,16 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           ) : null}
           {/* Round U: while a drag's debounce holds the last results, they are dimmed (and "Computing…" floats over the picture). */}
           <div className={featuresPending ? "vf-stale" : undefined} data-features-pending={featuresPending ? "true" : undefined}>
-            {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} eigen={aids.eigenDirections && view === "phase"} /> : null}
-            {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
+            {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} eigen={aids.eigenDirections && view === "phase"} lecture={lecture} /> : null}
+            {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} lecture={lecture} /> : null}
           </div>
-          {scene && lastGroup ? (
+          {scene && lastGroup && !lecture ? (
             <p style={{ margin: "8px 0 0", color: "#52606d" }} data-last-trajectory>
               {words.last} {trajectoryLines(scene, lastGroup, L).join("; ")}
             </p>
           ) : null}
-          {scene && queryShown && queryView ? <QueryResultView scene={scene} run={queryShown} view={queryView} variables={variables} L={L} /> : null}
+          {scene && queryShown && queryView ? <QueryResultView scene={scene} run={queryShown} view={queryView} variables={variables} L={L} lecture={lecture} /> : null}
+          </div>
         </div>
       </div>
       {/* R.3: a new GitHub issue prefilled with this page's link and the browser's name (lib/report-issue); nothing is tracked. */}
@@ -1439,8 +1473,10 @@ function ParamSlider({ row, L, onSliderField, onSlide, onDragStart }: {
  * the start itself), where each direction of the numerical solution got to and why it stopped
  * (the shared mode-aware wording, far-box and non-autonomous aware, with the non-unique sentence
  * when the curve carries it), and the accuracy sentence: crossings of the NUMERICAL solution.
+ * Lecture mode (round W): whether the target was found, in a few words (the markers are on the
+ * picture), with every line above behind the ⓘ.
  */
-function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run: QueryRun; view: QueryView; variables: PanelVariables; L: LabelTable }) {
+function QueryResultView({ scene, run, view, variables, L, lecture }: { scene: Scene; run: QueryRun; view: QueryView; variables: PanelVariables; L: LabelTable; lecture: boolean }) {
   const legs: TrajectoryView[] = [run.result.forward, run.result.backward].map((leg, i) => ({
     direction: i === 0 ? "forward" : "backward",
     points: leg.points,
@@ -1455,20 +1491,31 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
   // A second-order picture names its coordinates: the start is (x, x') = (…) and a target on the
   // vertical coordinate reads x' = … (the kernel's y is the velocity).
   const second = variables === "second";
+  // On a non-autonomous picture the curve starts at the snapshot time: said, so the absolute t of every hit has its origin.
+  const header = scene.timeDependent
+    ? fill(L.ui.queryHeaderAt, { start: pointText(L, run.start, second), t0: formatNumber(scene.timeDependent.snapshotT, 4), target: queryTargetText(view, L, second) })
+    : fill(L.ui.queryHeader, { start: pointText(L, run.start, second), target: queryTargetText(view, L, second) });
+  const hits = view.hits.map((hit) => queryHitText(hit, variables, L));
+  const legsLine = trajectoryLines(scene, legs, L).join("; ");
+  if (lecture) {
+    return (
+      <section style={{ marginTop: 14 }} data-query-result data-query-note={view.note}>
+        <h2>{L.ui.querySolution}</h2>
+        <p style={{ margin: 0 }} data-query-lecture>
+          <FoldedLine short={lectureQueryShort(L, view.note, view.hits.length)} detail={[header, ...hits, ...(note ? [note] : []), legsLine, L.tool.queryAccuracy]} label={L.ui.details} data-info="query" />
+        </p>
+      </section>
+    );
+  }
   return (
     <section style={{ marginTop: 14 }} data-query-result data-query-note={view.note}>
-      <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.querySolution}</h2>
-      {/* On a non-autonomous picture the curve starts at the snapshot time: said, so the absolute t of every hit has its origin. */}
-      <p style={{ margin: "0 0 6px" }}>
-        {scene.timeDependent
-          ? fill(L.ui.queryHeaderAt, { start: pointText(L, run.start, second), t0: formatNumber(scene.timeDependent.snapshotT, 4), target: queryTargetText(view, L, second) })
-          : fill(L.ui.queryHeader, { start: pointText(L, run.start, second), target: queryTargetText(view, L, second) })}
-      </p>
-      {view.hits.length ? (
+      <h2>{L.ui.querySolution}</h2>
+      <p style={{ margin: "0 0 6px" }}>{header}</p>
+      {hits.length ? (
         <ul style={{ margin: "0 0 6px", paddingLeft: 20 }}>
-          {view.hits.map((hit, i) => (
+          {hits.map((text, i) => (
             <li key={i} data-query-hit>
-              {queryHitText(hit, variables, L)}
+              {text}
             </li>
           ))}
         </ul>
@@ -1479,7 +1526,7 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
         </p>
       ) : null}
       <p style={{ margin: "0 0 6px", color: "#52606d" }} data-query-legs>
-        {trajectoryLines(scene, legs, L).join("; ")}
+        {legsLine}
       </p>
       <p style={{ margin: 0, color: "#52606d", fontSize: 12 }} data-query-accuracy>
         {L.tool.queryAccuracy}
@@ -1488,97 +1535,135 @@ function QueryResultView({ scene, run, view, variables, L }: { scene: Scene; run
   );
 }
 
-/** The equilibria of a planar picture; on a second-order one (`second`) every point reads (x, x') = (…). */
-function EquilibriaList({ scene, L, second, eigen = false }: { scene: Scene; L: LabelTable; second: boolean; eigen?: boolean }) {
+/** A list of notice lines: as they are, or (lecture mode) the warning in short form and the rest folded into one line (lib/lecture). */
+function Notices({ lines, warning, L, lecture }: { lines: string[]; warning?: keyof LabelTable["warning"]; L: LabelTable; lecture: boolean }) {
+  if (!lecture) {
+    return (
+      <>
+        {lines.map((line) => (
+          <p key={line} style={{ margin: "0 0 6px", color: "#92400e" }}>
+            {line}
+          </p>
+        ))}
+      </>
+    );
+  }
+  return (
+    <>
+      {lectureNotices(L, warning, lines).map((folded) => (
+        <p key={folded.short} style={{ margin: "0 0 6px", color: "#92400e" }} data-lecture-notice>
+          <FoldedLine {...folded} label={L.ui.details} data-info="notice" />
+        </p>
+      ))}
+    </>
+  );
+}
+
+/**
+ * The equilibria of a planar picture; on a second-order one (`second`) every point reads (x, x') = (…).
+ * What each line prints is lib/lecture's equilibriumLine: in lecture mode the classification with
+ * its short caveats, no coordinates, no eigenvalues, and the whole normal line behind the ⓘ.
+ */
+function EquilibriaList({ scene, L, second, eigen = false, lecture }: { scene: Scene; L: LabelTable; second: boolean; eigen?: boolean; lecture: boolean }) {
   const eq = scene.equilibria ?? [];
   return (
     <section style={{ marginTop: 14 }}>
-      <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.equilibriaHeading}</h2>
-      {/* P2.3: on a second-order equation the point (c, 0) of the phase plane is the constant solution x ≡ c. */}
-      {second && eq.length > 0 ? (
+      <h2>{L.ui.equilibriaHeading}</h2>
+      {/* P2.3: on a second-order equation the point (c, 0) of the phase plane is the constant solution x ≡ c (an explanation: not shown in lecture mode). */}
+      {second && eq.length > 0 && !lecture ? (
         <p style={{ margin: "0 0 6px", color: "#52606d" }} data-equilibria-second-note>
           {L.tool.equilibriaSecondNote}
         </p>
       ) : null}
-      {equilibriaNotices(L, scene).map((line) => (
-        <p key={line} style={{ margin: "0 0 6px", color: "#92400e" }}>
-          {line}
-        </p>
-      ))}
+      <Notices lines={equilibriaNotices(L, scene)} warning={scene.warning} L={L} lecture={lecture} />
       <ol style={{ margin: 0, paddingLeft: 20 }}>
-        {eq.map((p, i) => (
-          <li key={i} style={{ marginBottom: 6 }} data-caveat={p.caveat ?? undefined} data-uniqueness={p.uniqueness?.verdict}>
-            {/* The caveat and the uniqueness sentence are folded (display only; the Scene keeps them). */}
-            <FoldedLine
-              short={
-                <>
-                  <strong>{pointText(L, p.at, second)}</strong> {L.classification[p.classification]}
-                </>
-              }
-              // Round V: with the eigen-direction overlay on, the ⓘ says which line is which (and that a degenerate node has only one).
-              detail={[...equilibriumDetail(L, p, second), ...(eigen ? eigenDirectionLines(L, p, second) : [])]}
-              label={L.ui.details}
-              data-info="equilibrium"
-            >
-              <span style={{ color: "#52606d" }}>
-                {" "}
-                λ = {formatEigenvalues(p.eigenvalues) || L.tool.eigenvaluesUnavailable} · tr = {formatNumber(p.trace, 5)}, det = {formatNumber(p.determinant, 5)}
-              </span>
-            </FoldedLine>
-          </li>
-        ))}
+        {eq.map((p, i) => {
+          // Round V: with the eigen-direction overlay on, the ⓘ says which line is which (and that a degenerate node has only one).
+          const line = equilibriumLine(L, p, { secondOrder: second, lecture, extra: eigen ? eigenDirectionLines(L, p, second) : [] });
+          return (
+            <li key={i} style={{ marginBottom: 6 }} data-caveat={p.caveat ?? undefined} data-uniqueness={p.uniqueness?.verdict}>
+              {/* The caveat and the uniqueness sentence are folded (display only; the Scene keeps them). */}
+              <FoldedLine
+                short={
+                  <>
+                    {line.point ? <strong>{line.point}</strong> : null} {line.text}
+                  </>
+                }
+                detail={line.detail}
+                label={L.ui.details}
+                data-info="equilibrium"
+              >
+                {line.numbers ? <span style={{ color: "#52606d" }}> {line.numbers}</span> : null}
+              </FoldedLine>
+            </li>
+          );
+        })}
       </ol>
     </section>
   );
 }
 
-function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
+function FirstOrderList({ scene, L, lecture }: { scene: Scene; L: LabelTable; lecture: boolean }) {
   const fo = scene.firstOrder;
   if (!fo) return null;
+  const implicitSentence = fo.implicit
+    ? fill(L.tool.exactImplicit, { levels: fo.implicit.levels.length, deviation: fo.implicit.pathDeviation.toExponential(1) })
+    : fo.implicitCheck && !fo.implicitCheck.passed
+      ? fill(L.tool.exactPathCheckFailed, { deviation: Number.isFinite(fo.implicitCheck.pathDeviation) ? fo.implicitCheck.pathDeviation.toExponential(1) : "∞", tol: fo.implicitCheck.tol.toExponential(0) })
+      : null;
   return (
     <section style={{ marginTop: 14, display: "grid", gap: 10 }}>
       <div>
-        <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.constantSolutionsHeading}</h2>
+        <h2>{L.ui.constantSolutionsHeading}</h2>
         {fo.solutions.length === 0 ? (
           <p style={{ margin: 0 }}>{noConstantSentence(L, fo.autonomous, fo.untestableReason, fo.identicallyZero)}</p>
         ) : (
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             {fo.solutions.map((s) => (
               // The canvas tag on the line; the full stability sentence, the plateau / probe notes and
-              // the uniqueness sentence behind the toggle (display only; the Scene keeps them).
+              // the uniqueness sentence behind the toggle (display only; the Scene keeps them). Lecture
+              // mode (lib/lecture): the stability without the value, the "!" sentence kept.
               <li key={s.y} data-domain-edge={s.domainEdge} data-uniqueness={s.uniqueness?.verdict}>
-                <FoldedLine {...constantSolutionFolded(L, s, fo.spec)} label={L.ui.details} data-info="constant-solution" />
+                <FoldedLine {...constantSolutionLine(L, s, fo.spec, lecture)} label={L.ui.details} data-info="constant-solution" />
               </li>
             ))}
           </ul>
         )}
         {/* A differential form has no direction: say once how "approach" / "leave" were read (P2.3). */}
-        {fo.spec?.kind === "differential" && fo.solutions.length > 0 ? (
+        {fo.spec?.kind === "differential" && fo.solutions.length > 0 && !lecture ? (
           <p style={{ margin: "6px 0 0", fontSize: 13, color: "#555" }} data-stability-reading-diff>{L.tool.stabilityReadingDiff}</p>
         ) : null}
-        {constantSolutionNotices(L, fo).map((note) => (
-          <p key={note} style={{ margin: "6px 0 0", fontSize: 13, color: "#555" }} data-constant-notice>{note}</p>
-        ))}
+        {lecture ? (
+          <div style={{ marginTop: 6 }}>
+            <Notices lines={[...(fo.spec?.kind === "differential" && fo.solutions.length > 0 ? [L.tool.stabilityReadingDiff] : []), ...constantSolutionNotices(L, fo)]} L={L} lecture />
+          </div>
+        ) : (
+          constantSolutionNotices(L, fo).map((note) => (
+            <p key={note} style={{ margin: "6px 0 0", fontSize: 13, color: "#555" }} data-constant-notice>{note}</p>
+          ))
+        )}
       </div>
       {fo.singularities?.length ? (
         <div>
-          <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.singularHeading}</h2>
-          <p style={{ margin: 0 }}>{fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator)}</p>
+          <h2>{L.ui.singularHeading}</h2>
+          {lecture ? (
+            <p style={{ margin: 0 }}>
+              <FoldedLine short={fill(L.ui.lectureMarked, { count: fo.singularities.length })} detail={[fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator)]} label={L.ui.details} data-info="singular" />
+            </p>
+          ) : (
+            <p style={{ margin: 0 }}>{fo.singularities.map((p) => formatPoint(p)).join(L.tool.listSeparator)}</p>
+          )}
           {fo.singularitiesWarning === "possible_continuum" ? <p style={{ margin: "6px 0 0", color: "#92400e" }} data-singularities-continuum>{L.ui.singularitiesContinuum}</p> : null}
           {fo.singularitiesTruncated ? <p style={{ margin: "6px 0 0", color: "#92400e" }}>{fill(L.ui.singularitiesTruncated, { max: fo.singularities.length })}</p> : null}
         </div>
       ) : null}
-      <FormsList fo={fo} L={L} />
-      {fo.implicit ? (
+      <FormsList fo={fo} L={L} lecture={lecture} />
+      {implicitSentence ? (
         <div>
-          <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.implicitHeading}</h2>
-          <p style={{ margin: 0 }}>{fill(L.tool.exactImplicit, { levels: fo.implicit.levels.length, deviation: fo.implicit.pathDeviation.toExponential(1) })}</p>
-        </div>
-      ) : fo.implicitCheck && !fo.implicitCheck.passed ? (
-        <div>
-          <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.implicitHeading}</h2>
-          <p style={{ margin: 0, color: "#92400e" }}>
-            {fill(L.tool.exactPathCheckFailed, { deviation: Number.isFinite(fo.implicitCheck.pathDeviation) ? fo.implicitCheck.pathDeviation.toExponential(1) : "∞", tol: fo.implicitCheck.tol.toExponential(0) })}
+          <h2>{L.ui.implicitHeading}</h2>
+          {/* A failed self-check is said in every mode; lecture mode only folds the measured numbers. */}
+          <p style={{ margin: 0, ...(fo.implicit ? {} : { color: "#92400e" }) }}>
+            {lecture ? <FoldedLine short={fo.implicit ? L.ui.lectureImplicit : L.ui.lectureImplicitFailed} detail={[implicitSentence]} label={L.ui.details} data-info="implicit" /> : implicitSentence}
           </p>
         </div>
       ) : null}
@@ -1587,7 +1672,7 @@ function FirstOrderList({ scene, L }: { scene: Scene; L: LabelTable }) {
 }
 
 /** Detected forms by verdict: consistent, borderline (flagged), then the rejected and untestable ones. */
-export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: LabelTable }) {
+export function FormsList({ fo, L, lecture = false }: { fo: NonNullable<Scene["firstOrder"]>; L: LabelTable; lecture?: boolean }) {
   const all = fo.forms ?? [];
   const reported = reportedForms(all);
   // A form ruled out by a textbook rule (Bernoulli with n = 0 or 1) is not a failed test: its
@@ -1597,9 +1682,13 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
   const excluded = all.filter((f) => f.excluded);
   const untestable = all.filter((f) => f.verdict === "untestable");
   const dev = (d: number | null) => (d === null || !Number.isFinite(d) ? "—" : d.toExponential(1));
+  const rejectedLine = rejected.length ? fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${dev(f.maxRelDeviation)}${L.tool.parenClose}`).join(L.tool.listSeparator) }) : null;
+  const excludedLine = excluded.length ? fill(L.tool.formsExcludedLine, { list: excluded.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${f.reason ?? ""}${L.tool.parenClose}`).join(L.tool.listSeparator) }) : null;
+  const untestableLine = untestable.length ? fill(L.tool.formsUntestableLine, { list: untestable.map((f) => L.form[f.form]).join(L.tool.listSeparator) }) : null;
+  const others = [rejectedLine, excludedLine, untestableLine].filter((line): line is string => line !== null);
   return (
     <div>
-      <h2 style={{ fontSize: 16, margin: "0 0 6px" }}>{L.ui.formsHeading}</h2>
+      <h2>{L.ui.formsHeading}</h2>
       {reported.length ? (
         <>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
@@ -1614,21 +1703,19 @@ export function FormsList({ fo, L }: { fo: NonNullable<Scene["firstOrder"]>; L: 
       ) : (
         <p style={{ margin: 0 }}>{fo.formsNote}</p>
       )}
-      {rejected.length ? (
-        <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>
-          {fill(L.tool.formsInconsistentLine, { list: rejected.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${dev(f.maxRelDeviation)}${L.tool.parenClose}`).join(L.tool.listSeparator) })}
+      {/* The forms that failed (with their measured deviations), were ruled out or could not be tested: lecture mode folds them into one line. */}
+      {lecture && others.length ? (
+        <p style={{ margin: "6px 0 0", color: "#52606d" }} data-forms-others>
+          <FoldedLine short={L.ui.lectureOtherForms} detail={others} label={L.ui.details} data-info="forms-others" />
         </p>
       ) : null}
-      {excluded.length ? (
+      {!lecture && rejectedLine ? <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>{rejectedLine}</p> : null}
+      {!lecture && excludedLine ? (
         <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-forms-excluded>
-          {fill(L.tool.formsExcludedLine, { list: excluded.map((f) => `${L.form[f.form]}${L.tool.parenOpen}${f.reason ?? ""}${L.tool.parenClose}`).join(L.tool.listSeparator) })}
+          {excludedLine}
         </p>
       ) : null}
-      {untestable.length ? (
-        <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>
-          {fill(L.tool.formsUntestableLine, { list: untestable.map((f) => L.form[f.form]).join(L.tool.listSeparator) })}
-        </p>
-      ) : null}
+      {!lecture && untestableLine ? <p style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }}>{untestableLine}</p> : null}
     </div>
   );
 }

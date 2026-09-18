@@ -11,11 +11,23 @@ import { arrowPolygon, scaleArrows, type ArrowMode } from "@/lib/render/arrows";
 import { axisNameAnchors } from "@/lib/render/axis-names";
 import { chooseTicks } from "@/lib/render/ticks";
 import { formatNumber, labels, pictureModeOf } from "@/lib/labels";
+import { constantSolutionTag } from "@/lib/lecture";
 import { nullclineNames, type EigenDirection, type PhaseAids, type Separatrix } from "@/lib/phase-aids";
 import { worldToScreen, type Viewport } from "@/lib/render/viewport";
 import type { Scene } from "@/lib/scene";
 
-export type DrawSceneOptions = { arrowMode: ArrowMode };
+/**
+ * `lecture` (round W): the picture as projected in class. The text on the canvas is larger, and the
+ * numeric labels beside markers are left out (a query hit's coordinates, a constant solution's
+ * value); every MARKER stays, the "!" of a point or line where uniqueness fails included, and so
+ * do the axes and their ticks.
+ */
+export type DrawSceneOptions = { arrowMode: ArrowMode; lecture?: boolean };
+
+/** Canvas fonts: the normal sizes, or the lecture-mode ones. */
+type Fonts = { tick: string; tickSize: number; axisName: string; small: string; badge: string };
+const FONTS: Fonts = { tick: "11px system-ui, sans-serif", tickSize: 11, axisName: "italic 13px 'Times New Roman', Times, serif", small: "11px system-ui, sans-serif", badge: "bold 11px system-ui, sans-serif" };
+const LECTURE_FONTS: Fonts = { tick: "15px system-ui, sans-serif", tickSize: 15, axisName: "italic 19px 'Times New Roman', Times, serif", small: "15px system-ui, sans-serif", badge: "bold 12px system-ui, sans-serif" };
 
 export const COLORS = {
   background: "#ffffff",
@@ -62,7 +74,8 @@ const UNSTABLE: ReadonlySet<Equilibrium["classification"]> = new Set(["unstable_
 
 export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewport | null, size: { width: number; height: number }, options: DrawSceneOptions): void {
   const { width, height } = size;
-  const { arrowMode } = options;
+  const { arrowMode, lecture = false } = options;
+  const fonts = lecture ? LECTURE_FONTS : FONTS;
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, width, height);
   if (!v) {
@@ -71,15 +84,15 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewpo
     ctx.fillText(scene.kind === "ping" ? `ping: ${scene.message ?? ""}` : "nothing to draw", 12, 24);
     return;
   }
-  drawGrid(ctx, v);
+  drawGrid(ctx, v, fonts);
   if (scene.field) drawArrows(ctx, v, scene, arrowMode);
   // Round V: nullclines under everything that is a solution; separatrices under the kept curves;
   // eigen-directions under the equilibrium's own marker.
   if (scene.aids?.nullclines) drawNullclines(ctx, v, scene.aids.nullclines);
   if (scene.firstOrder?.implicit) drawImplicit(ctx, v, scene.firstOrder.implicit.levels);
-  if (scene.firstOrder) drawFirstOrderLines(ctx, v, scene);
+  if (scene.firstOrder) drawFirstOrderLines(ctx, v, scene, lecture, fonts);
   if (scene.aids?.separatrices) drawSeparatrices(ctx, v, scene.aids.separatrices);
-  if (scene.trajectories) drawTrajectories(ctx, v, scene);
+  if (scene.trajectories) drawTrajectories(ctx, v, scene, lecture, fonts);
   if (scene.aids?.eigenDirections) drawEigenDirections(ctx, v, scene.aids.eigenDirections);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
   if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
@@ -87,10 +100,10 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewpo
   // first-order scene calls its horizontal coordinate t, a planar system x; the vertical one is y,
   // or x' (the velocity) on a second-order scene.
   const names = coordinateNames(scene);
-  drawAxisNames(ctx, v, names.hv, names.vv);
+  drawAxisNames(ctx, v, names.hv, names.vv, fonts);
   // Data-driven: a non-autonomous scene says which instant the field was sampled at.
-  if (scene.timeDependent) drawSnapshotTime(ctx, v, scene.timeDependent.snapshotT);
-  if (scene.aids) drawAidsLegend(ctx, v, scene, scene.aids);
+  if (scene.timeDependent) drawSnapshotTime(ctx, v, scene.timeDependent.snapshotT, fonts);
+  if (scene.aids) drawAidsLegend(ctx, v, scene, scene.aids, fonts);
 }
 
 function strokeSegments(ctx: CanvasRenderingContext2D, v: Viewport, segments: readonly [Vec2, Vec2][]): void {
@@ -176,7 +189,7 @@ function drawEigenDirections(ctx: CanvasRenderingContext2D, v: Viewport, directi
 }
 
 /** The legend of the overlays that are on (top right, under the snapshot time): a line sample and its name. */
-function drawAidsLegend(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, aids: PhaseAids): void {
+function drawAidsLegend(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, aids: PhaseAids, fonts: Fonts): void {
   const L = labels(scene.locale ?? "en");
   const mode = pictureModeOf(scene);
   const firstOrder = scene.firstOrderSpec ?? scene.firstOrder?.spec;
@@ -191,14 +204,14 @@ function drawAidsLegend(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene
   if (aids.separatrices?.some((b) => b.kind === "stable")) entries.push({ text: L.ui.legendSeparatrixStable, color: COLORS.aid, dash: [], width: 2.6 });
   if (aids.separatrices?.some((b) => b.kind === "unstable")) entries.push({ text: L.ui.legendSeparatrixUnstable, color: COLORS.aid, dash: UNSTABLE_DASH, width: 2.6 });
   if (entries.length === 0) return;
-  ctx.font = TICK_FONT;
+  ctx.font = fonts.tick;
   const sample = 30;
-  const row = 15;
+  const row = fonts.tickSize + 4;
   const textWidth = entries.reduce((w, e) => Math.max(w, ctx.measureText(e.text).width), 0);
   const boxW = sample + 8 + textWidth + 12;
   const boxH = entries.length * row + 8;
   const x0 = v.width - boxW - 6;
-  const y0 = scene.timeDependent ? 26 : 6;
+  const y0 = scene.timeDependent ? fonts.tickSize + 15 : 6;
   ctx.setLineDash([]);
   ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
   ctx.strokeStyle = COLORS.grid;
@@ -223,8 +236,8 @@ function drawAidsLegend(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene
 }
 
 /** "t = 1.5" in the top-right corner: the picture is a snapshot of a field that changes with t. */
-function drawSnapshotTime(ctx: CanvasRenderingContext2D, v: Viewport, t: number): void {
-  ctx.font = AXIS_NAME_FONT;
+function drawSnapshotTime(ctx: CanvasRenderingContext2D, v: Viewport, t: number, fonts: Fonts): void {
+  ctx.font = fonts.axisName;
   ctx.lineWidth = 3;
   ctx.strokeStyle = COLORS.background;
   ctx.fillStyle = COLORS.axis;
@@ -235,11 +248,11 @@ function drawSnapshotTime(ctx: CanvasRenderingContext2D, v: Viewport, t: number)
   ctx.fillText(text, v.width - 8, 6);
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
+function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport, fonts: Fonts): void {
   const xTicks = chooseTicks(v.box.x, 8);
   const yTicks = chooseTicks(v.box.y, 6);
   ctx.lineWidth = 1;
-  ctx.font = TICK_FONT;
+  ctx.font = fonts.tick;
   ctx.fillStyle = COLORS.label;
   for (const x of xTicks) {
     const s = worldToScreen(v, { x, y: v.box.y.min });
@@ -265,14 +278,11 @@ function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
   }
 }
 
-const AXIS_NAME_FONT = "italic 13px 'Times New Roman', Times, serif";
-const TICK_FONT = "11px system-ui, sans-serif";
-
-function drawAxisNames(ctx: CanvasRenderingContext2D, v: Viewport, horizontal: string, vertical: string): void {
-  ctx.font = TICK_FONT;
+function drawAxisNames(ctx: CanvasRenderingContext2D, v: Viewport, horizontal: string, vertical: string, fonts: Fonts): void {
+  ctx.font = fonts.tick;
   const tickColumnWidth = chooseTicks(v.box.y, 6).reduce((w, y) => Math.max(w, ctx.measureText(String(y)).width), 0);
-  const anchors = axisNameAnchors(v, { tickColumnWidth, tickRowHeight: 11 });
-  ctx.font = AXIS_NAME_FONT;
+  const anchors = axisNameAnchors(v, { tickColumnWidth, tickRowHeight: fonts.tickSize });
+  ctx.font = fonts.axisName;
   ctx.lineWidth = 3;
   ctx.strokeStyle = COLORS.background; // halo so the letter reads over arrows and curves
   ctx.fillStyle = COLORS.axis;
@@ -323,7 +333,7 @@ function drawArrows(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, mo
   }
 }
 
-function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene): void {
+function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, lecture: boolean, fonts: Fonts): void {
   ctx.lineWidth = 1.8;
   ctx.lineJoin = "round";
   // A differential form M dt + N dy = 0 (undirected segments) has no forward or backward: its kept
@@ -352,12 +362,13 @@ function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Sce
   // query_solution: every hit of the numerical solution as a filled diamond with a white halo and
   // its coordinates beside it (data from the Scene): "(t, y)" on a first-order picture, "(x, y)"
   // on a planar one; both are the hit's horizontal coordinate and y.
-  for (const hit of scene.query?.hits ?? []) drawQueryHit(ctx, v, hit);
+  // Lecture mode keeps the marker and leaves its coordinates out.
+  for (const hit of scene.query?.hits ?? []) drawQueryHit(ctx, v, hit, lecture, fonts);
 }
 
 const QUERY_HIT_RADIUS = 6;
 
-function drawQueryHit(ctx: CanvasRenderingContext2D, v: Viewport, hit: Vec2): void {
+function drawQueryHit(ctx: CanvasRenderingContext2D, v: Viewport, hit: Vec2, lecture: boolean, fonts: Fonts): void {
   const s = worldToScreen(v, hit);
   const r = QUERY_HIT_RADIUS;
   ctx.setLineDash([]);
@@ -372,8 +383,9 @@ function drawQueryHit(ctx: CanvasRenderingContext2D, v: Viewport, hit: Vec2): vo
   ctx.stroke();
   ctx.fillStyle = COLORS.queryHit;
   ctx.fill();
+  if (lecture) return;
   const text = `(${formatNumber(hit.x, 4)}, ${formatNumber(hit.y, 4)})`;
-  ctx.font = "11px system-ui, sans-serif";
+  ctx.font = fonts.small;
   ctx.textBaseline = "middle";
   // Left of the marker when the label would run off the right edge.
   const width = ctx.measureText(text).width;
@@ -405,8 +417,8 @@ function drawBadge(ctx: CanvasRenderingContext2D, x: number, y: number, color: s
   ctx.fillText("!", x, y + 0.5);
 }
 
-function drawFirstOrderLines(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene): void {
-  const { stabilityShort } = labels(scene.locale ?? "en");
+function drawFirstOrderLines(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, lecture: boolean, fonts: Fonts): void {
+  const L = labels(scene.locale ?? "en");
   for (const sol of scene.firstOrder?.solutions ?? []) {
     const s = worldToScreen(v, { x: v.box.x.min, y: sol.y });
     const approached = sol.stability === "stable" || sol.stability === "edge_approach";
@@ -435,11 +447,12 @@ function drawFirstOrderLines(ctx: CanvasRenderingContext2D, v: Viewport, scene: 
     }
     ctx.setLineDash([]);
     ctx.fillStyle = color;
-    ctx.font = "11px system-ui, sans-serif";
+    ctx.font = fonts.small;
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    // The tag is a short label in the scene's language (never the internal key).
-    ctx.fillText(`y = ${Number(sol.y.toFixed(4))} (${stabilityShort[sol.stability]})${nonUnique ? " !" : ""}`, v.width - 6, s.y - (nonUnique ? 6 : 3));
+    // The tag is a short label in the scene's language (never the internal key); lecture mode leaves
+    // the value out and keeps the stability and the "!" (lib/lecture constantSolutionTag, tested).
+    ctx.fillText(constantSolutionTag(L, sol, lecture), v.width - 6, s.y - (nonUnique ? 6 : 3));
   }
 }
 

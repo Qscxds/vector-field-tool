@@ -24,14 +24,20 @@ export type TimeSeriesDrawing = {
 
 const TICK_FONT = "11px system-ui, sans-serif";
 const AXIS_NAME_FONT = "italic 13px 'Times New Roman', Times, serif";
+const LEGEND_FONT = "12px system-ui, sans-serif";
+/** Round W: the same texts for a projector (lecture mode). */
+const LECTURE_TICK_FONT = "15px system-ui, sans-serif";
+const LECTURE_AXIS_NAME_FONT = "italic 19px 'Times New Roman', Times, serif";
+const LECTURE_LEGEND_FONT = "16px system-ui, sans-serif";
 /** Height of the t tick-label row at the bottom; value labels and the axis name stay above it. */
 const TICK_ROW = 16;
 
-export function drawTimeSeries(ctx: CanvasRenderingContext2D, v: Viewport, d: TimeSeriesDrawing): void {
+export function drawTimeSeries(ctx: CanvasRenderingContext2D, v: Viewport, d: TimeSeriesDrawing, opts: { lecture?: boolean } = {}): void {
+  const lecture = Boolean(opts.lecture);
   const { width, height } = v;
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, width, height);
-  drawGrid(ctx, v);
+  drawGrid(ctx, v, lecture);
   if (d.t0 !== undefined && d.t0 >= v.box.x.min && d.t0 <= v.box.x.max) {
     const s = worldToScreen(v, { x: d.t0, y: 0 });
     ctx.strokeStyle = COLORS.axis;
@@ -61,15 +67,15 @@ export function drawTimeSeries(ctx: CanvasRenderingContext2D, v: Viewport, d: Ti
   }
   ctx.setLineDash([]);
   for (const hit of d.hits ?? []) drawHit(ctx, v, hit.at, SERIES_COLORS[hit.key]);
-  drawAxisName(ctx, v);
-  drawLegend(ctx, v, d.legend);
+  drawAxisName(ctx, v, lecture);
+  drawLegend(ctx, v, d.legend, lecture);
 }
 
-function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
+function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport, lecture: boolean): void {
   const tTicks = chooseTicks(v.box.x, 8);
   const vTicks = chooseTicks(v.box.y, 6);
   ctx.lineWidth = 1;
-  ctx.font = TICK_FONT;
+  ctx.font = lecture ? LECTURE_TICK_FONT : TICK_FONT;
   ctx.fillStyle = COLORS.label;
   for (const t of tTicks) {
     const s = worldToScreen(v, { x: t, y: v.box.y.min });
@@ -100,8 +106,8 @@ function drawGrid(ctx: CanvasRenderingContext2D, v: Viewport): void {
 }
 
 /** "t" at the right end, just above the value = 0 line (above the tick row when 0 is off-screen or at the bottom). */
-function drawAxisName(ctx: CanvasRenderingContext2D, v: Viewport): void {
-  ctx.font = AXIS_NAME_FONT;
+function drawAxisName(ctx: CanvasRenderingContext2D, v: Viewport, lecture: boolean): void {
+  ctx.font = lecture ? LECTURE_AXIS_NAME_FONT : AXIS_NAME_FONT;
   ctx.lineWidth = 3;
   ctx.strokeStyle = COLORS.background;
   ctx.fillStyle = COLORS.axis;
@@ -113,8 +119,8 @@ function drawAxisName(ctx: CanvasRenderingContext2D, v: Viewport): void {
   ctx.fillText("t", v.width - 4, y);
 }
 
-function drawLegend(ctx: CanvasRenderingContext2D, v: Viewport, legend: { key: SeriesKey; name: string }[]): void {
-  ctx.font = "12px system-ui, sans-serif";
+function drawLegend(ctx: CanvasRenderingContext2D, v: Viewport, legend: { key: SeriesKey; name: string }[], lecture: boolean): void {
+  ctx.font = lecture ? LECTURE_LEGEND_FONT : LEGEND_FONT;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   let x = 10;
