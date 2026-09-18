@@ -1263,7 +1263,7 @@ function ParameterArea({ params, problems, refused, mode, L, onText, onName, onA
               <input
                 value={row.text}
                 onChange={(e) => onText(row.id, e.target.value)}
-                style={{ ...inputStyle, ...(row.pending ? { borderColor: "#d97706", background: "#fffbeb" } : {}) }}
+                style={{ ...inputStyle, ...(row.pending ? { border: "1px solid #d97706", background: "#fffbeb" } : {}) }}
                 inputMode="decimal"
                 aria-label={fill(L.ui.paramValue, { name: row.name })}
                 name={`paramValue${row.id}`}
