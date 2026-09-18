@@ -5,23 +5,33 @@ import { compileDifferential, toSystem } from "./core/slope-field";
 import {
   addParamRow,
   DEFAULT_PARAM_VALUE,
+  defaultSliderRange,
   discoverParams,
   EMPTY_PARAMS,
   formatParamValue,
   looksLikeProduct,
   MAX_PARAMS,
+  MAX_SLIDER_STEPS,
   paramNameProblem,
   paramsFromEntries,
   paramsInUse,
   paramsRecord,
   paramsText,
   parseParamValue,
+  parseSliderRange,
   removeParamRow,
   resolveParams,
   setParamName,
   setParamText,
   setParamValue,
+  setSliderField,
+  slideParam,
+  sliderEntries,
+  sliderRangeProblem,
+  snapToSlider,
   syncParams,
+  toggleSlider,
+  withSliders,
   type ParamState,
 } from "./params";
 
@@ -266,5 +276,92 @@ describe("paramsFromEntries (a link, a preset) and the text of the result lines"
     expect(paramsText([])).toBe("");
     expect(paramsRecord([])).toBeUndefined();
     expect(paramsRecord([{ name: "a", value: 1 }])).toEqual({ a: 1 });
+  });
+});
+
+describe("[U] sliders: the range a slider opens with, snapping, the typed range, what travels in a link", () => {
+  it("defaultSliderRange: 0 to twice the value, mirrored for a negative one, -1 to 1 around 0; about a hundred round steps", () => {
+    // 2 * 0.8 = 1.6, a hundredth of it is 0.016: the largest of 1, 2, 5 x 10^k not above it is 0.01
+    expect(defaultSliderRange(0.8)).toEqual({ min: 0, max: 1.6, step: 0.01 });
+    // 40 / 100 = 0.4 -> 0.2;  0.5 / 100 = 0.005 -> 0.005;  6 / 100 = 0.06 -> 0.05;  2 / 100 = 0.02 -> 0.02
+    expect(defaultSliderRange(20)).toEqual({ min: 0, max: 40, step: 0.2 });
+    expect(defaultSliderRange(0.25)).toEqual({ min: 0, max: 0.5, step: 0.005 });
+    expect(defaultSliderRange(-3)).toEqual({ min: -6, max: 0, step: 0.05 });
+    expect(defaultSliderRange(0)).toEqual({ min: -1, max: 1, step: 0.02 });
+    expect(defaultSliderRange(1)).toEqual({ min: 0, max: 2, step: 0.02 });
+  });
+
+  it("snapToSlider: onto the step grid counted from min, clamped, without binary noise", () => {
+    const r = { min: 0, max: 2, step: 0.1 };
+    expect(snapToSlider(0.3, r)).toBe(0.3);
+    expect(snapToSlider(0.1 * 3, r)).toBe(0.3);
+    expect(snapToSlider(0.34, r)).toBe(0.3);
+    expect(snapToSlider(0.36, r)).toBe(0.4);
+    expect(snapToSlider(-5, r)).toBe(0);
+    expect(snapToSlider(7, r)).toBe(2);
+    // a grid that does not start at 0: 0.2, 0.45, 0.7, ...
+    expect(snapToSlider(0.5, { min: 0.2, max: 1.5, step: 0.25 })).toBe(0.45);
+    // the last grid point may fall short of max: 1.45 is the last one, max itself is not on the grid
+    expect(snapToSlider(1.5, { min: 0.2, max: 1.5, step: 0.25 })).toBe(1.45);
+  });
+
+  it("parseSliderRange: a readable reason for every bad range", () => {
+    expect(parseSliderRange("0", "2", "0.01")).toEqual({ range: { min: 0, max: 2, step: 0.01 } });
+    expect(parseSliderRange("", "2", "0.01")).toEqual({ reason: "notANumber" });
+    expect(parseSliderRange("0", "abc", "0.01")).toEqual({ reason: "notANumber" });
+    expect(parseSliderRange("0", "2e7", "1")).toEqual({ reason: "outOfRange" });
+    expect(parseSliderRange("2", "0", "0.1")).toEqual({ reason: "inverted" });
+    expect(parseSliderRange("1", "1", "0.1")).toEqual({ reason: "inverted" });
+    expect(parseSliderRange("0", "2", "0")).toEqual({ reason: "badStep" });
+    expect(parseSliderRange("0", "2", "-0.1")).toEqual({ reason: "badStep" });
+    expect(parseSliderRange("0", "2", "3")).toEqual({ reason: "badStep" });
+    // 1 / 1e-5 = 100000 steps > MAX_SLIDER_STEPS
+    expect(MAX_SLIDER_STEPS).toBe(10000);
+    expect(parseSliderRange("0", "1", "0.00001")).toEqual({ reason: "tooManySteps" });
+    expect(sliderRangeProblem({ min: 0, max: 2, step: 0.01 })).toBeNull();
+    expect(sliderRangeProblem({ min: 2, max: 0, step: 0.01 })).toBe("inverted");
+    expect(sliderRangeProblem({ min: 0, max: Infinity, step: 1 })).toBe("outOfRange");
+  });
+
+  it("toggleSlider opens at the default range of the value in force and later keeps the student's range; slideParam sets the snapped value", () => {
+    let s = syncParams(EMPTY_PARAMS, ["b"]);
+    const id = s.rows[0].id;
+    s = setParamText(s, id, "0.25");
+    s = toggleSlider(s, id, true);
+    expect(row(s, "b").slider).toEqual({ on: true, min: "0", max: "0.5", step: "0.005", range: { min: 0, max: 0.5, step: 0.005 } });
+    s = setSliderField(s, id, "max", "2");
+    s = setSliderField(s, id, "step", "0.01");
+    expect(row(s, "b").slider!.range).toEqual({ min: 0, max: 2, step: 0.01 });
+    s = slideParam(s, id, 1.004);
+    expect(row(s, "b")).toMatchObject({ text: "1", value: 1, pending: false });
+    // hidden and shown again: the range the student typed is still there
+    s = toggleSlider(toggleSlider(s, id, false), id, true);
+    expect(row(s, "b").slider!.range).toEqual({ min: 0, max: 2, step: 0.01 });
+  });
+
+  it("a range field that is mid-edit keeps the last valid range in force", () => {
+    let s = toggleSlider(syncParams(EMPTY_PARAMS, ["b"]), 1, true);
+    s = setSliderField(s, 1, "max", "");
+    expect(row(s, "b").slider).toMatchObject({ max: "", range: { min: 0, max: 2, step: 0.02 } });
+    s = setSliderField(s, 1, "max", "5");
+    expect(row(s, "b").slider!.range).toEqual({ min: 0, max: 5, step: 0.02 });
+  });
+
+  it("only SHOWN sliders travel; withSliders puts a link's sliders back on the rows, shown", () => {
+    let s = paramsFromEntries([{ name: "b", value: 0.25 }, { name: "w", value: 1 }], ["b", "w"]);
+    s = withSliders(s, [{ name: "b", min: 0, max: 2, step: 0.01 }]);
+    expect(row(s, "b").slider).toMatchObject({ on: true, range: { min: 0, max: 2, step: 0.01 } });
+    expect(row(s, "w").slider).toBeUndefined();
+    const entries = resolveParams(s, "second", ["b", "w"]).entries;
+    expect(sliderEntries(s, entries)).toEqual([{ name: "b", min: 0, max: 2, step: 0.01 }]);
+    expect(sliderEntries(toggleSlider(s, row(s, "b").id, false), entries)).toEqual([]);
+  });
+
+  it("a row that goes away with its name's last use takes its slider into the memory and brings it back", () => {
+    let s = syncParams(EMPTY_PARAMS, ["b"]);
+    s = setParamText(s, 1, "0.25");
+    s = setSliderField(toggleSlider(s, 1, true), 1, "max", "2");
+    s = syncParams(syncParams(s, []), ["b"]);
+    expect(row(s, "b")).toMatchObject({ value: 0.25, slider: { on: true, range: { min: 0, max: 2, step: 0.005 } } });
   });
 });

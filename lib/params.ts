@@ -139,16 +139,135 @@ export type ParamRow = {
   origin: "auto" | "manual";
   /** Discovered and not yet given a value by the student: highlighted, "needs a value". */
   pending: boolean;
+  /** Round U: the row's slider; absent until the student (or a link / preset) first shows it. */
+  slider?: SliderState;
 };
+
+/** A row's slider as the form holds it: shown or not, and its range as typed text (the last valid range stays in force mid-edit). */
+export type SliderState = { on: boolean; min: string; max: string; step: string; range: SliderRange };
+
+export type SliderRange = { min: number; max: number; step: number };
+/** A slider as the link and the presets carry it: only sliders that are SHOWN travel. */
+export type SliderEntry = { name: string } & SliderRange;
+
+/** At most this many steps across a slider (a step of 1e-9 over [0, 1] is a slider nobody can use, and a drag would flood the kernel). */
+export const MAX_SLIDER_STEPS = 10000;
 
 export type ParamState = {
   rows: ParamRow[];
   /** Values of rows that went away with their name's last use: restored when the name comes back. */
-  memory: Record<string, { text: string; value: number }>;
+  memory: Record<string, { text: string; value: number; slider?: SliderState }>;
   nextId: number;
 };
 
 export const EMPTY_PARAMS: ParamState = { rows: [], memory: {}, nextId: 1 };
+
+/** 1, 2 or 5 times a power of ten, the largest not above v (v > 0): a step a person would choose. */
+function niceStep(v: number): number {
+  const power = 10 ** Math.floor(Math.log10(v));
+  // A hair of slack: 0.005 / 0.001 must count as 5 whichever way the division rounds.
+  const mantissa = (v / power) * (1 + 1e-12);
+  return (mantissa >= 5 ? 5 : mantissa >= 2 ? 2 : 1) * power;
+}
+
+/** Binary noise removed: 2 * 0.8 reads 1.6, 0.1 * 3 reads 0.3, in the field and in the link. */
+function clean(v: number): number {
+  return Number(v.toPrecision(12));
+}
+
+/**
+ * The range a slider opens with, from the value in force: 0 to twice the value (from twice a
+ * negative value up to 0), or -1 to 1 around 0; about a hundred steps across, at a round step
+ * (0.8 -> 0 .. 1.6 by 0.01; 20 -> 0 .. 40 by 0.2; -3 -> -6 .. 0 by 0.05). The student can change all three.
+ */
+export function defaultSliderRange(value: number): SliderRange {
+  const [min, max] = value > 0 ? [0, 2 * value] : value < 0 ? [2 * value, 0] : [-1, 1];
+  return { min: clean(min), max: clean(max), step: clean(niceStep((max - min) / 100)) };
+}
+
+export type SliderRangeProblem = "notANumber" | "outOfRange" | "inverted" | "badStep" | "tooManySteps";
+
+/** The three typed fields as a range, or why not: finite bounded numbers, min < max, 0 < step <= max - min, at most MAX_SLIDER_STEPS steps. */
+export function parseSliderRange(min: string, max: string, step: string): { range: SliderRange } | { reason: SliderRangeProblem } {
+  const values: number[] = [];
+  for (const text of [min, max, step]) {
+    const v = parseParamValue(text);
+    if ("reason" in v) return { reason: v.reason === "outOfRange" ? "outOfRange" : "notANumber" };
+    values.push(v.value);
+  }
+  const [lo, hi, st] = values;
+  if (!(lo < hi)) return { reason: "inverted" };
+  if (!(st > 0) || st > hi - lo) return { reason: "badStep" };
+  if ((hi - lo) / st > MAX_SLIDER_STEPS) return { reason: "tooManySteps" };
+  return { range: { min: lo, max: hi, step: st } };
+}
+
+/** The same check on numbers (a link's entry). */
+export function sliderRangeProblem(r: SliderRange): SliderRangeProblem | null {
+  if (![r.min, r.max, r.step].every((v) => Number.isFinite(v) && Math.abs(v) <= MAX_PARAM_ABS_VALUE)) return "outOfRange";
+  if (!(r.min < r.max)) return "inverted";
+  if (!(r.step > 0) || r.step > r.max - r.min) return "badStep";
+  return (r.max - r.min) / r.step > MAX_SLIDER_STEPS ? "tooManySteps" : null;
+}
+
+/**
+ * A slider position as a parameter value: clamped to the range, snapped to the step grid counted
+ * from `min`, and cleaned of binary noise (0.1 * 3 is 0.3 in the field and in the link).
+ */
+export function snapToSlider(value: number, r: SliderRange): number {
+  const steps = Math.round((Math.min(r.max, Math.max(r.min, value)) - r.min) / r.step);
+  return clean(Math.min(r.max, r.min + steps * r.step));
+}
+
+function sliderStateOf(range: SliderRange, on: boolean): SliderState {
+  return { on, min: formatParamValue(range.min), max: formatParamValue(range.max), step: formatParamValue(range.step), range };
+}
+
+/** Shows or hides a row's slider; the first showing opens it at defaultSliderRange of the value in force, later ones keep the student's range. */
+export function toggleSlider(state: ParamState, id: number, on: boolean): ParamState {
+  return { ...state, rows: state.rows.map((r) => (r.id === id ? { ...r, slider: r.slider ? { ...r.slider, on } : sliderStateOf(defaultSliderRange(r.value), on) } : r)) };
+}
+
+/** The student typed into one of the slider's range fields: the text always changes, the range in force only when all three make a valid range. */
+export function setSliderField(state: ParamState, id: number, field: "min" | "max" | "step", text: string): ParamState {
+  return {
+    ...state,
+    rows: state.rows.map((r) => {
+      if (r.id !== id || !r.slider) return r;
+      const next = { ...r.slider, [field]: text };
+      const parsed = parseSliderRange(next.min, next.max, next.step);
+      return { ...r, slider: "range" in parsed ? { ...next, range: parsed.range } : next };
+    }),
+  };
+}
+
+/** The slider moved: the parameter takes the snapped value (its text follows; it is no longer pending). */
+export function slideParam(state: ParamState, id: number, position: number): ParamState {
+  const row = state.rows.find((r) => r.id === id);
+  return row?.slider ? setParamValue(state, id, snapToSlider(position, row.slider.range)) : state;
+}
+
+/** The sliders a link or a preset carries, put onto the rows of the same name, shown. */
+export function withSliders(state: ParamState, sliders: readonly SliderEntry[]): ParamState {
+  if (sliders.length === 0) return state;
+  return {
+    ...state,
+    rows: state.rows.map((r) => {
+      const entry = sliders.find((e) => e.name === r.name);
+      return entry ? { ...r, slider: sliderStateOf({ min: entry.min, max: entry.max, step: entry.step }, true) } : r;
+    }),
+  };
+}
+
+/** The SHOWN sliders of the link's parameters (`entries`: the valid rows), in their order. */
+export function sliderEntries(state: ParamState, entries: readonly ParamEntry[]): SliderEntry[] {
+  const out: SliderEntry[] = [];
+  for (const e of entries) {
+    const row = state.rows.find((r) => r.name === e.name);
+    if (row?.slider?.on) out.push({ name: e.name, ...row.slider.range });
+  }
+  return out;
+}
 
 /** The rows of a link or a preset (values given, so nothing is pending); names the equation uses are "auto" rows. */
 export function paramsFromEntries(entries: readonly ParamEntry[], used: readonly string[] | null): ParamState {
@@ -174,14 +293,14 @@ export function syncParams(state: ParamState, used: readonly string[] | null): P
   if (gone.length === 0 && missing.length === 0) return state;
   const memory = { ...state.memory };
   // A pending row never had a value of the student's: nothing to remember.
-  for (const r of gone) if (!r.pending) memory[r.name] = { text: r.text, value: r.value };
+  for (const r of gone) if (!r.pending) memory[r.name] = { text: r.text, value: r.value, ...(r.slider ? { slider: r.slider } : {}) };
   let nextId = state.nextId;
   const kept = state.rows.filter((r) => !gone.includes(r));
   const added: ParamRow[] = missing.map((name) => {
     const remembered = memory[name];
     delete memory[name];
     return remembered
-      ? { id: nextId++, name, text: remembered.text, value: remembered.value, origin: "auto", pending: false }
+      ? { id: nextId++, name, text: remembered.text, value: remembered.value, origin: "auto", pending: false, ...(remembered.slider ? { slider: remembered.slider } : {}) }
       : { id: nextId++, name, text: formatParamValue(DEFAULT_PARAM_VALUE), value: DEFAULT_PARAM_VALUE, origin: "auto", pending: true };
   });
   return { rows: [...kept, ...added], memory, nextId };
