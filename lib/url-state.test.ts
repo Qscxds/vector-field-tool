@@ -426,3 +426,48 @@ describe("[T] symbolic parameters in the link (p=name:value,…)", () => {
     expect(decodeState("m=first&g=k*y&p=k:0x10", D).problems).toEqual([{ param: "p:k", reason: "notANumber" }]);
   });
 });
+
+describe("[U] the shown sliders in the link (sl=name:min:max:step,…)", () => {
+  const damped = withDefaults({
+    mode: "second",
+    eq: "x'' + 2*b*x' + w^2*x = 0",
+    params: [{ name: "b", value: 0.25 }, { name: "w", value: 1 }],
+    sliders: [{ name: "b", min: 0, max: 2, step: 0.01 }],
+  });
+
+  it("encodes after p: 'the damped oscillator that opens with a slider on b'", () => {
+    expect(encodeState(damped)).toBe("m=second&eq=x''+%2B+2*b*x'+%2B+w^2*x+%3D+0&p=b:0.25,w:1&sl=b:0:2:0.01");
+    expect(encodeState(withDefaults({ sliders: [] }))).toBe("");
+  });
+
+  it("round trip, also with two sliders, a negative range and a slider on a parameter the link leaves at its default", () => {
+    const states: AppState[] = [
+      damped,
+      withDefaults({ mode: "first", g: "k*y*(1 - y/L)", params: [{ name: "k", value: -0.8 }, { name: "L", value: 2 }], sliders: [{ name: "k", min: -1.6, max: 0, step: 0.02 }, { name: "L", min: 0.5, max: 4, step: 0.25 }] }),
+      // no p at all: k is free in the equation, the page lists it; its slider still travels
+      withDefaults({ mode: "first", g: "k*y", sliders: [{ name: "k", min: 0, max: 2, step: 0.02 }] }),
+    ];
+    for (const s of states) {
+      const { state, problems } = decodeState(encodeState(s), D);
+      expect(problems).toEqual([]);
+      expect(state).toEqual(s);
+    }
+  });
+
+  it("a bad slider is dropped as a whole and reported; the parameters and the equation survive", () => {
+    const base = "m=first&g=k*y&p=k:0.8";
+    const sl = (value: string) => {
+      const { state, problems } = decodeState(`${base}&sl=${value}`, D);
+      expect(state.params).toEqual([{ name: "k", value: 0.8 }]);
+      return { sliders: state.sliders, problems };
+    };
+    expect(sl("k:0:2")).toEqual({ sliders: [], problems: [{ param: "sl", reason: "malformedPair" }] });
+    expect(sl("k:0:abc:0.1")).toEqual({ sliders: [], problems: [{ param: "sl:k", reason: "notANumber" }] });
+    expect(sl("k:2:0:0.1")).toEqual({ sliders: [], problems: [{ param: "sl:k", reason: "invertedRange" }] });
+    expect(sl("k:0:2:0")).toEqual({ sliders: [], problems: [{ param: "sl:k", reason: "badStep" }] });
+    expect(sl("k:0:2:5")).toEqual({ sliders: [], problems: [{ param: "sl:k", reason: "badStep" }] });
+    expect(sl("k:0:1:0.00001")).toEqual({ sliders: [], problems: [{ param: "sl:k", reason: "tooManySteps" }] });
+    expect(sl("q:0:2:0.1")).toEqual({ sliders: [], problems: [{ param: "sl:q", reason: "sliderWithoutParam" }] });
+    expect(sl("k:0:2:0.1,k:0:4:0.1")).toEqual({ sliders: [{ name: "k", min: 0, max: 2, step: 0.1 }], problems: [{ param: "sl:k", reason: "duplicateParam" }] });
+  });
+});

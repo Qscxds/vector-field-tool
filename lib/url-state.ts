@@ -36,12 +36,16 @@
  *          a bounded decimal; an entry that fails either is dropped AS A WHOLE and reported (never
  *          half-read, never silently). A name the equation uses but the link does not give is not
  *          an error: the page lists it at the default value and marks it as needing a value.
+ *   sl     the parameter sliders that are SHOWN, "b:0:2:0.01" = name:min:max:step (round U), so a
+ *          teacher can hand out "the damped oscillator with a slider on b". A slider needs a
+ *          parameter of its name (in p, or free in the equation), min < max, 0 < step <= max - min
+ *          and at most 10000 steps; an entry that fails is dropped as a whole and reported.
  * Unknown parameters are ignored (so /embed's own `controls` never counts as a problem).
  */
 import { compileScalar } from "./core/parse";
 import { reduceSecondOrder } from "./core/second-order";
 import type { Locale, Range, Vec2 } from "./core/types";
-import { DEFAULT_PARAM_VALUE, discoverParams, formatParamValue, MAX_PARAMS, paramNameProblem, paramsRecord, type ParamEntry, type ParamMode } from "./params";
+import { DEFAULT_PARAM_VALUE, discoverParams, formatParamValue, MAX_PARAMS, paramNameProblem, paramsRecord, sliderRangeProblem, type ParamEntry, type ParamMode, type SliderEntry } from "./params";
 import type { ArrowMode } from "./render/arrows";
 import { MAX_TRAJECTORIES } from "./trajectory-store";
 
@@ -78,6 +82,8 @@ export type AppState = {
   timeRange: Range;
   /** Round T: the symbolic parameters, one set shared by every expression and every mode (`p` in the link). */
   params: ParamEntry[];
+  /** Round U: the sliders that are shown, by parameter name (`sl` in the link). */
+  sliders: SliderEntry[];
 };
 
 export type UrlProblemReason =
@@ -95,7 +101,10 @@ export type UrlProblemReason =
   | "unusedInMode"
   | "badParamName"
   | "reservedParamName"
-  | "duplicateParam";
+  | "duplicateParam"
+  | "sliderWithoutParam"
+  | "badStep"
+  | "tooManySteps";
 
 export type UrlProblem = { param: string; reason: UrlProblemReason };
 
@@ -130,6 +139,7 @@ export const DEFAULT_STATE: AppState = {
   view: null,
   timeRange: { min: 0, max: 20 },
   params: [],
+  sliders: [],
 };
 
 /**
@@ -245,6 +255,7 @@ export function encodeState(state: AppState): string {
   // Round T: exact values (the shortest decimal that reads back as the same number), so the
   // picture a teacher links to is the picture the reader gets.
   if (state.params.length) q.set("p", state.params.map((e) => `${e.name}:${formatParamValue(e.value)}`).join(","));
+  if (state.sliders.length) q.set("sl", state.sliders.map((e) => `${e.name}:${formatParamValue(e.min)}:${formatParamValue(e.max)}:${formatParamValue(e.step)}`).join(","));
   return readable(q.toString());
 }
 
@@ -279,7 +290,7 @@ function parseBounded(text: string): Parsed {
 }
 
 function cloneState(s: AppState): AppState {
-  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })), params: s.params.map((e) => ({ ...e })) };
+  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })), params: s.params.map((e) => ({ ...e })), sliders: s.sliders.map((e) => ({ ...e })) };
 }
 
 /**
@@ -472,6 +483,45 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
       starts.push({ x: x.value as number, y: y.value as number });
     }
     state.trajectoryStarts = starts;
+  }
+
+  // Round U: the shown sliders, read last: a slider belongs to a parameter the page will have,
+  // one the link gives in p or one the (already validated) equation leaves free.
+  const sl = q.get("sl");
+  if (sl !== null) {
+    const known = new Set<string>([...state.params.map((e) => e.name), ...(discoverParams(mode, state) ?? [])]);
+    const sliders: SliderEntry[] = [];
+    for (const entry of sl.split(",").filter((e) => e.trim() !== "")) {
+      const parts = entry.split(":");
+      if (parts.length !== 4) {
+        problem("sl", "malformedPair");
+        continue;
+      }
+      const name = parts[0].trim();
+      const tag = name === "" ? "sl" : `sl:${name.slice(0, 24)}`;
+      const numbers = parts.slice(1).map(parseBounded);
+      const bad = numbers.find((n) => n.reason);
+      if (bad?.reason) {
+        problem(tag, bad.reason);
+        continue;
+      }
+      if (!known.has(name)) {
+        problem(tag, "sliderWithoutParam");
+        continue;
+      }
+      if (sliders.some((e) => e.name === name)) {
+        problem(tag, "duplicateParam");
+        continue;
+      }
+      const [min, max, step] = numbers.map((n) => n.value as number);
+      const rangeProblem = sliderRangeProblem({ min, max, step });
+      if (rangeProblem) {
+        problem(tag, rangeProblem === "inverted" ? "invertedRange" : rangeProblem === "outOfRange" || rangeProblem === "notANumber" ? "outOfRange" : rangeProblem);
+        continue;
+      }
+      sliders.push({ name, min, max, step });
+    }
+    state.sliders = sliders;
   }
 
   return { state, problems };

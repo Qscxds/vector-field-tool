@@ -28,6 +28,7 @@ import type { CompiledSystem } from "@/lib/core/parse";
 import type { FirstOrderSpec } from "@/lib/core/slope-field";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
+import { deferredOf, featurePolicy, flushDeferred, isStale, requestDeferred } from "@/lib/feature-schedule";
 import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
 import { coordinateNames } from "@/lib/coordinate-names";
 import { curveWords, fill, labels } from "@/lib/labels";
@@ -115,6 +116,19 @@ export type InteractiveInput = {
    * into the live Scene unchanged so the widget's summary keeps the reduction line. Data only.
    */
   secondOrder?: Scene["secondOrder"];
+  /**
+   * Round U: a parameter slider is being dragged. The field and the kept curves still follow
+   * every value; the features follow every value too while they are cheap, and are debounced
+   * (the last ones stay, `featuresPending` says so) when the last computation was expensive
+   * (lib/feature-schedule). Omitted (the widget): nothing is ever deferred.
+   */
+  dragging?: boolean;
+  /**
+   * Round U: how far a kept curve is followed from the snapshot time in each direction
+   * (lib/time-series traceSpans: the time-series view's t range); default CLICK_TSPAN both ways.
+   * Put it in `retraceKey` so a change re-traces the kept curves.
+   */
+  traceSpans?: { forward: number; backward: number };
 };
 
 export type InteractiveHandlers = {
@@ -155,11 +169,13 @@ export type InteractiveScene = {
   atCapacity: boolean;
   undo: () => void;
   canUndo: boolean;
+  /** Round U: the features on the scene belong to an older parameter value and are being recomputed (debounced during a slider drag). */
+  featuresPending: boolean;
   handlers: InteractiveHandlers;
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart, secondOrder } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart, secondOrder, dragging = false, traceSpans } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   // Curves that came with the scene (the widget's trace_trajectory result): drawn and cleared with
@@ -226,13 +242,33 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewBoxKey, targetFeatureBoxKey]);
   const effectiveFeatureBox = featureBox ?? targetFeatureBox;
-  const features = useMemo<Features>(
-    () =>
-      withFeatures && sys && effectiveFeatureBox
-        ? computeFeatures(sys, firstOrder, effectiveFeatureBox, locale, { snapshotT, ...(timeDependence ? { timeDependence } : {}) })
-        : {},
-    [withFeatures, sys, firstOrder, effectiveFeatureBox, locale, snapshotT, timeDependence],
-  );
+  // Round U: WHICH system the features are computed for. Normally the current one, at once. During
+  // a slider drag whose last features computation was expensive (lib/feature-schedule), the one
+  // they were last computed for, until the slider has rested for FEATURE_DEBOUNCE_MS; the shell
+  // marks the results as being recomputed meanwhile (`featuresPending`).
+  const current = useMemo(() => ({ sys, firstOrder, timeDependence }), [sys, firstOrder, timeDependence]);
+  const lastFeatureCost = useRef<number | null>(null);
+  const debouncing = featurePolicy(dragging, lastFeatureCost.current) === "debounce";
+  const [deferred, setDeferred] = useState(() => deferredOf(current));
+  useEffect(() => {
+    if (!debouncing) {
+      setDeferred((d) => (d.applied === current && d.pending === null ? d : deferredOf(current)));
+      return;
+    }
+    setDeferred((d) => requestDeferred(d, current, performance.now(), FEATURE_DEBOUNCE_MS));
+    // The timer that fires is always the newest request's (every change clears the one before).
+    const id = setTimeout(() => setDeferred((d) => flushDeferred(d, Number.POSITIVE_INFINITY)), FEATURE_DEBOUNCE_MS);
+    return () => clearTimeout(id);
+  }, [current, debouncing]);
+  const featureInputs = debouncing ? deferred.applied : current;
+  const featuresPending = debouncing && (featureInputs !== current || isStale(deferred));
+  const features = useMemo<Features>(() => {
+    if (!(withFeatures && featureInputs.sys && effectiveFeatureBox)) return {};
+    const started = performance.now();
+    const result = computeFeatures(featureInputs.sys, featureInputs.firstOrder, effectiveFeatureBox, locale, { snapshotT, ...(featureInputs.timeDependence ? { timeDependence: featureInputs.timeDependence } : {}) });
+    lastFeatureCost.current = performance.now() - started;
+    return result;
+  }, [withFeatures, featureInputs, effectiveFeatureBox, locale, snapshotT]);
 
   const scene = useMemo<Scene | null>(() => {
     if (!sys || !spec || !viewport || !field) return null;
@@ -287,6 +323,8 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   probeRef.current = sys ? { sys, firstOrder, timeDependent: Boolean(features.timeDependent) } : null;
   const snapshotTRef = useRef(snapshotT);
   snapshotTRef.current = snapshotT;
+  const traceSpansRef = useRef(traceSpans);
+  traceSpansRef.current = traceSpans;
 
   const storeRef = useRef(store);
   storeRef.current = store;
@@ -297,7 +335,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const traceNow = useCallback((p: Vec2): TrajectoryView[] => {
     const s = sysRef.current;
     const home = homeBoxRef.current;
-    return s && home ? markNonUnique(traceFixed(s, p, home, snapshotTRef.current), featuresRef.current, home, probeRef.current ?? undefined) : [];
+    return s && home ? markNonUnique(traceFixed(s, p, home, snapshotTRef.current, traceSpansRef.current), featuresRef.current, home, probeRef.current ?? undefined) : [];
   }, []);
 
   const dropHoverState = () => {
@@ -516,6 +554,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     atCapacity: atCapacity(store),
     undo,
     canUndo: storeCanUndo(store),
+    featuresPending,
     handlers: { onClickWorld, onHoverWorld, onWheelZoom, onPan, onPinch, onDoubleClick },
   };
 }

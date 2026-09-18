@@ -23,7 +23,7 @@ import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-or
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
 import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
-import { addParamRow, discoverParams, formatParamValue, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, paramsFromEntries, paramsText, removeParamRow, resolveParams, setParamName, setParamText, syncParams, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
+import { addParamRow, discoverParams, formatParamValue, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, MAX_SLIDER_STEPS, paramsFromEntries, paramsText, parseSliderRange, removeParamRow, resolveParams, setParamName, setParamText, setSliderField, slideParam, sliderEntries, syncParams, toggleSlider, withSliders, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
@@ -32,7 +32,7 @@ import type { ArrowMode } from "@/lib/render/arrows";
 import { fitViewport } from "@/lib/render/viewport";
 import type { QueryView, Scene, TrajectoryView } from "@/lib/scene";
 import { siteText } from "@/lib/site-text";
-import { defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox, type ViewKind } from "@/lib/time-series";
+import { defaultView, hasTimeSeries, MAX_TRACE_TSPAN, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox, traceSpans, type ViewKind } from "@/lib/time-series";
 import { initialValueNames, parseInitialValue, type InitialValueReason } from "@/lib/initial-value";
 import { isUndoKey } from "@/lib/undo-key";
 import { MAX_TRAJECTORIES } from "@/lib/trajectory-store";
@@ -90,12 +90,15 @@ const REASON_LABEL: Record<UrlProblemReason, keyof LabelTable["ui"]> = {
   badParamName: "urlReasonBadParamName",
   reservedParamName: "urlReasonReservedParamName",
   duplicateParam: "urlReasonDuplicateParam",
+  sliderWithoutParam: "urlReasonSliderWithoutParam",
+  badStep: "urlReasonBadStep",
+  tooManySteps: "urlReasonTooManySteps",
 };
 
 function fromAppState(s: AppState): Form {
   return {
     // Round T: the link's parameters as rows; a name the equation uses without a value in the link is listed as pending.
-    params: paramsFromEntries(s.params, discoverParams(s.mode, s)),
+    params: withSliders(paramsFromEntries(s.params, discoverParams(s.mode, s)), s.sliders),
     mode: APP_TO_FORM_MODE[s.mode],
     f: s.f,
     g: s.g,
@@ -182,6 +185,10 @@ const VF_STYLE = `
 .vf-form label, .vf-form span, .vf-form p { overflow-wrap: anywhere; white-space: normal; }
 .vf-form button:not([data-info-toggle]), .vf-form select, .vf-form input:not([type="checkbox"]):not([type="radio"]) { width: 100%; box-sizing: border-box; min-width: 0; text-align: left; }
 .vf-form input[type="range"] { margin: 0; }
+/* Round U: a parameter's slider and its three small range fields. */
+.vf-slider-range { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.vf-slider-range label { display: grid; gap: 2px; font-size: 12px; color: #52606d; }
+.vf-stale { opacity: 0.55; transition: opacity 120ms; }
 .vf-canvas { flex: 1 1 0; min-width: 0; position: relative; }
 .vf-computing { position: absolute; top: 8px; right: 8px; z-index: 1; margin: 0; padding: 2px 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.92); border: 1px solid #e5e7eb; font-size: 12px; color: #52606d; }
 .vf-report { margin: 18px 0 0; font-size: 12px; color: #52606d; }
@@ -426,6 +433,23 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const [canvasWrapRef, wrapWidth] = useMeasuredWidth();
   const { width: canvasW, height: canvasH } = canvasSize(wrapWidth);
 
+  // Round U: a slider is being dragged (pointer down on it until the pointer is released anywhere).
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    if (!dragging) return;
+    const end = () => setDragging(false);
+    window.addEventListener("pointerup", end);
+    window.addEventListener("pointercancel", end);
+    return () => {
+      window.removeEventListener("pointerup", end);
+      window.removeEventListener("pointercancel", end);
+    };
+  }, [dragging]);
+  // Round U: a kept curve of a planar picture is followed far enough to fill the time-series
+  // view's t range (capped); a first-order picture keeps the phase plane's own span.
+  const planar = shown.mode === "system" || shown.mode === "second";
+  const spans = useMemo(() => (planar ? traceSpans(timeRange, snapshotT, CLICK_TSPAN) : undefined), [planar, timeRange, snapshotT]);
+
   const interactive = useInteractiveScene({
     sys: compiled.sys,
     spec: compiled.spec,
@@ -447,12 +471,14 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     // does not come back.
     // Round T: another parameter VALUE re-traces them too (the equation's text, the systemKey, is
     // unchanged, so the kept curves stay: the same initial points under the new value).
-    retraceKey: `${snapshotT}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${paramsKey}`,
+    retraceKey: `${snapshotT}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${paramsKey}|${spans ? `${spans.forward},${spans.backward}` : ""}`,
+    dragging,
+    traceSpans: spans,
     query: queryView,
     queryStart: queryRun?.start,
     secondOrder: secondOrderView,
   });
-  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers } = interactive;
+  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers, featuresPending } = interactive;
 
   // "Initial value" row: two typed numbers kept exactly like a click (same addTrajectory, same
   // undo entry, same traj encoding). Text state so "-" or "1." can be typed; validated on Add.
@@ -482,7 +508,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       setQueryError(fill(L.ui[INITIAL_VALUE_ERROR[parsed.reason]], { name: queryKindName(variables, queryKindShown), max: String(MAX_ABS_VALUE) }));
       return;
     }
-    // The SAME rule as the curve on screen: 20x the entered range, CLICK_TSPAN per direction,
+    // The SAME rule as the curve on screen: 20x the entered range, the curve's own span per
+    // direction (CLICK_TSPAN, or the time-series view's t range when that is longer: round U),
     // from the displayed snapshot time; the student's kind mapped to the kernel's.
     const deadline = Date.now() + QUERY_BUDGET_MS;
     const checkpoint = () => {
@@ -492,7 +519,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     const nonUnique = trajectories.slice(2 * i, 2 * i + 2).some((t) => t.nonUnique);
     try {
       const target = { kind: kernelQueryKind(variables, queryKindShown), value: parsed.value };
-      const result = querySolution(compiled.sys, selectedStart, target, { tSpan: CLICK_TSPAN, stopBox: fixedStopBox(compiled.box), t0: snapshotT, checkpoint });
+      const result = querySolution(compiled.sys, selectedStart, target, { tSpan: spans ? Math.max(spans.forward, spans.backward) : CLICK_TSPAN, stopBox: fixedStopBox(compiled.box), t0: snapshotT, checkpoint });
       setQueryError(null);
       setQueryRun({ key: queryKey, start: selectedStart, target: { kind: queryKindShown, value: parsed.value }, result, nonUnique });
     } catch (error) {
@@ -590,6 +617,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
 
   const loadPreset = (p: Preset) => {
     setForm(fromPreset(p, form.density, form.arrowMode));
+    // Round U: a preset may bring the time-series view's t range (the beats need one whole envelope).
+    const range = presetState(p).timeRange;
+    setTimeRangeText({ min: String(range.min), max: String(range.max) });
     setTrajectorySeeds((p.starts ?? []).map((q) => ({ x: q.x, y: q.y })));
     setPresetId(p.id);
   };
@@ -617,6 +647,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       view: viewChoice,
       timeRange,
       params: formParams.entries,
+      sliders: sliderEntries(form.params, formParams.entries),
     }),
     [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams],
   );
@@ -858,6 +889,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             onName={(id, name) => updateParams((ps) => setParamName(ps, id, name))}
             onAdd={() => updateParams(addParamRow)}
             onRemove={removeParam}
+            onToggleSlider={(id, on) => updateParams((ps) => toggleSlider(ps, id, on))}
+            onSliderField={(id, field, text) => updateParams((ps) => setSliderField(ps, id, field, text))}
+            onSlide={(id, position) => updateParams((ps) => slideParam(ps, id, position))}
+            onDragStart={() => setDragging(true)}
           />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <label style={labelStyle}>
@@ -1067,7 +1102,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
 
         <div className="vf-canvas" ref={canvasWrapRef}>
           {/* R.1: while the deferred picture is behind the form (a slow equilibria search), say so over the old picture. */}
-          {computing ? (
+          {computing || featuresPending ? (
             <p role="status" className="vf-computing" data-computing>
               {L.ui.computing}
             </p>
@@ -1115,10 +1150,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                   {L.ui.timeSeriesEmpty}
                 </p>
               ) : null}
-              {/* The curves end at t₀ ± CLICK_TSPAN (the phase plane's rule, unchanged): a wider t range shows blank, said so. */}
-              {view === "time" && (timeRange.min < snapshotT - CLICK_TSPAN || timeRange.max > snapshotT + CLICK_TSPAN) ? (
+              {/* Round U: the curves follow the t range (lib/time-series traceSpans) up to MAX_TRACE_TSPAN from t₀; a range beyond that shows blank, said so. */}
+              {view === "time" && (timeRange.min < snapshotT - MAX_TRACE_TSPAN || timeRange.max > snapshotT + MAX_TRACE_TSPAN) ? (
                 <p role="status" data-time-series-span style={{ margin: "6px 0 0", color: "#92400e" }}>
-                  {fill(L.ui.timeSeriesSpanNote, { from: formatNumber(snapshotT - CLICK_TSPAN, 4), to: formatNumber(snapshotT + CLICK_TSPAN, 4), span: CLICK_TSPAN })}
+                  {fill(L.ui.timeSeriesSpanNote, { from: formatNumber(snapshotT - MAX_TRACE_TSPAN, 4), to: formatNumber(snapshotT + MAX_TRACE_TSPAN, 4), span: MAX_TRACE_TSPAN })}
                 </p>
               ) : null}
               {/* The hover preview passes through a point where uniqueness fails (kept curves say it in the last-trajectory line). */}
@@ -1183,8 +1218,11 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </Info>
             </p>
           ) : null}
-          {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} /> : null}
-          {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
+          {/* Round U: while a drag's debounce holds the last results, they are dimmed (and "Computing…" floats over the picture). */}
+          <div className={featuresPending ? "vf-stale" : undefined} data-features-pending={featuresPending ? "true" : undefined}>
+            {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} /> : null}
+            {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} /> : null}
+          </div>
           {scene && lastGroup ? (
             <p style={{ margin: "8px 0 0", color: "#52606d" }} data-last-trajectory>
               {words.last} {trajectoryLines(scene, lastGroup, L).join("; ")}
@@ -1229,7 +1267,7 @@ const PARAM_PROBLEM_LABEL: Record<ParamRowProblem["problem"], keyof LabelTable["
  * only a row added by hand has an editable name. A value that is not a number keeps the last valid
  * one in force and says so; removing a parameter the equation still uses is refused and said.
  */
-function ParameterArea({ params, problems, refused, mode, L, onText, onName, onAdd, onRemove }: {
+function ParameterArea({ params, problems, refused, mode, L, onText, onName, onAdd, onRemove, onToggleSlider, onSliderField, onSlide, onDragStart }: {
   params: ParamState;
   problems: ParamRowProblem[];
   refused: string | null;
@@ -1239,6 +1277,10 @@ function ParameterArea({ params, problems, refused, mode, L, onText, onName, onA
   onName: (id: number, name: string) => void;
   onAdd: () => void;
   onRemove: (id: number) => void;
+  onToggleSlider: (id: number, on: boolean) => void;
+  onSliderField: (id: number, field: "min" | "max" | "step", text: string) => void;
+  onSlide: (id: number, position: number) => void;
+  onDragStart: () => void;
 }) {
   return (
     <fieldset style={{ display: "grid", gap: 6, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-parameters>
@@ -1272,6 +1314,12 @@ function ParameterArea({ params, problems, refused, mode, L, onText, onName, onA
                 ×
               </button>
             </div>
+            {/* Round U: the slider. Shown on request; its range opens around the value in force and is the student's to change. */}
+            <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 13, color: "#52606d" }}>
+              <input type="checkbox" checked={Boolean(row.slider?.on)} onChange={(e) => onToggleSlider(row.id, e.target.checked)} name={`paramSlider${row.id}`} data-param-slider-toggle />
+              <span>{L.ui.paramSlider}</span>
+            </label>
+            {row.slider?.on ? <ParamSlider row={row} L={L} onSliderField={onSliderField} onSlide={onSlide} onDragStart={onDragStart} /> : null}
             {row.pending ? (
               <p role="status" style={{ margin: 0, color: "#92400e", fontSize: 13 }} data-param-pending-note>
                 {fill(L.ui.paramPending, { name: row.name, value: formatParamValue(row.value) })}
@@ -1300,6 +1348,55 @@ function ParameterArea({ params, problems, refused, mode, L, onText, onName, onA
         </p>
       ) : null}
     </fieldset>
+  );
+}
+
+const SLIDER_RANGE_LABEL = { notANumber: "sliderRangeNotANumber", outOfRange: "sliderRangeOutOfRange", inverted: "sliderRangeInverted", badStep: "sliderRangeBadStep", tooManySteps: "sliderRangeTooManySteps" } as const;
+
+/**
+ * One parameter's slider (round U): the range input over the range in force, and the three typed
+ * fields min / max / step. A typed range that is not valid is said; the last valid one keeps
+ * driving the slider meanwhile. The value outside the range is left alone (the field is the
+ * truth): the thumb sits at the nearer end until it is moved.
+ */
+function ParamSlider({ row, L, onSliderField, onSlide, onDragStart }: {
+  row: ParamState["rows"][number];
+  L: LabelTable;
+  onSliderField: (id: number, field: "min" | "max" | "step", text: string) => void;
+  onSlide: (id: number, position: number) => void;
+  onDragStart: () => void;
+}) {
+  const slider = row.slider;
+  if (!slider) return null;
+  const typed = parseSliderRange(slider.min, slider.max, slider.step);
+  const { range } = slider;
+  return (
+    <div style={{ display: "grid", gap: 4 }} data-param-slider={row.name}>
+      <input
+        type="range"
+        min={range.min}
+        max={range.max}
+        step={range.step}
+        value={Math.min(range.max, Math.max(range.min, row.value))}
+        onChange={(e) => onSlide(row.id, Number(e.target.value))}
+        onPointerDown={onDragStart}
+        aria-label={fill(L.ui.paramSliderOf, { name: row.name })}
+        name={`paramRange${row.id}`}
+      />
+      <div className="vf-slider-range">
+        {(["min", "max", "step"] as const).map((field) => (
+          <label key={field}>
+            <span>{field === "min" ? L.ui.sliderMin : field === "max" ? L.ui.sliderMax : L.ui.sliderStep}</span>
+            <input value={slider[field]} onChange={(e) => onSliderField(row.id, field, e.target.value)} style={inputStyle} inputMode="decimal" name={`paramSlider${field}${row.id}`} />
+          </label>
+        ))}
+      </div>
+      {"reason" in typed ? (
+        <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-slider-range-problem={typed.reason}>
+          {fill(L.ui[SLIDER_RANGE_LABEL[typed.reason]], { max: String(MAX_PARAM_ABS_VALUE), steps: MAX_SLIDER_STEPS, from: formatParamValue(range.min), to: formatParamValue(range.max), step: formatParamValue(range.step) })}
+        </p>
+      ) : null}
+    </div>
   );
 }
 

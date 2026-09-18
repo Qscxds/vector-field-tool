@@ -121,6 +121,10 @@ export type LabelTable = {
     | "paramLooksLikeProduct" | "paramStillUsed" | "paramNameEmpty" | "paramNameInvalid" | "paramNameReserved"
     | "paramNameReservedV" | "paramNameTooLong" | "paramNameDuplicate" | "paramValueEmpty" | "paramValueNotANumber"
     | "paramValueOutOfRange" | "paramsCap"
+    // Round U: a parameter's slider.
+    | "paramSlider" | "paramSliderOf" | "sliderMin" | "sliderMax" | "sliderStep"
+    | "sliderRangeNotANumber" | "sliderRangeOutOfRange" | "sliderRangeInverted" | "sliderRangeBadStep" | "sliderRangeTooManySteps"
+    | "urlReasonSliderWithoutParam" | "urlReasonBadStep" | "urlReasonTooManySteps"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
     | "secondOrderImplicitProduct"
@@ -420,7 +424,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       showVelocity: "同时画 x'(t)",
       timeSeriesScaleNote: "时间序列：横轴是 t，纵轴是解的值，两轴单位不同，等比在这里没有意义，已自动解除。",
       timeSeriesEmpty: "还没有曲线：在「初值」里添加一条，这里就画出解随 t 的变化（时间序列视图下点击图像不添加曲线）。",
-      timeSeriesSpanNote: "曲线只算到 t ∈ [{from}, {to}]（从 t₀ 向前、向后各 {span} 个时间单位，与相平面相同的规则）；这段之外图中是空白，不是解为零。",
+      timeSeriesSpanNote: "曲线最多算到 t ∈ [{from}, {to}]（从 t₀ 向前、向后各至多 {span} 个时间单位）；这段之外图中是空白，不是解为零。",
       shownTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]（时间序列）",
       exportTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]",
       timeRangeError: "t 范围无效：起点必须是小于终点的数。图中仍用上一个有效范围。",
@@ -472,6 +476,19 @@ export const LABELS: Record<Locale, LabelTable> = {
       paramValueNotANumber: "{name} 的值不是数（请写 0.8 或 -2 这样的小数）。图上仍在用 {name} = {value}。",
       paramValueOutOfRange: "{name} 的值要在 -{max} 到 {max} 之间。图上仍在用 {name} = {value}。",
       paramsCap: "最多 {max} 个参数。",
+      paramSlider: "显示滑块",
+      paramSliderOf: "{name} 的滑块",
+      sliderMin: "最小",
+      sliderMax: "最大",
+      sliderStep: "步长",
+      sliderRangeNotANumber: "滑块的最小值、最大值和步长都要是数。滑块仍按 {from} 到 {to}、步长 {step} 工作。",
+      sliderRangeOutOfRange: "滑块的范围要在 -{max} 到 {max} 之间。滑块仍按 {from} 到 {to}、步长 {step} 工作。",
+      sliderRangeInverted: "最小值要小于最大值。滑块仍按 {from} 到 {to}、步长 {step} 工作。",
+      sliderRangeBadStep: "步长要大于 0，且不超过最大值与最小值之差。滑块仍按 {from} 到 {to}、步长 {step} 工作。",
+      sliderRangeTooManySteps: "步长太小了（整个范围最多 {steps} 步）。滑块仍按 {from} 到 {to}、步长 {step} 工作。",
+      urlReasonSliderWithoutParam: "没有这个名字的参数",
+      urlReasonBadStep: "步长要大于 0 且不超过范围的宽度",
+      urlReasonTooManySteps: "步长太小（最多 10000 步）",
       openFullPage: "在新窗口打开",
       equationSystem: "x' = {f}，y' = {g}",
       equationExplicit: "dy/dt = {g}",
@@ -789,7 +806,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       showVelocity: "Also draw x'(t)",
       timeSeriesScaleNote: "Time series: t horizontally, the solution's value vertically; the axes have different units, so equal scale has no meaning here and is off.",
       timeSeriesEmpty: "No curve yet: add one under Initial value and this picture shows how the solution changes with t (in the time-series view a click on the picture does not add a curve).",
-      timeSeriesSpanNote: "Curves are computed for t ∈ [{from}, {to}] only ({span} time units forward and backward from t₀, the same rule as the phase plane); outside it the picture is blank, not a zero solution.",
+      timeSeriesSpanNote: "Curves are computed for t ∈ [{from}, {to}] at most ({span} time units forward and backward from t₀); outside it the picture is blank, not a zero solution.",
       shownTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}] (time series)",
       exportTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}]",
       timeRangeError: "Invalid t range: the start must be a number smaller than the end. The picture keeps the last valid range.",
@@ -841,6 +858,19 @@ export const LABELS: Record<Locale, LabelTable> = {
       paramValueNotANumber: "The value of {name} is not a number (write a decimal such as 0.8 or -2). The picture still uses {name} = {value}.",
       paramValueOutOfRange: "The value of {name} must be between -{max} and {max}. The picture still uses {name} = {value}.",
       paramsCap: "At most {max} parameters.",
+      paramSlider: "Show a slider",
+      paramSliderOf: "Slider for {name}",
+      sliderMin: "min",
+      sliderMax: "max",
+      sliderStep: "step",
+      sliderRangeNotANumber: "The slider's min, max and step must be numbers. The slider still runs from {from} to {to} in steps of {step}.",
+      sliderRangeOutOfRange: "The slider's range must lie between -{max} and {max}. The slider still runs from {from} to {to} in steps of {step}.",
+      sliderRangeInverted: "min must be smaller than max. The slider still runs from {from} to {to} in steps of {step}.",
+      sliderRangeBadStep: "The step must be greater than 0 and at most max − min. The slider still runs from {from} to {to} in steps of {step}.",
+      sliderRangeTooManySteps: "The step is too small (at most {steps} steps across the range). The slider still runs from {from} to {to} in steps of {step}.",
+      urlReasonSliderWithoutParam: "there is no parameter of this name",
+      urlReasonBadStep: "the step must be greater than 0 and at most the width of the range",
+      urlReasonTooManySteps: "the step is too small (at most 10000 steps)",
       openFullPage: "Open full page",
       equationSystem: "x' = {f}, y' = {g}",
       equationExplicit: "dy/dt = {g}",
