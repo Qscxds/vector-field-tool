@@ -43,6 +43,24 @@ parameters and results to explanations. The site is English by default; Chinese 
   own t range (`tmin` / `tmax` in the link) and the query hits marked on the curves. A non-autonomous
   equation opens on it, an autonomous one on the phase plane (`view=phase|time` in the link). Equal
   scale is off there, with a persistent note; the curves are the same kept curves as the phase plane.
+- **Symbolic parameters and sliders**: write `k*y*(1 - y/L)`, `-k*(y - Ta)` or
+  `x'' + 2*b*x' + w^2*x = 0` and every name that is not a variable, `pi`, `e` or a function appears
+  by itself in the Parameters area under the expression (one set for all four equation types). The
+  values travel in the link (`p=k:0.8,L:2`), and every result line, tool summary, PNG footer and
+  widget summary says which values the picture was computed for. Each parameter can show a slider
+  (`sl=b:0:2:0.01` in the link); dragging recomputes the field, the kept curves and the
+  classification live (expensive analyses are debounced, with the last results marked stale), so
+  the stable spiral of the damped oscillator is seen to become a stable node at `b = w`, and the
+  beats of `x'' = -x + F*cos(g*t)` grow as `g` approaches 1.
+- **Nullclines, eigen-directions, separatrices** (`aids=n,e,s` in the link, all off by default): the
+  two nullcline families (the equilibria are where they cross), the eigen-directions of hyperbolic
+  equilibria with real eigenvalues (a degenerate node has one, complex eigenvalues have none) and the
+  four separatrix branches of every saddle, with a legend; told apart by line style, not hue alone.
+- **Lecture mode** (`lecture=1`, also on `/embed`): for projecting in class. Hides the specific
+  numbers (eigenvalues, coordinates, deviations, ranges), enlarges the text and keeps the qualitative
+  conclusions and every caveat in short form ("center or weak spiral" is never shortened to
+  "center"; the "!" of a uniqueness failure stays in every mode); each line's ⓘ opens its full text.
+  Display only: nothing is recomputed, and what the MCP tools return is untouched.
 - **Equilibria with honest classification**: Jacobian, eigenvalues, trace/determinant class, and a
   caveat wherever the linearization cannot decide (purely imaginary eigenvalues are "center or weak
   spiral", never "center"; a near-zero determinant is "non-hyperbolic"; a repeated root decided within
@@ -59,7 +77,8 @@ parameters and results to explanations. The site is English by default; Chinese 
 - **Exact equations** draw the implicit solution curves of the potential; a failed path-independence
   self-check is stated, never hidden.
 - **Shareable links**: the whole state of the page lives in the URL (`/vector-field?...`), with a
-  "Copy link" button; 20 presets grouped by chapter, each a link.
+  "Copy link" button; 24 presets grouped by chapter, each a link (five of them written with
+  parameters, two opening with a slider).
 - **`/embed` for Google Sites** and other course pages: the same parameters, a compact top bar,
   `controls=0` to hide the form. Only this route sends `Content-Security-Policy: frame-ancestors *`.
 - **PNG export** at 2x with a one-line footer (equation, entered and displayed ranges when they
@@ -88,7 +107,7 @@ Requires Node >= 20.9 (24 recommended; Vercel's default).
 ```bash
 npm install
 npm run dev          # http://localhost:3000 (the app is at /vector-field)
-npm test             # vitest: 960 tests (958 pass, 2 marked it.fails with derived expectations)
+npm test             # vitest: 1077 tests (1075 pass, 2 marked it.fails with derived expectations)
 npm run typecheck    # tsc --noEmit
 npm run build        # production build
 npm run smoke        # HTTP smoke test against a running server (default http://localhost:3000/mcp)
@@ -158,7 +177,7 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
   every user must **remove and re-add the connector** in Claude (it caches the widget resource address from when the connector was added; disconnecting and reconnecting is not enough; it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `p-2`. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
+  the old resource URI; the widget silently goes blank otherwise). The current version is `t-1` (round T: the widget's summary names the parameter values). Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
   y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "use ping
   with hello" tests the transport alone. Inside the widget a kept trajectory can be removed by

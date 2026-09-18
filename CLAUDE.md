@@ -15,12 +15,15 @@ website: URL state, /embed, /help, presets, touch gestures, PNG export, metadata
 rule in every tool description and widget l-1); `docs/MNO-*.md` the 2026-09-09 M-O round (English
 by default with the language only from the URL, trimmed copy with folded caveats and the
 reorganized /help, the kernel freeze below; trajectory removal / undo / long-press delete,
-initial-value inputs, solution queries and the `query_solution` tool; widget o-1).
+initial-value inputs, solution queries and the `query_solution` tool; widget o-1);
+`docs/PQR-*.md` / `docs/S-summary.md` the 2026-09-15 rounds; `docs/TUVW-*.md` the 2026-09-18 T-W
+round (symbolic parameters in the web shell and the link, parameter sliders with live
+recomputation, nullclines / eigen-directions / separatrices, lecture mode; widget t-1).
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
 2026-09-10 fixes and validation, and all 16 original docs in full. Historical entries retain their
-then-current status; use the current section for superseding decisions. Widget version is now p-2 (round R).
+then-current status; use the current section for superseding decisions. Widget version is now t-1 (round T).
 
 ## Module map
 
@@ -118,6 +121,57 @@ then-current status; use the current section for superseding decisions. Widget v
   curves as the phase plane (one store, one Clear / Undo / link) computed by the same rule
   (t₀ ± CLICK_TSPAN): a wider t range shows blank and a note says so. The widget has no time-series
   view (tool results carry no `times`).
+- `lib/params.ts` (rounds T, U) the pure state of the web shell's PARAMETER AREA. The kernel always
+  took `params`; the web form could not define any. `discoverParams(mode, expressions)` = the free
+  symbols of the mode's expressions (`freeSymbols` / `freeSymbolsSecondOrder`, static helpers in
+  lib/core/parse and second-order: parsed, never evaluated; null = does not parse right now, so the
+  rows stay while the student types) filtered by the compiler's own name rule
+  (`parameterNameProblem`, exported from parse.ts; v / xd / xdd reserved in second-order mode). A
+  multi-letter name made only of the mode's variable letters ("ty" in sin(ty)) is NOT a parameter
+  (the kernel's "did you mean t*y" error stays); a two-letter name with a variable letter ("ky") is
+  listed but its pending row says how it was read. `ParamState` rows: "auto" rows follow the
+  equation (added pending at 1, removed when unused, their values and sliders REMEMBERED and
+  restored), "manual" rows stay; a value is text with the last valid number in force;
+  `removeParamRow` REFUSES while the equation uses the name (never a silent reset);
+  `resolveParams` gives the compiler only used, valid rows (undefined when none, so a
+  parameter-free page compiles exactly as before). ONE set for all four modes. Sliders (round U):
+  `SliderState` per row, `defaultSliderRange` (0..2|v|, about 100 round steps), `snapToSlider`
+  (step grid, no binary noise), `parseSliderRange` / `sliderRangeProblem` (at most 10000 steps),
+  only SHOWN sliders travel. Text for every surface: `paramsInUse` / `sceneParams` (a second-order
+  scene reads the names from the student's equation) and lib/labels `withParams` /
+  `paramsSentence` / `withSceneParams`: every tool summary, result line, PNG footer and the
+  widget's summary say "... with k = 0.8, L = 2", never an empty "with".
+- `lib/feature-schedule.ts` (round U) WHEN the expensive results are recomputed during a slider
+  drag: `featurePolicy(dragging, lastCostMs, measurements)` = recompute for every value while the
+  last features computation cost at most 25 ms (the classification line then follows the slider:
+  spiral -> node at b = w is seen while dragging), else debounce by the shells' 250 ms with the last
+  results kept and marked stale; a page's first 3 measurements are COLD and judged against 150 ms
+  (found on the production build: a cold first measurement locked the whole first drag into the
+  debounce). `Deferred` + `requestDeferred` / `flushDeferred` / `isStale`: the debounce as a state
+  machine with an injected clock (the hook owns the timer). Outside a drag nothing is deferred.
+- `lib/phase-aids.ts` (round V) three optional overlays from EXISTING machinery, outside the
+  kernel: `computeNullclines` (marching squares of lib/render/contours over the visible box; a sign
+  change that is not a zero, the pole of 1/x or a jump, is dropped by a residual check against the
+  cell's own corner values), `eigenDirections` (2x2 closed form on the kernel's Jacobian, decided
+  by the kernel's OWN classification: two for saddle / node, ONE for a degenerate node, every
+  direction for a star = none drawn, none for complex or non-hyperbolic), `separatrices` (four
+  branches per saddle with integrateAdaptive, unstable forward / stable backward, offset RELATIVE
+  to the box: 1e-3 of its diagonal). `Scene.aids` carries them (the hook fills it only while a
+  switch is on; no tool does); drawScene draws them with a legend whose names are the student's
+  (`nullclineNames`: x' = 0 / y' = 0; x' = 0 / x'' = 0; dy/dt = 0; N = 0 / M = 0); families and
+  kinds differ by LINE STYLE, never hue alone. `eigenDirectionLines` (lib/labels) words them for
+  an equilibrium's ⓘ.
+- `lib/lecture.ts` (round W) LECTURE MODE as pure presentation: `equilibriumLine`,
+  `constantSolutionLine`, `constantSolutionTag` (canvas), `lectureNotices`, `lectureQueryShort`
+  decide what a line prints. Lecture mode hides numbers (eigenvalues, tr/det, coordinates, a
+  constant solution's value, deviations, ranges, a query's numbers) and keeps conclusions and
+  caveats in SHORT form (`caveatShort`, `uniquenessShort`, `warningShort`, `queryNoteShort` in
+  lib/labels); every line keeps an ⓘ whose first entry is the whole normal line. RED LINE (tested):
+  "center or weak spiral (linearization cannot tell)" is never shortened, a repeated-root caveat is
+  never suppressed, the "!" of a uniqueness failure stays on the line and on the canvas tag in
+  every mode. It never changes a Scene, is in no dependency list of anything computed (switching
+  recomputes nothing) and is unknown to app/mcp, lib/scene.ts, the widget page and lib/core (a
+  source check in lib/lecture.test.ts).
 - `lib/interactive.ts` pure helpers for the interactive shells: `computeFeatures` for a box,
   `featuresBoxFor` (the features-box rule below), `tracePreview` (hover: fixed ON-SCREEN length,
   2 canvas diagonals, steps only a safety cap) and `traceFixed` (click: stops at 20x the original
@@ -166,14 +220,18 @@ then-current status; use the current section for superseding decisions. Widget v
   only while a kept trajectory still starts there), `secondOrder` pass-through; outputs `highlight`,
   `cursor`, `addTrajectory`, `deleteTrajectory`, `clearTrajectories`, `clearOwnTrajectories` (round R: the
   widget's Clear, keeps a tool's own curves), `ownCount`, `atCapacity` (the hover hint then says the
-  cap instead of previewing), `undo`, `canUndo`). Features-box rule: at the home view (not zoomed or panned) the
+  cap instead of previewing), `undo`, `canUndo`; rounds U / V: inputs `dragging`, `traceSpans`
+  (lib/time-series `traceSpans`: a kept curve of a planar picture follows the time-series view's t
+  range, capped at `MAX_TRACE_TSPAN` 500, never less than CLICK_TSPAN) and `aids`, output
+  `featuresPending`). A parameter VALUE is part of `retraceKey`, never of `systemKey`: the kept
+  curves stay and are re-traced. Features-box rule: at the home view (not zoomed or panned) the
   features are computed for the ENTERED range in both equal-scale modes, so the toggle or a canvas
   of another aspect ratio never changes what is listed (the equal-scale margin only carries
   arrows); after a zoom or pan they are computed for the visible box. `Scene.featuresBox` says which.
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION` (p-2 since round R); `app/mcp/tools.ts` the six analysis tools
+  resource + ping + `WIDGET_VERSION` (t-1 since round T: the summary names the parameter values); `app/mcp/tools.ts` the six analysis tools
   (`locale` is optional and defaults to en since round M; analyze_first_order's t range is
   tMin/tMax since round P2 (xMin/xMax still read as the same), and its expressions use t and y
   only; analyze_second_order's x' range is xpMin/xpMax; `query_solution`
@@ -189,7 +247,11 @@ then-current status; use the current section for superseding decisions. Widget v
 - `lib/url-state.ts` the web shell's URL state (pure): `AppState` (mode first / diff / system /
   second, g f M N eq, the ENTERED box, `locale | null` = no loc in the link (English), equalScale, density,
   arrowMode, snapshotT, trajectoryStarts, and since round Q `view` (phase / time / null = the
-  default rule) and `timeRange` of the time-series view) with `DEFAULT_STATE`; `encodeState` (short names,
+  default rule) and `timeRange` of the time-series view; since rounds T-W `params`
+  (`p=k:0.8,L:2`, read BEFORE the expressions, which are validated with them; a free name without a
+  value is not an error, the page lists it as pending), `sliders` (`sl=b:0:2:0.01`), `aids`
+  (`aids=n,e,s`; e and s are unused on a first-order picture) and `lecture` (`lecture=1`); a bad
+  p / sl entry is dropped as a WHOLE and reported as `p:name` / `sl:name`) with `DEFAULT_STATE`; `encodeState` (short names,
   defaults omitted, readable parentheses; tmin/tmax for first-order pictures, xmin/xmax for planar
   ones, where tmin/tmax and `view` are the time-series view's and are reported as unused on a
   first-order link); `decodeState(query, fallback)` never throws: 4096-char query cap, 200-char expressions
@@ -238,7 +300,9 @@ then-current status; use the current section for superseding decisions. Widget v
   (next/og, drawn at build time), `app/icon.svg`, `app/robots.ts` (disallow /embed, /mcp),
   `app/sitemap.ts`.
 - `app/vector-field/presets.ts` the preset library: `PRESET_GROUPS` (chapters) and `PRESETS` of
-  `{ id, group, mode: AppMode, name, note, expressions, box, starts? }` with hand-derived honest
+  `{ id, group, mode: AppMode, name, note, expressions, box, starts?, params?, sliders?, timeRange? }`
+  (round T: logistic, newton, damped2, beats and lotka are written with parameters; round U:
+  damped2 opens with a slider on b, beats with one on g and t in [0, 70]) with hand-derived honest
   notes; `presetState`, `presetUrl` (a shareable link per preset), `presetsByGroup`. Tests check
   compilation per mode, both languages, unique ids, link round trips and derived key features.
 - `scripts/smoke.mjs` HTTP smoke test against a running server (`npm run smoke`; 20 checks, 7
@@ -291,6 +355,12 @@ then-current status; use the current section for superseding decisions. Widget v
    `lib/labels.test.ts` keeps a no-lone-y test over every second-order key.
 
 ## Kernel freeze (decided 2026-09-09, round M)
+
+Round T (2026-09-18) added three STATIC helpers to the kernel and nothing numerical:
+`parameterNameProblem` (the name rule `validateParams` already applied, now exported and used by
+it), `freeSymbols` (parse.ts) and `freeSymbolsSecondOrder` (second-order.ts): the text is parsed,
+never evaluated, no threshold exists in them. Rounds U-W did not touch lib/core: sliders reuse the
+integrator and the classifier, the overlays live in lib/phase-aids.ts, lecture mode in lib/lecture.ts.
 
 2026-09-10 narrow exception explicitly authorized by the user: fix the non-autonomous zero-speed
 stop using the existing static `mentionsTime` rule, with derived integration and query regressions.
