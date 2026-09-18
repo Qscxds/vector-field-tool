@@ -20,7 +20,7 @@ import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box } from "@/lib/core/types";
 import { computeFeatures } from "@/lib/interactive";
 import { LOCALES } from "@/lib/labels";
-import { discoverParams, paramsRecord } from "@/lib/params";
+import { discoverParams, paramsRecord, sliderRangeProblem, snapToSlider } from "@/lib/params";
 import { decodeState, DEFAULT_STATE, expressionKeysOf } from "@/lib/url-state";
 import { PRESET_GROUPS, PRESET_PATH, PRESETS, presetsByGroup, presetState, presetUrl, type Preset } from "./presets";
 
@@ -212,5 +212,34 @@ describe("[P2.8] the second-order chapter has its own presets, entered as x'' = 
     const expected = (0.5 / 0.44) * (Math.cos(5) - Math.cos(6));
     expect(tr.points.at(-1)!.x).toBeCloseTo(expected, 6);
     expect(expected).toBeCloseTo(2 * (0.5 / 0.44) * Math.sin(0.5) * Math.sin(5.5), 12);
+  });
+});
+
+describe("[U] presets that open with a slider", () => {
+  it("every preset slider belongs to one of the preset's parameters, is a valid range and contains the preset's own value on its grid", () => {
+    for (const p of PRESETS) {
+      for (const s of p.sliders ?? []) {
+        const param = (p.params ?? []).find((e) => e.name === s.name);
+        expect(param, `${p.id}.${s.name}`).toBeDefined();
+        expect(sliderRangeProblem(s), `${p.id}.${s.name}`).toBeNull();
+        expect(snapToSlider(param!.value, s), `${p.id}.${s.name}`).toBe(param!.value);
+      }
+    }
+  });
+
+  it("the damped oscillator's slider on b runs through critical damping b = w = 1; the beats' slider on g runs through the natural frequency 1", () => {
+    const b = byId("damped2").sliders!.find((s) => s.name === "b")!;
+    expect(b.min).toBeLessThan(1);
+    expect(b.max).toBeGreaterThan(1);
+    const g = byId("beats").sliders!.find((s) => s.name === "g")!;
+    expect(g.min).toBeLessThan(1);
+    expect(g.max).toBeGreaterThan(1);
+  });
+
+  it("the beats preset's t range shows one whole envelope: 4 pi / |g - 1| = 62.8 at g = 1.2", () => {
+    const range = presetState(byId("beats")).timeRange;
+    expect(range.max - range.min).toBeGreaterThan((4 * Math.PI) / 0.2);
+    // and the link carries it, with the slider
+    expect(presetUrl(byId("beats"))).toBe("/vector-field?m=second&eq=x''+%3D+-x+%2B+F*cos(g*t)&tmax=70&traj=0,0&p=F:0.5,g:1.2&sl=g:0.5:1.5:0.01");
   });
 });

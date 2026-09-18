@@ -11,8 +11,8 @@
  * sees what the parameter area is for. Their notes are derived for the preset's own values and say
  * what changing a parameter does.
  */
-import type { Locale, Vec2 } from "@/lib/core/types";
-import type { ParamEntry } from "@/lib/params";
+import type { Locale, Range, Vec2 } from "@/lib/core/types";
+import type { ParamEntry, SliderEntry } from "@/lib/params";
 import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState } from "@/lib/url-state";
 
 /** The form vocabulary of VectorFieldApp (explicit / differential); presets use the link vocabulary AppMode. */
@@ -37,6 +37,10 @@ export type Preset = {
   starts?: Vec2[];
   /** Round T: the values of the symbolic parameters the expressions use (every free name, no spare ones; tested). */
   params?: ParamEntry[];
+  /** Round U: sliders the preset opens with (the parameter the lesson is about). */
+  sliders?: SliderEntry[];
+  /** Round U: the t range of the time-series view, when the lesson needs more than the default 0..20. */
+  timeRange?: Range;
 };
 
 /** Route the preset links point to. */
@@ -202,6 +206,8 @@ export const PRESETS: Preset[] = [
   {
     id: "damped2", group: "secondOrder", mode: "second", name: { zh: "阻尼振子 x'' + 2b·x' + w²x = 0", en: "Damped oscillator x'' + 2b·x' + w²x = 0" },
     expressions: { eq: "x'' + 2*b*x' + w^2*x = 0" }, params: [{ name: "b", value: 0.25 }, { name: "w", value: 1 }],
+    // The lesson is the passage through critical damping b = w = 1: the slider runs well past it.
+    sliders: [{ name: "b", min: 0, max: 2, step: 0.01 }],
     box: sq(3), starts: [{ x: 2, y: 0 }],
     note: {
       zh: "x'' + 2b·x' + w²x = 0，b = 0.25、w = 1：令 v = x' 得 x' = v，v' = −2b·v − w²x，与「阻尼振子（系统）」是同一个系统；特征值 −b ± √(b² − w²) = −1/4 ± i√15/4，平衡点 (x, x') = (0, 0)（物体静止）是稳定螺旋点（欠阻尼）。把 b 调过 w：b = w 是临界阻尼（重根），b > w 是过阻尼，螺旋点变成稳定结点。",
@@ -262,6 +268,9 @@ export const PRESETS: Preset[] = [
   {
     id: "beats", group: "nonAutonomous", mode: "second", name: { zh: "受迫振子 / 拍频 x'' = −x + F·cos(g·t)", en: "Forced oscillator / beats x'' = −x + F·cos(g·t)" },
     expressions: { eq: "x'' = -x + F*cos(g*t)" }, params: [{ name: "F", value: 0.5 }, { name: "g", value: 1.2 }],
+    // The lesson is the forcing frequency approaching the natural frequency 1. The envelope
+    // sin((g - 1)t/2) of the beats has period 4 pi / |g - 1| = 62.8 at g = 1.2: the t range shows one whole envelope.
+    sliders: [{ name: "g", min: 0.5, max: 1.5, step: 0.01 }], timeRange: { min: 0, max: 70 },
     box: sq(3), starts: [{ x: 0, y: 0 }],
     note: {
       zh: "x'' = −x + F·cos(g·t)，F = 0.5、g = 1.2：右端含 t，方程非自治，相平面只是 t₀ 时刻的快照，不做平衡点分析。从静止出发的解是 x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t)：外力频率 g = 1.2 接近固有频率 1，振幅按 sin(0.1t) 缓慢起伏，这就是拍。把 g 调向 1：振幅 F/|g² − 1| 变大，起伏变慢（g = 1 时是共振，振幅随 t 线性增长）。",
@@ -279,6 +288,8 @@ export function presetState(p: Preset): AppState {
     box: { ...p.box },
     trajectoryStarts: (p.starts ?? []).map((q) => ({ x: q.x, y: q.y })),
     params: (p.params ?? []).map((e) => ({ ...e })),
+    sliders: (p.sliders ?? []).map((e) => ({ ...e })),
+    ...(p.timeRange ? { timeRange: { ...p.timeRange } } : {}),
   };
 }
 
