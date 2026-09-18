@@ -70,6 +70,7 @@ export function HelpContent({ initialLocale }: { initialLocale: Locale | null })
         </span>
       </p>
       <p>{H.notation.constantsLine}</p>
+      <p data-help-params>{H.notation.paramsLine}</p>
       <p>{H.notation.piecewiseLine}</p>
       <p>{H.notation.negativePowerLine}</p>
 

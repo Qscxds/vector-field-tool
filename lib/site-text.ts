@@ -97,6 +97,8 @@ export type SiteText = {
       timeSeriesLine: string;
       functionsLead: string;
       constantsLine: string;
+      /** Round T: symbolic parameters: how to write them, the rows that appear by themselves, the link's p, one set for all modes. */
+      paramsLine: string;
       piecewiseLine: string;
       negativePowerLine: string;
     };
@@ -174,8 +176,8 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       open: "打开交互页面 →",
       examplesHeading: "例子",
       examples: {
-        logistic: { title: "Logistic 方程 dy/dt = y(1−y)", note: "两条常数解，一条稳定、一条不稳定；y(0) > 0 的解都趋向 y = 1（从 0 以下出发的解向下发散）。" },
-        damped: { title: "阻尼振子 x'' + 0.5x' + x = 0", note: "二阶方程化为系统后，原点是稳定螺旋点。" },
+        logistic: { title: "Logistic 方程 dy/dt = k·y(1 − y/L)", note: "带参数 k = 0.8、L = 2：两条常数解，y = 0 不稳定、y = L 稳定；y(0) > 0 的解都趋向 y = L（从 0 以下出发的解向下发散）。" },
+        damped: { title: "阻尼振子 x'' + 2b·x' + w²x = 0", note: "b = 0.25、w = 1 时原点是稳定螺旋点；把 b 调过 w，它变成稳定结点。" },
         exact: { title: "恰当方程 2ty dt + (t² + y²) dy = 0", note: "恰当性检验通过，解曲线是势函数的等值线。" },
         lotka: { title: "Lotka–Volterra 捕食者–猎物系统", note: "一个鞍点和一个线性化只能说「中心或弱螺旋」的平衡点。" },
       },
@@ -253,6 +255,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         timeSeriesLine: "时间序列视图：横轴 t，纵轴是解的值 x(t)、y(t)（二阶方程为 x(t)、x'(t)）。这是受迫振动、拍频、共振一章要看的图：对非自治方程，相平面只是某一时刻的快照，而 x(t) 才显示振幅随时间的起伏。一阶方程的图本来就是 y 对 t 的图，没有这个切换。",
         functionsLead: "可以使用的函数：",
         constantsLine: "常数：pi 和 e。",
+        paramsLine: "参数：方程里可以直接写字母参数，例如 k*y*(1 - y/L)、-k*(y - Ta)、x'' + 2*b*x' + w^2*x = 0。除了变量（t、x、y，二阶方程里还有 v）、pi、e 和函数名之外，你写下的每个名字都会自动出现在表达式下面的「参数」区，先取 1 并高亮，请填上你要的值（可以是负数、小数）；名字要以字母开头，乘法仍然要写出来（ky 会被当作一个叫 ky 的参数，k 乘 y 要写 k*y）。四种方程类型共用同一组参数，M 和 N、f 和 g 用的是同一个 k。仍被方程使用的参数删不掉：先把它从方程里去掉。参数的取值会写进链接（例如 &p=k:0.8,L:2），所以「k = 0.8、L = 2 的 logistic」可以作为一个直达链接发给别人；结果区、导出的 PNG 和 Claude 读到的摘要都会写明这张图用的是哪组参数。",
         piecewiseLine: "分段表达式用「条件 ? 值 : 值」，例如 y > 0 ? y : -y。",
         negativePowerLine: "负数的分数次幂在这里没有定义（例如 (-8)^(1/3) 不是 −2）；要取实数分支请写 abs(y)^(2/3) 之类的形式。",
       },
@@ -360,8 +363,8 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
       open: "Open the interactive page →",
       examplesHeading: "Examples",
       examples: {
-        logistic: { title: "Logistic equation dy/dt = y(1−y)", note: "Two constant solutions, one stable and one unstable; solutions with y(0) > 0 approach y = 1 (solutions starting below 0 diverge downward)." },
-        damped: { title: "Damped oscillator x'' + 0.5x' + x = 0", note: "Reduced to a system, the origin is a stable spiral point." },
+        logistic: { title: "Logistic equation dy/dt = k·y(1 − y/L)", note: "With the parameters k = 0.8, L = 2: two constant solutions, y = 0 unstable and y = L stable; solutions with y(0) > 0 approach y = L (solutions starting below 0 diverge downward)." },
+        damped: { title: "Damped oscillator x'' + 2b·x' + w²x = 0", note: "With b = 0.25, w = 1 the origin is a stable spiral point; move b past w and it becomes a stable node." },
         exact: { title: "Exact equation 2ty dt + (t² + y²) dy = 0", note: "The exactness test passes and the solution curves are level curves of a potential." },
         lotka: { title: "Lotka–Volterra predator–prey system", note: "A saddle and an equilibrium the linearization can only call a center or a weak spiral." },
       },
@@ -439,6 +442,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         timeSeriesLine: "Time-series view: t horizontally, the solution's values x(t), y(t) vertically (x(t) and x'(t) for a second-order equation). This is the picture the chapter on forced oscillations, beats and resonance needs: for a non-autonomous equation the phase plane is only a snapshot at one instant, while x(t) shows how the amplitude rises and falls in time. A first-order picture is already the graph of y against t, so it has no such toggle.",
         functionsLead: "Functions you may use:",
         constantsLine: "Constants: pi and e.",
+        paramsLine: "Parameters: an equation may contain letters for constants, for example k*y*(1 - y/L), -k*(y - Ta), x'' + 2*b*x' + w^2*x = 0. Every name you write that is not a variable (t, x, y, and v in a second-order equation), pi, e or a function appears by itself in the Parameters area under the expression, starting at 1 and highlighted: give it the value you want (negative and decimal values are fine). A name starts with a letter, and multiplication is still written out (ky is read as one parameter called ky; k times y is k*y). The four equation types share one set of parameters, and M and N, or f and g, use the same k. A parameter the equation still uses cannot be removed: take it out of the equation first. The values are part of the link (for example &p=k:0.8,L:2), so \"the logistic equation with k = 0.8, L = 2\" is a link you can hand out; the results, the exported PNG and the summary Claude reads all say which parameter values the picture was computed for.",
         piecewiseLine: "Piecewise expressions use \"condition ? value : value\", for example y > 0 ? y : -y.",
         negativePowerLine: "A fractional power of a negative number is undefined here (for example (-8)^(1/3) is not −2); for the real branch write abs(y)^(2/3) or a similar form.",
       },
