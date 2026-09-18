@@ -10,6 +10,7 @@
 import type { CaveatKey, Classification } from "./core/classify";
 import type { OdeForm } from "./core/detect-form";
 import type { IntegrationStatus } from "./core/integrate";
+import type { QueryNote } from "./core/query";
 import type { EquilibriumSolution } from "./core/slope-field";
 import type { Complex, Locale } from "./core/types";
 import { hasFractionalPower, PROBES_NOTED, type FirstOrderSpec } from "./core/slope-field";
@@ -37,6 +38,18 @@ export type LabelTable = {
   status: Record<IntegrationStatus, string>;
   warning: Record<"none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit" | "region_of_equilibria", string>;
   caveat: Record<CaveatKey, string>;
+  /**
+   * Round W (lecture mode): the caveats that are not already part of a classification's name, as
+   * short phrases. The center and non-hyperbolic caveats have none on purpose: "center or weak
+   * spiral (linearization cannot tell)" and "non-hyperbolic equilibrium (linearization is inconclusive)" say it.
+   */
+  caveatShort: Record<"repeatedRoot" | "notFinite" | "domainEdge", string>;
+  /** Round W: the two speaking uniqueness verdicts as short phrases; "unbounded" keeps its "!" in every mode. */
+  uniquenessShort: Record<"unbounded" | "borderline", string>;
+  /** Round W: the search warnings in short form (lecture mode; the full sentence is behind the ⓘ). */
+  warningShort: Record<"none_found" | "possible_continuum" | "multiple_non_hyperbolic" | "hit_limit" | "region_of_equilibria", string>;
+  /** Round W: a query's note in a few words (lecture mode). */
+  queryNoteShort: Record<Exclude<QueryNote, "ok">, string>;
   form: Record<OdeForm, string>;
   /**
    * Uniqueness of solutions at a constant solution ({y}, {alpha}) or an equilibrium ({point},
@@ -131,6 +144,9 @@ export type LabelTable = {
     | "aidsHeading" | "aidNullclines" | "aidEigen" | "aidSeparatrices" | "aidsDetail" | "aidsDetailFirst" | "aidsDetailSecond"
     | "legendStableDirection" | "legendUnstableDirection" | "legendSeparatrixStable" | "legendSeparatrixUnstable"
     | "eigenDirectionStable" | "eigenDirectionUnstable" | "eigenOne" | "eigenEvery" | "eigenComplex"
+    // Round W: lecture mode.
+    | "lectureMode" | "lectureDetail" | "lectureJoin" | "lectureConstantSolution" | "lectureNotes" | "lectureQueryFound"
+    | "lectureMarked" | "lectureImplicit" | "lectureImplicitFailed" | "lectureOtherForms"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
     | "secondOrderImplicitProduct"
@@ -203,6 +219,28 @@ export const LABELS: Record<Locale, LabelTable> = {
       notFinite: "在这一点上雅可比矩阵无法求出有限值（向量场在附近奇异或未定义），因此无法给出任何分类。",
       repeatedRoot: "两个特征值在数值精度内重合：判别式在雅可比矩阵各元素的估计误差之内为零。它们是真正的重根（星形结点：每个方向都是特征方向；或退化结点），还是极其接近的两个相异实根（此时实际上是一个普通的结点），数值上无法判定。请把这里的分类当作「重根或近重根」，而不是确定的类型。",
       domainEdge: "这个平衡点位于向量场定义域的边缘：向量场在它的一侧有定义，在另一侧没有定义（例如右端含 sqrt(x) 时的 x = 0 处）。这里不存在线性化（导数只有单侧的），所以无法给出任何分类；请用定义域内一侧的解的走向来讨论它。",
+    },
+    caveatShort: {
+      repeatedRoot: "重根或近重根（数值上无法区分）",
+      notFinite: "无法分类：此处线性化不是有限值",
+      domainEdge: "位于定义域边缘：这里没有线性化",
+    },
+    uniquenessShort: {
+      unbounded: "！此处唯一性失效：可能有不止一条解经过",
+      borderline: "此处唯一性不能担保",
+    },
+    warningShort: {
+      none_found: "在观察范围内没有找到平衡点。",
+      possible_continuum: "警告：很可能是一个连续的平衡点集合，下面只是代表点。",
+      multiple_non_hyperbolic: "注意：有多个非双曲平衡点，线性化对它们都无法判定。",
+      hit_limit: "警告：平衡点比列出的多。",
+      region_of_equilibria: "注意：一整片区域都是平衡点，下面只是代表点。",
+    },
+    queryNoteShort: {
+      not_reached_in_span: "在算出的范围内没有到达目标。",
+      stopped_before_target: "解在到达目标时刻之前就停止了。",
+      possibly_more_beyond_span: "已找到（标在图上）；看起来是周期性的，范围之外可能还有更多穿越点。",
+      target_is_start: "目标就是出发点本身。",
     },
     form: {
       separable: "可分离变量方程",
@@ -511,6 +549,16 @@ export const LABELS: Record<Locale, LabelTable> = {
       eigenOne: "这是唯一的特征方向：重特征值却只有一个特征方向，这正是「退化结点」的定义特征。",
       eigenEvery: "这里每个方向都是特征方向（线性化是单位矩阵的倍数），所以不单独画出。",
       eigenComplex: "特征值是复数，没有实的特征方向可画：解绕着该点转，而不是沿某条直线进出。",
+      lectureMode: "讲课模式",
+      lectureDetail: "投屏讲课用：隐藏具体数值（特征值、坐标、偏差、范围等）并放大文字；定性结论和每一条注意事项都保留，只是改成短句。每一行仍有 ⓘ，点开就是这一行的完整内容。切换不会重新计算，Claude 读到的内容也完全不变。",
+      lectureJoin: " · ",
+      lectureConstantSolution: "常数解：{stability}",
+      lectureNotes: "关于这次搜索的说明（{count} 条）",
+      lectureQueryFound: "已找到，标在图上（{count} 处）。",
+      lectureMarked: "已标在图上（{count} 个）。",
+      lectureImplicit: "隐式解已画成等值线。",
+      lectureImplicitFailed: "势函数没有通过自检，所以没有画等值线。",
+      lectureOtherForms: "其余类型：不一致、按定义排除或无法检验。",
       openFullPage: "在新窗口打开",
       equationSystem: "x' = {f}，y' = {g}",
       equationExplicit: "dy/dt = {g}",
@@ -601,6 +649,28 @@ export const LABELS: Record<Locale, LabelTable> = {
       notFinite: "The Jacobian cannot be evaluated to a finite value at this point (the vector field is singular or undefined nearby), so no classification can be given.",
       repeatedRoot: "The two eigenvalues coincide to numerical precision: the discriminant is zero within the estimated error of the Jacobian entries. Whether this is an exact repeated root (a star node, where every direction is an eigendirection, or a degenerate node) or two distinct real roots extremely close together (in which case this is really an ordinary node) cannot be decided numerically. Read this classification as 'repeated or nearly repeated root', not as a definite type.",
       domainEdge: "This equilibrium lies on the edge of the region where the vector field is defined: the field is defined on one side of it and undefined on the other (for example a right-hand side containing sqrt(x), at x = 0). No linearization exists there (only a one-sided derivative does), so no classification can be given; discuss it through the behavior of the solutions on the side where the field is defined.",
+    },
+    caveatShort: {
+      repeatedRoot: "repeated or nearly repeated root (cannot be told apart numerically)",
+      notFinite: "no classification: the linearization is not finite here",
+      domainEdge: "on the edge of the field's domain: no linearization here",
+    },
+    uniquenessShort: {
+      unbounded: "! uniqueness fails here: more than one solution may pass through",
+      borderline: "uniqueness is not guaranteed here",
+    },
+    warningShort: {
+      none_found: "No equilibrium found in the viewing range.",
+      possible_continuum: "Warning: probably a continuum of equilibria; only representatives are listed.",
+      multiple_non_hyperbolic: "Note: several non-hyperbolic equilibria; linearization decides none of them.",
+      hit_limit: "Warning: there are more equilibria than listed.",
+      region_of_equilibria: "Note: a whole region consists of equilibria; only representatives are listed.",
+    },
+    queryNoteShort: {
+      not_reached_in_span: "The target was not reached within the computed span.",
+      stopped_before_target: "The solution stopped before the target time.",
+      possibly_more_beyond_span: "Found (marked on the picture); it looks periodic, so more crossings may lie beyond the span.",
+      target_is_start: "The target is the start point itself.",
     },
     form: {
       separable: "a separable equation",
@@ -909,6 +979,16 @@ export const LABELS: Record<Locale, LabelTable> = {
       eigenOne: "This is the ONLY eigen-direction: a repeated eigenvalue with a single eigen-direction is exactly what makes a node degenerate.",
       eigenEvery: "Every direction is an eigen-direction here (the linearization is a multiple of the identity), so none is drawn.",
       eigenComplex: "The eigenvalues are complex, so there is no real eigen-direction to draw: solutions turn around the point instead of running in or out along a line.",
+      lectureMode: "Lecture mode",
+      lectureDetail: "For projecting in class: hides the specific numbers (eigenvalues, coordinates, deviations, ranges) and enlarges the text; the qualitative conclusions and every caveat stay, in short form. Every line keeps its ⓘ, which opens the full text of that line. Switching recomputes nothing, and what Claude reads is unchanged.",
+      lectureJoin: " · ",
+      lectureConstantSolution: "Constant solution: {stability}",
+      lectureNotes: "Notes about this search ({count})",
+      lectureQueryFound: "Found: marked on the picture ({count}).",
+      lectureMarked: "Marked on the picture ({count}).",
+      lectureImplicit: "The implicit solutions are drawn as level curves.",
+      lectureImplicitFailed: "The potential failed its own check, so no level curves are drawn.",
+      lectureOtherForms: "The other forms: not consistent, ruled out by definition, or untestable.",
       openFullPage: "Open full page",
       equationSystem: "x' = {f}, y' = {g}",
       equationExplicit: "dy/dt = {g}",
