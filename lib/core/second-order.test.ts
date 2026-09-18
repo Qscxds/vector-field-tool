@@ -626,6 +626,9 @@ describe("[T] symbolic parameters in a second-order equation", () => {
     expect(freeSymbolsSecondOrder("x'' = -sin(x)")).toEqual([]);
     // a piecewise right-hand side keeps its comparisons: <= is not an equation sign
     expect(freeSymbolsSecondOrder("x'' = (x <= a ? -x : -k*x)")).toEqual(["a", "k"]);
+    // a half-typed equation is null (not "no parameters"), so a caller keeps its rows meanwhile
+    expect(freeSymbolsSecondOrder("x'' + 2*b*")).toBeNull();
+    expect(freeSymbolsSecondOrder("")).toBeNull();
   });
 
   it("y is free but reserved, so it can never be offered as a parameter; the reduction still refuses it in its own words", () => {

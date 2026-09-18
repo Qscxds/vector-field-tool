@@ -535,12 +535,12 @@ describe("[T] symbolic parameters: the name rule, free symbols, and the value in
     expect(freeSymbols("k×y − m", ty)).toEqual(["k", "m"]);
   });
 
-  it("freeSymbols: a stray x in first-order mode is free but can never be a parameter; an unparsable text reports nothing", () => {
+  it("freeSymbols: a stray x in first-order mode is free but can never be a parameter; an unparsable text is null, not an empty list", () => {
     const ty = { variables: "ty" as const };
     expect(freeSymbols("k*x", ty)).toEqual(["k", "x"]);
     expect(parameterNameProblem("x")).toBe("reserved");
-    expect(freeSymbols("k*", ty)).toEqual([]);
-    expect(freeSymbols("", ty)).toEqual([]);
-    expect(freeSymbols("k*y".padEnd(600, " "), ty)).toEqual([]);
+    expect(freeSymbols("k*", ty)).toBeNull();
+    expect(freeSymbols("", ty)).toBeNull();
+    expect(freeSymbols("k*y".padEnd(600, " "), ty)).toBeNull();
   });
 });

@@ -201,15 +201,18 @@ function displayForm(input: string): string {
 /**
  * The free symbols of a second-order equation text (round T, see freeSymbols in parse.ts): the
  * names that are not t, x, x', x'' (nor the alias v), pi, e or a called function, in order of
- * first appearance over both sides of the "=". Static: only parsed, never reduced; a side that does
- * not parse contributes nothing. y is reported like any other free symbol; it can never become a
- * parameter (the name is reserved) and reduceSecondOrder refuses it with its own sentence.
+ * first appearance over both sides of the "=". Static: only parsed, never reduced; null when a
+ * side does not parse (a half-typed equation: see freeSymbols). y is reported like any other free
+ * symbol; it can never become a parameter (the name is reserved) and reduceSecondOrder refuses it
+ * with its own sentence.
  */
-export function freeSymbolsSecondOrder(input: string): string[] {
-  if (typeof input !== "string" || input.trim() === "") return [];
+export function freeSymbolsSecondOrder(input: string): string[] | null {
+  if (typeof input !== "string" || input.trim() === "") return null;
   const found: string[] = [];
   for (const side of normalizePrimes(input).split(/(?<![<>!=])=(?!=)/)) {
-    for (const name of freeSymbols(side, { symbols: ["x", "t", XD, XDD] })) if (!found.includes(name)) found.push(name);
+    const names = freeSymbols(side, { symbols: ["x", "t", XD, XDD] });
+    if (names === null) return null;
+    for (const name of names) if (!found.includes(name)) found.push(name);
   }
   return found;
 }

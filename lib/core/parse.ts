@@ -455,11 +455,13 @@ export function mentionsSymbol(expr: string, name: string, params?: Record<strin
  * (round T: the web shell lists them in its parameter area as the student types). Static, like
  * mentionsSymbol: the text is only PARSED (same length cap, same operator look-alikes), never
  * validated or evaluated, so `k*foo(y)` still reports k although foo is not an allowed function.
- * A text that does not parse has no symbols to report: [] (the compile step says what is wrong).
+ * A text that does not parse (empty, too long, a syntax error: what a half-typed expression is)
+ * gives null, which is NOT "no free symbols": a caller that follows the student's typing keeps its
+ * parameter rows until the text parses again (the compile step says what is wrong meanwhile).
  * Whether a free symbol is a legal parameter NAME is parameterNameProblem's business.
  */
-export function freeSymbols(expr: string, opts: ValidateOptions = {}): string[] {
-  if (typeof expr !== "string" || expr.trim() === "" || expr.length > MAX_EXPRESSION_LENGTH) return [];
+export function freeSymbols(expr: string, opts: ValidateOptions = {}): string[] | null {
+  if (typeof expr !== "string" || expr.trim() === "" || expr.length > MAX_EXPRESSION_LENGTH) return null;
   const mode: VariableMode = opts.variables ?? "xy";
   const bound = new Set<string>([...(opts.symbols ?? MODE_VARIABLES[mode]), ...ALLOWED_CONSTANTS]);
   const found: string[] = [];
@@ -470,7 +472,7 @@ export function freeSymbols(expr: string, opts: ValidateOptions = {}): string[] 
       if (!bound.has(n.name) && !found.includes(n.name)) found.push(n.name);
     });
   } catch {
-    return [];
+    return null;
   }
   return found;
 }
