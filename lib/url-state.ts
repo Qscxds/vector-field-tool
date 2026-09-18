@@ -31,15 +31,21 @@
  *   t0     snapshot time of a non-autonomous planar system or second-order equation (omitted at 0;
  *          unused on a first-order picture, whose t is the horizontal axis: reported as such)
  *   traj   fixed trajectory starts "x,y;x,y" (at most 20 pairs; omitted when empty)
+ *   p      symbolic parameters "k:0.8,L:2" (round T; at most 12; one set for every expression of
+ *          the mode). A name must pass the compiler's own rule for a parameter name and a value is
+ *          a bounded decimal; an entry that fails either is dropped AS A WHOLE and reported (never
+ *          half-read, never silently). A name the equation uses but the link does not give is not
+ *          an error: the page lists it at the default value and marks it as needing a value.
  * Unknown parameters are ignored (so /embed's own `controls` never counts as a problem).
  */
 import { compileScalar } from "./core/parse";
 import { reduceSecondOrder } from "./core/second-order";
 import type { Locale, Range, Vec2 } from "./core/types";
+import { DEFAULT_PARAM_VALUE, discoverParams, formatParamValue, MAX_PARAMS, paramNameProblem, paramsRecord, type ParamEntry, type ParamMode } from "./params";
 import type { ArrowMode } from "./render/arrows";
 import { MAX_TRAJECTORIES } from "./trajectory-store";
 
-export type AppMode = "first" | "diff" | "system" | "second";
+export type AppMode = ParamMode;
 
 /** The entered range; for first / diff the horizontal range is the t range. */
 export type AppBox = { xMin: number; xMax: number; yMin: number; yMax: number };
@@ -70,6 +76,8 @@ export type AppState = {
   view: ViewChoice;
   /** Round Q: the t range of the time-series view (system / second modes; tmin / tmax in the link). */
   timeRange: Range;
+  /** Round T: the symbolic parameters, one set shared by every expression and every mode (`p` in the link). */
+  params: ParamEntry[];
 };
 
 export type UrlProblemReason =
@@ -84,7 +92,10 @@ export type UrlProblemReason =
   | "badChoice"
   | "tooMany"
   | "malformedPair"
-  | "unusedInMode";
+  | "unusedInMode"
+  | "badParamName"
+  | "reservedParamName"
+  | "duplicateParam";
 
 export type UrlProblem = { param: string; reason: UrlProblemReason };
 
@@ -118,6 +129,7 @@ export const DEFAULT_STATE: AppState = {
   trajectoryStarts: [],
   view: null,
   timeRange: { min: 0, max: 20 },
+  params: [],
 };
 
 /**
@@ -160,12 +172,16 @@ export function expressionKeysOf(mode: AppMode): ReadonlyArray<"g" | "f" | "M" |
  * The parser check a link's expression must pass: exactly what the page compiles with. Throws
  * (ParseError) on anything the whitelist rejects; the caller turns that into a problem.
  */
-export function validateExpression(mode: AppMode, key: "g" | "f" | "M" | "N" | "eq", expr: string): void {
+export function validateExpression(mode: AppMode, key: "g" | "f" | "M" | "N" | "eq", expr: string, params: readonly ParamEntry[] = []): void {
+  // Round T: a name the expression leaves free is a parameter the page will list (at the default
+  // value, marked as needing one), so it does not make the link invalid; the link's own values win.
+  const free = discoverParams(mode, { g: expr, f: expr, M: expr, N: expr, eq: expr }) ?? [];
+  const all = paramsRecord([...free.filter((name) => !params.some((e) => e.name === name)).map((name) => ({ name, value: DEFAULT_PARAM_VALUE })), ...params]);
   if (key === "eq") {
-    reduceSecondOrder(expr);
+    reduceSecondOrder(expr, all);
     return;
   }
-  compileScalar(expr, undefined, { variables: mode === "system" ? "xy" : "ty" });
+  compileScalar(expr, all, { variables: mode === "system" ? "xy" : "ty" });
 }
 
 /** Numbers of the entered box / t0: the shortest exact decimal form. */
@@ -191,6 +207,7 @@ const READABLE: ReadonlyArray<[string, string]> = [
   ["%5E", "^"],
   ["%2F", "/"],
   ["%27", "'"],
+  ["%3A", ":"],
 ];
 
 function readable(query: string): string {
@@ -225,6 +242,9 @@ export function encodeState(state: AppState): string {
   if (state.arrowMode !== d.arrowMode) q.set("arrows", state.arrowMode);
   if (state.snapshotT !== d.snapshotT && !horizontalIsT(state.mode)) q.set("t0", formatExact(state.snapshotT));
   if (state.trajectoryStarts.length) q.set("traj", state.trajectoryStarts.map((p) => `${formatStart(p.x)},${formatStart(p.y)}`).join(";"));
+  // Round T: exact values (the shortest decimal that reads back as the same number), so the
+  // picture a teacher links to is the picture the reader gets.
+  if (state.params.length) q.set("p", state.params.map((e) => `${e.name}:${formatParamValue(e.value)}`).join(","));
   return readable(q.toString());
 }
 
@@ -259,7 +279,7 @@ function parseBounded(text: string): Parsed {
 }
 
 function cloneState(s: AppState): AppState {
-  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })) };
+  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })), params: s.params.map((e) => ({ ...e })) };
 }
 
 /**
@@ -292,6 +312,43 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
   // mode falls back to an expression of its own.
   if (mode !== fallback.mode) Object.assign(state, MODE_DEFAULT_EXPRESSIONS[mode]);
 
+  // Round T: the parameters come first, because the expressions are validated WITH them. An entry
+  // is "name:value"; one that is not, whose name the compiler would refuse (reserved, not an
+  // identifier), whose value is not a bounded decimal, or that repeats a name is dropped as a
+  // whole and reported as "p:name" (never half-read, never silently).
+  const p = q.get("p");
+  if (p !== null) {
+    const params: ParamEntry[] = [];
+    for (const entry of p.split(",").filter((e) => e.trim() !== "")) {
+      const parts = entry.split(":");
+      if (parts.length !== 2) {
+        problem("p", "malformedPair");
+        continue;
+      }
+      const name = parts[0].trim();
+      const nameProblem = paramNameProblem(name, mode);
+      if (nameProblem) {
+        problem(name === "" ? "p" : `p:${name.slice(0, 24)}`, nameProblem === "reserved" || nameProblem === "reservedV" ? "reservedParamName" : nameProblem === "tooLong" ? "tooLong" : "badParamName");
+        continue;
+      }
+      const value = parseBounded(parts[1]);
+      if (value.reason) {
+        problem(`p:${name}`, value.reason);
+        continue;
+      }
+      if (params.some((e) => e.name === name)) {
+        problem(`p:${name}`, "duplicateParam");
+        continue;
+      }
+      if (params.length >= MAX_PARAMS) {
+        problem("p", "tooMany");
+        break;
+      }
+      params.push({ name, value: value.value });
+    }
+    state.params = params;
+  }
+
   const used = expressionKeysOf(mode);
   for (const key of ["g", "f", "M", "N", "eq"] as const) {
     const value = q.get(key);
@@ -306,7 +363,7 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
       continue;
     }
     try {
-      validateExpression(mode, key, expr);
+      validateExpression(mode, key, expr, state.params);
       state[key] = expr;
     } catch {
       problem(key, "invalidExpression");

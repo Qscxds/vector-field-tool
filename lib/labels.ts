@@ -114,6 +114,8 @@ export type LabelTable = {
     | "urlReasonQueryTooLong" | "urlReasonTooLong" | "urlReasonInvalidExpression" | "urlReasonNotANumber"
     | "urlReasonNotInteger" | "urlReasonOutOfRange" | "urlReasonInvertedRange" | "urlReasonTooNarrow"
     | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode"
+    // Round T: a link's parameter entry ("p=k:0.8") that was dropped, and why.
+    | "urlReasonBadParamName" | "urlReasonReservedParamName" | "urlReasonDuplicateParam"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
     | "secondOrderImplicitProduct"
@@ -443,6 +445,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonTooMany: "曲线起点超过 20 个，只保留前 20 个",
       urlReasonMalformedPair: "有格式错误的曲线起点，已跳过",
       urlReasonUnusedInMode: "当前方程类型不使用这个参数",
+      urlReasonBadParamName: "不是合法的参数名（要以字母开头，只含字母、数字和下划线）",
+      urlReasonReservedParamName: "这个名字已有含义（变量、常数或函数名），不能用作参数名",
+      urlReasonDuplicateParam: "同一个参数给了两次，只用了第一次的值",
       openFullPage: "在新窗口打开",
       equationSystem: "x' = {f}，y' = {g}",
       equationExplicit: "dy/dt = {g}",
@@ -790,6 +795,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonTooMany: "more than 20 curve starting points; only the first 20 kept",
       urlReasonMalformedPair: "malformed curve starting point skipped",
       urlReasonUnusedInMode: "not used by this equation type",
+      urlReasonBadParamName: "not a valid parameter name (a letter first, then letters, digits or _)",
+      urlReasonReservedParamName: "the name already means something (a variable, a constant or a function), so it cannot be a parameter",
+      urlReasonDuplicateParam: "the same parameter was given twice; the first value is used",
       openFullPage: "Open full page",
       equationSystem: "x' = {f}, y' = {g}",
       equationExplicit: "dy/dt = {g}",

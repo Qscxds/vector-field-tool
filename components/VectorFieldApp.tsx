@@ -86,6 +86,9 @@ const REASON_LABEL: Record<UrlProblemReason, keyof LabelTable["ui"]> = {
   tooMany: "urlReasonTooMany",
   malformedPair: "urlReasonMalformedPair",
   unusedInMode: "urlReasonUnusedInMode",
+  badParamName: "urlReasonBadParamName",
+  reservedParamName: "urlReasonReservedParamName",
+  duplicateParam: "urlReasonDuplicateParam",
 };
 
 function fromAppState(s: AppState): Form {
@@ -556,8 +559,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       trajectoryStarts,
       view: viewChoice,
       timeRange,
+      params: initial.params,
     }),
-    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange],
+    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, initial.params],
   );
 
   // Keep the address bar in sync (full page only; an embed's URL belongs to the embedding page):

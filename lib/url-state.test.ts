@@ -354,3 +354,75 @@ describe("[Q] the time-series view in a link: view and the t range of a planar p
     }
   });
 });
+
+describe("[T] symbolic parameters in the link (p=name:value,…)", () => {
+  const logistic = withDefaults({ mode: "first", g: "k*y*(1 - y/L)", params: [{ name: "k", value: 0.8 }, { name: "L", value: 2 }] });
+
+  it("encodes after every other field, readable: the teacher's 'k = 0.8, L = 2 logistic' link", () => {
+    // spaces are '+', '/' ':' ',' '(' ')' are put back; the default box and everything else is omitted
+    expect(encodeState(logistic)).toBe("m=first&g=k*y*(1+-+y/L)&p=k:0.8,L:2");
+    expect(buildShareUrl("https://tools.studycase.net", "/vector-field", logistic)).toBe("https://tools.studycase.net/vector-field?m=first&g=k*y*(1+-+y/L)&p=k:0.8,L:2");
+    expect(encodeState(withDefaults({ params: [] }))).toBe("");
+  });
+
+  it("round trip: the decoded parameters are exactly the encoded ones, in every mode", () => {
+    const states: AppState[] = [
+      logistic,
+      withDefaults({ mode: "diff", M: "a*t", N: "b*y", params: [{ name: "a", value: 1 }, { name: "b", value: -4 }] }),
+      withDefaults({ f: "a*x - b*x*y", g: "d*x*y - c*y", params: [{ name: "a", value: 1 }, { name: "b", value: 0.5 }, { name: "c", value: 0.75 }, { name: "d", value: 0.25 }] }),
+      withDefaults({ mode: "second", eq: "x'' + 2*b*x' + w^2*x = 0", params: [{ name: "b", value: 0.25 }, { name: "w", value: 1 }] }),
+      // values that need every digit: 0.1 + 0.2, 1/3, a tiny one, a negative one, zero
+      withDefaults({ mode: "first", g: "a*y + b + c*t + d + z", params: [{ name: "a", value: 0.1 + 0.2 }, { name: "b", value: 1 / 3 }, { name: "c", value: 1e-7 }, { name: "d", value: -123456.789 }, { name: "z", value: 0 }] }),
+    ];
+    for (const s of states) {
+      const { state, problems } = decodeState(encodeState(s), D);
+      expect(problems).toEqual([]);
+      expect(state.params).toEqual(s.params);
+      expect(state).toEqual(s);
+    }
+  });
+
+  it("an equation whose parameter the link does not give is still valid: the page lists it and asks for a value", () => {
+    const { state, problems } = decodeState("m=first&g=k*y", D);
+    expect(problems).toEqual([]);
+    expect(state.g).toBe("k*y");
+    expect(state.params).toEqual([]);
+    // a product missing its * is still the parser's error, not a parameter called ty
+    expect(decodeState("m=first&g=sin(ty)", D).problems).toEqual([{ param: "g", reason: "invalidExpression" }]);
+  });
+
+  it("an illegal entry is dropped as a whole and reported; the legal ones and the equation survive", () => {
+    const bad = (query: string): { params: AppState["params"]; problems: UrlProblem[]; g: string } => {
+      const { state, problems } = decodeState(query, D);
+      return { params: state.params, problems, g: state.g };
+    };
+    expect(bad("m=first&g=k*y&p=k:abc")).toEqual({ params: [], problems: [{ param: "p:k", reason: "notANumber" }], g: "k*y" });
+    expect(bad("m=first&g=k*y&p=k:1e9")).toEqual({ params: [], problems: [{ param: "p:k", reason: "outOfRange" }], g: "k*y" });
+    expect(bad("m=first&g=k*y&p=k:Infinity").problems).toEqual([{ param: "p:k", reason: "notANumber" }]);
+    expect(bad("m=first&g=k*y&p=t:2,k:3")).toEqual({ params: [{ name: "k", value: 3 }], problems: [{ param: "p:t", reason: "reservedParamName" }], g: "k*y" });
+    expect(bad("m=first&g=k*y&p=2k:1,k:3")).toEqual({ params: [{ name: "k", value: 3 }], problems: [{ param: "p:2k", reason: "badParamName" }], g: "k*y" });
+    expect(bad("m=first&g=k*y&p=k").problems).toEqual([{ param: "p", reason: "malformedPair" }]);
+    expect(bad("m=first&g=k*y&p=k:1:2").problems).toEqual([{ param: "p", reason: "malformedPair" }]);
+    expect(bad("m=first&g=k*y&p=:1").problems).toEqual([{ param: "p", reason: "badParamName" }]);
+    expect(bad("m=first&g=k*y&p=k:2,k:5")).toEqual({ params: [{ name: "k", value: 2 }], problems: [{ param: "p:k", reason: "duplicateParam" }], g: "k*y" });
+    for (const name of ["x", "y", "pi", "e", "sin", "constructor"]) expect(bad(`m=first&g=y&p=${name}:1`).problems).toEqual([{ param: `p:${name}`, reason: "reservedParamName" }]);
+  });
+
+  it("v is the alias of x' in a second-order equation only", () => {
+    expect(decodeState("m=second&p=v:1", D).problems).toEqual([{ param: "p:v", reason: "reservedParamName" }]);
+    expect(decodeState("p=v:1", D)).toMatchObject({ problems: [], state: { params: [{ name: "v", value: 1 }] } });
+  });
+
+  it("at most 12 parameters; an empty p is no parameters and no problem", () => {
+    const many = Array.from({ length: 14 }, (_, i) => `q${i}:${i}`).join(",");
+    const { state, problems } = decodeState(`p=${many}`, D);
+    expect(state.params).toHaveLength(12);
+    expect(problems).toEqual([{ param: "p", reason: "tooMany" }]);
+    expect(decodeState("p=", D)).toMatchObject({ problems: [], state: { params: [] } });
+  });
+
+  it("the expressions are validated WITH the link's parameters: a value cannot smuggle an expression in", () => {
+    expect(decodeState("m=first&g=k*y&p=k:exp(9)", D).problems).toEqual([{ param: "p:k", reason: "notANumber" }]);
+    expect(decodeState("m=first&g=k*y&p=k:0x10", D).problems).toEqual([{ param: "p:k", reason: "notANumber" }]);
+  });
+});
