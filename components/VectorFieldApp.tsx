@@ -22,7 +22,8 @@ import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, curveWords, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
+import { addParamRow, discoverParams, formatParamValue, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, paramsFromEntries, paramsText, removeParamRow, resolveParams, setParamName, setParamText, syncParams, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
@@ -93,6 +94,8 @@ const REASON_LABEL: Record<UrlProblemReason, keyof LabelTable["ui"]> = {
 
 function fromAppState(s: AppState): Form {
   return {
+    // Round T: the link's parameters as rows; a name the equation uses without a value in the link is listed as pending.
+    params: paramsFromEntries(s.params, discoverParams(s.mode, s)),
     mode: APP_TO_FORM_MODE[s.mode],
     f: s.f,
     g: s.g,
@@ -135,7 +138,24 @@ type Form = {
   yMax: string;
   density: number;
   arrowMode: ArrowMode;
+  /** Round T: the parameter area (lib/params): one set shared by every expression and every mode. */
+  params: ParamState;
 };
+
+/** The names the form's equation leaves free right now (null while it does not parse: the rows stay). */
+function usedParams(form: Form): string[] | null {
+  return discoverParams(FORM_TO_APP_MODE[form.mode], { f: form.f, g: form.g, M: form.M, N: form.N, eq: form.second });
+}
+
+/** What the parameter rows mean under the form's equation: the record for the compiler, the entries for the link, the row problems. */
+function resolvedParams(form: Form) {
+  return resolveParams(form.params, FORM_TO_APP_MODE[form.mode], usedParams(form));
+}
+
+/** The parameters the equation uses, as entries (for the result line and for matching a preset). */
+function paramsInForce(form: Form): ParamEntry[] {
+  return Object.entries(resolvedParams(form).values ?? {}).map(([name, value]) => ({ name, value }));
+}
 
 type Compiled =
   | { sys: CompiledSystem; spec: SystemSpec; firstOrder: FirstOrderSpec | null; secondOrder: ReducedSecondOrder | null; box: Box; error: null }
@@ -294,14 +314,18 @@ function compile(form: Form, L: LabelTable): Compiled {
     let spec: SystemSpec;
     let firstOrder: FirstOrderSpec | null = null;
     let secondOrder: ReducedSecondOrder | null = null;
+    // Round T: the values of the parameter area, one set for every expression of the mode;
+    // undefined without parameters, so such a page compiles exactly as before.
+    const params = resolvedParams(form).values;
+    const withValues = params ? { params } : {};
     if (form.mode === "system") {
-      spec = { f: form.f, g: form.g };
+      spec = { f: form.f, g: form.g, ...withValues };
     } else if (form.mode === "second") {
       // The entered box joins the sample points of the reduction's numerical checks.
-      secondOrder = reduceSecondOrder(form.second, undefined, { box });
+      secondOrder = reduceSecondOrder(form.second, params, { box });
       spec = secondOrder.spec;
     } else {
-      firstOrder = form.mode === "explicit" ? { kind: "explicit", g: form.g } : { kind: "differential", M: form.M, N: form.N };
+      firstOrder = form.mode === "explicit" ? { kind: "explicit", g: form.g, ...withValues } : { kind: "differential", M: form.M, N: form.N, ...withValues };
       spec = toSystem(firstOrder);
       // Differential form: compile M and N separately first (as the MCP tool does), so a ParseError's
       // expr and code refer to exactly the field text the student typed rather than to the reduced
@@ -320,6 +344,8 @@ function matchPresetId(form: Form): string | null {
   const same = PRESETS.find((p) => {
     const f = fromPreset(p, form.density, form.arrowMode);
     if (f.mode !== form.mode || f.xMin !== form.xMin || f.xMax !== form.xMax || f.yMin !== form.yMin || f.yMax !== form.yMax) return false;
+    // A preset's note is derived for its own parameter values: another value is another picture.
+    if (paramsText(paramsInForce(f)) !== paramsText(paramsInForce(form))) return false;
     if (form.mode === "system") return f.f === form.f && f.g === form.g;
     if (form.mode === "explicit") return f.g === form.g;
     if (form.mode === "differential") return f.M === form.M && f.N === form.N;
@@ -388,7 +414,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const [queryKind, setQueryKind] = useState<UiQueryKind>("t");
   const [queryValueText, setQueryValueText] = useState("");
   const [queryError, setQueryError] = useState<string | null>(null);
-  const queryKey = `${shown.mode}|${shown.f}|${shown.g}|${shown.M}|${shown.N}|${shown.second}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${snapshotT}`;
+  // Round T: the values in force are part of the picture (another k is another solution).
+  const paramsKey = JSON.stringify(compiled.spec?.params ?? null);
+  const queryKey = `${shown.mode}|${shown.f}|${shown.g}|${shown.M}|${shown.N}|${shown.second}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${snapshotT}|${paramsKey}`;
   const queryView = useMemo<QueryView | undefined>(
     () => (queryRun && queryRun.key === queryKey ? { target: queryRun.target, hits: queryRun.result.hits, note: queryRun.result.note, reached: queryRun.result.reached } : undefined),
     [queryRun, queryKey],
@@ -417,7 +445,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     // Another snapshot time, or another entered range (R.1: the far stop box is 20x the entered
     // range), re-traces the SAME initial points; it never resets to the seeds, so a cleared curve
     // does not come back.
-    retraceKey: `${snapshotT}|${compiled.box ? JSON.stringify(compiled.box) : ""}`,
+    // Round T: another parameter VALUE re-traces them too (the equation's text, the systemKey, is
+    // unchanged, so the kept curves stay: the same initial points under the new value).
+    retraceKey: `${snapshotT}|${compiled.box ? JSON.stringify(compiled.box) : ""}|${paramsKey}`,
     query: queryView,
     queryStart: queryRun?.start,
     secondOrder: secondOrderView,
@@ -525,11 +555,38 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  // Round T: the parameter whose removal was refused (the equation still uses it); said on its row until the next edit.
+  const [paramRefused, setParamRefused] = useState<string | null>(null);
   const update = (patch: Partial<Form>) => {
     setPresetId(null);
     if (changesEquation(patch)) setTrajectorySeeds([]);
-    setForm((prev) => ({ ...prev, ...patch }));
+    setParamRefused(null);
+    // Round T: the parameter rows follow the equation (a new free name gets a row, an unused auto
+    // row goes and is remembered); while the text does not parse the rows stay as they are.
+    setForm((prev) => {
+      const next = { ...prev, ...patch };
+      return { ...next, params: syncParams(next.params, usedParams(next)) };
+    });
   };
+  // A parameter edit is not an equation edit: the kept curves stay and are re-traced (retraceKey).
+  const updateParams = (change: (params: ParamState) => ParamState) => {
+    setPresetId(null);
+    setParamRefused(null);
+    setForm((prev) => {
+      const params = change(prev.params);
+      return { ...prev, params: syncParams(params, usedParams({ ...prev, params })) };
+    });
+  };
+  const removeParam = (id: number) => {
+    const result = removeParamRow(form.params, id, usedParams(form));
+    if (result.refused !== null) {
+      setParamRefused(result.refused);
+      return;
+    }
+    updateParams(() => result.state);
+  };
+  const formParams = useMemo(() => resolvedParams(form), [form]);
+  const shownParamEntries = useMemo(() => paramsInForce(shown), [shown]);
 
   const loadPreset = (p: Preset) => {
     setForm(fromPreset(p, form.density, form.arrowMode));
@@ -559,9 +616,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       trajectoryStarts,
       view: viewChoice,
       timeRange,
-      params: initial.params,
+      params: formParams.entries,
     }),
-    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, initial.params],
+    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams],
   );
 
   // Keep the address bar in sync (full page only; an embed's URL belongs to the embedding page):
@@ -744,7 +801,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       <div className="vf-columns">
         {!controls ? (
           <div className="vf-form" data-equation-text>
-            <p style={{ margin: 0, color: "#1f2933", fontWeight: 600 }}>{equationText(shown, L, compiled.secondOrder)}</p>
+            <p style={{ margin: 0, color: "#1f2933", fontWeight: 600 }}>{withParams(L, equationText(shown, L, compiled.secondOrder), shownParamEntries)}</p>
             {compiled.secondOrder ? (
               <p style={{ margin: 0, color: "#1f2933" }} data-second-order-reduced>
                 {fill(L.ui.secondOrderReduced, { g: compiled.secondOrder.reduced.g })}
@@ -791,6 +848,17 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </label>
             </>
           )}
+          <ParameterArea
+            params={form.params}
+            problems={formParams.problems}
+            refused={paramRefused}
+            mode={FORM_TO_APP_MODE[form.mode]}
+            L={L}
+            onText={(id, text) => updateParams((ps) => setParamText(ps, id, text))}
+            onName={(id, name) => updateParams((ps) => setParamName(ps, id, name))}
+            onAdd={() => updateParams(addParamRow)}
+            onRemove={removeParam}
+          />
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <label style={labelStyle}>
               <span>{formNames.hv === "x" ? L.ui.xMin : L.ui.tMin}</span>
@@ -1083,6 +1151,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {L.ui.fixErrorHint}
             </div>
           )}
+          {/* Round T: which parameter values this picture was computed for (the values in force, not the text being typed). */}
+          {scene && shownParamEntries.length > 0 ? (
+            <p style={{ margin: "8px 0 0", color: "#1f2933" }} data-equation-params>
+              {withParams(L, equationText(shown, L, compiled.secondOrder), shownParamEntries)}
+            </p>
+          ) : null}
           {scene?.field && scene.field.singularCount > 0 ? (
             <p style={{ margin: "8px 0 0", color: "#92400e" }}>{fill(L.ui.singularNote, { count: scene.field.singularCount })}</p>
           ) : null}
@@ -1133,6 +1207,99 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
         </a>
       </p>
     </main>
+  );
+}
+
+/** The label key of each row problem (lib/params): names per reason, values per reason. */
+const PARAM_PROBLEM_LABEL: Record<ParamRowProblem["problem"], keyof LabelTable["ui"]> = {
+  empty: "paramNameEmpty",
+  invalid: "paramNameInvalid",
+  reserved: "paramNameReserved",
+  reservedV: "paramNameReservedV",
+  tooLong: "paramNameTooLong",
+  duplicate: "paramNameDuplicate",
+  notANumber: "paramValueNotANumber",
+  outOfRange: "paramValueOutOfRange",
+};
+
+/**
+ * The parameter area (round T): one "name = value" row per symbolic parameter. The rows follow
+ * the equation (lib/params syncParams): a name the equation leaves free appears by itself at the
+ * default value, highlighted until the student gives it a value; its name is the equation's, so
+ * only a row added by hand has an editable name. A value that is not a number keeps the last valid
+ * one in force and says so; removing a parameter the equation still uses is refused and said.
+ */
+function ParameterArea({ params, problems, refused, mode, L, onText, onName, onAdd, onRemove }: {
+  params: ParamState;
+  problems: ParamRowProblem[];
+  refused: string | null;
+  mode: AppMode;
+  L: LabelTable;
+  onText: (id: number, text: string) => void;
+  onName: (id: number, name: string) => void;
+  onAdd: () => void;
+  onRemove: (id: number) => void;
+}) {
+  return (
+    <fieldset style={{ display: "grid", gap: 6, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-parameters>
+      <legend style={{ padding: "0 4px" }}>{L.ui.params}</legend>
+      {params.rows.length === 0 ? (
+        <p style={{ margin: 0, color: "#52606d", fontSize: 13 }} data-params-empty>
+          {L.ui.paramsEmptyHint}
+        </p>
+      ) : null}
+      {params.rows.map((row) => {
+        const problem = problems.find((q) => q.id === row.id);
+        const product = row.pending ? looksLikeProduct(row.name, mode) : null;
+        return (
+          <div key={row.id} style={{ display: "grid", gap: 4 }} data-param-row={row.name} data-param-pending={row.pending ? "true" : undefined}>
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 5em) auto minmax(0, 1fr) auto", gap: 6, alignItems: "center" }}>
+              {row.origin === "manual" ? (
+                <input value={row.name} onChange={(e) => onName(row.id, e.target.value)} style={inputStyle} spellCheck={false} autoCapitalize="off" aria-label={L.ui.paramName} name={`paramName${row.id}`} />
+              ) : (
+                <span style={{ fontFamily: "'Times New Roman', Times, serif", fontStyle: "italic", fontSize: 16, overflowWrap: "anywhere" }}>{row.name}</span>
+              )}
+              <span aria-hidden>=</span>
+              <input
+                value={row.text}
+                onChange={(e) => onText(row.id, e.target.value)}
+                style={{ ...inputStyle, ...(row.pending ? { borderColor: "#d97706", background: "#fffbeb" } : {}) }}
+                inputMode="decimal"
+                aria-label={fill(L.ui.paramValue, { name: row.name })}
+                name={`paramValue${row.id}`}
+              />
+              <button type="button" onClick={() => onRemove(row.id)} style={{ ...buttonStyle, width: "auto", padding: "6px 9px" }} aria-label={fill(L.ui.paramRemove, { name: row.name })} title={fill(L.ui.paramRemove, { name: row.name })} data-param-remove>
+                ×
+              </button>
+            </div>
+            {row.pending ? (
+              <p role="status" style={{ margin: 0, color: "#92400e", fontSize: 13 }} data-param-pending-note>
+                {fill(L.ui.paramPending, { name: row.name, value: formatParamValue(row.value) })}
+                {product ? ` ${fill(L.ui.paramLooksLikeProduct, { name: row.name, product })}` : ""}
+              </p>
+            ) : null}
+            {problem ? (
+              <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-param-problem={problem.problem}>
+                {fill(L.ui[problem.problem === "empty" && problem.field === "value" ? "paramValueEmpty" : PARAM_PROBLEM_LABEL[problem.problem]], { name: row.name, value: formatParamValue(row.value), max: String(MAX_PARAM_ABS_VALUE) })}
+              </p>
+            ) : null}
+            {refused === row.name ? (
+              <p role="alert" style={{ margin: 0, color: "#92400e", fontSize: 13 }} data-param-still-used>
+                {fill(L.ui.paramStillUsed, { name: row.name })}
+              </p>
+            ) : null}
+          </div>
+        );
+      })}
+      <button type="button" onClick={onAdd} style={buttonStyle} disabled={params.rows.length >= MAX_PARAMS} data-param-add>
+        {L.ui.paramAdd}
+      </button>
+      {params.rows.length >= MAX_PARAMS ? (
+        <p role="status" style={{ margin: 0, color: "#92400e", fontSize: 13 }}>
+          {fill(L.ui.paramsCap, { max: MAX_PARAMS })}
+        </p>
+      ) : null}
+    </fieldset>
   );
 }
 

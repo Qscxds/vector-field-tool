@@ -116,6 +116,11 @@ export type LabelTable = {
     | "urlReasonBadChoice" | "urlReasonTooMany" | "urlReasonMalformedPair" | "urlReasonUnusedInMode"
     // Round T: a link's parameter entry ("p=k:0.8") that was dropped, and why.
     | "urlReasonBadParamName" | "urlReasonReservedParamName" | "urlReasonDuplicateParam"
+    // Round T: the parameter area of the form.
+    | "params" | "paramsEmptyHint" | "paramAdd" | "paramRemove" | "paramName" | "paramValue" | "paramPending"
+    | "paramLooksLikeProduct" | "paramStillUsed" | "paramNameEmpty" | "paramNameInvalid" | "paramNameReserved"
+    | "paramNameReservedV" | "paramNameTooLong" | "paramNameDuplicate" | "paramValueEmpty" | "paramValueNotANumber"
+    | "paramValueOutOfRange" | "paramsCap"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
     | "secondOrderImplicitProduct"
@@ -448,6 +453,25 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonBadParamName: "不是合法的参数名（要以字母开头，只含字母、数字和下划线）",
       urlReasonReservedParamName: "这个名字已有含义（变量、常数或函数名），不能用作参数名",
       urlReasonDuplicateParam: "同一个参数给了两次，只用了第一次的值",
+      params: "参数",
+      paramsEmptyHint: "在方程里直接写一个字母（例如 k*y 里的 k），它就会出现在这里，值可以随时改。",
+      paramAdd: "添加参数",
+      paramRemove: "删除 {name}",
+      paramName: "参数名",
+      paramValue: "{name} 的值",
+      paramPending: "{name} 是新出现的参数，先取 {value}。请填上你要的值。",
+      paramLooksLikeProduct: "「{name}」被当作一个参数；如果想写乘积，请写 {product}。",
+      paramStillUsed: "方程仍在使用 {name}，所以这一行保留。请先把 {name} 从方程里去掉。",
+      paramNameEmpty: "请给参数起个名字（例如字母 k）。",
+      paramNameInvalid: "「{name}」不是合法的名字：要以字母开头，只含字母、数字和下划线。",
+      paramNameReserved: "「{name}」在这里已有含义（变量、pi 或 e 这样的常数、或函数名），不能用作参数名。请换一个名字。",
+      paramNameReservedV: "在二阶方程里 v 表示 x'，不能用作参数名。请换一个名字。",
+      paramNameTooLong: "名字太长了（最多 24 个字符）。",
+      paramNameDuplicate: "上面已经有 {name} 了，这一行不起作用。",
+      paramValueEmpty: "{name} 需要一个值。图上仍在用 {name} = {value}。",
+      paramValueNotANumber: "{name} 的值不是数（请写 0.8 或 -2 这样的小数）。图上仍在用 {name} = {value}。",
+      paramValueOutOfRange: "{name} 的值要在 -{max} 到 {max} 之间。图上仍在用 {name} = {value}。",
+      paramsCap: "最多 {max} 个参数。",
       openFullPage: "在新窗口打开",
       equationSystem: "x' = {f}，y' = {g}",
       equationExplicit: "dy/dt = {g}",
@@ -798,6 +822,25 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonBadParamName: "not a valid parameter name (a letter first, then letters, digits or _)",
       urlReasonReservedParamName: "the name already means something (a variable, a constant or a function), so it cannot be a parameter",
       urlReasonDuplicateParam: "the same parameter was given twice; the first value is used",
+      params: "Parameters",
+      paramsEmptyHint: "Write a letter in the equation (the k in k*y) and it appears here with a value you can change.",
+      paramAdd: "Add a parameter",
+      paramRemove: "Remove {name}",
+      paramName: "Parameter name",
+      paramValue: "Value of {name}",
+      paramPending: "{name} is new and starts at {value}. Give it the value you want.",
+      paramLooksLikeProduct: "“{name}” is read as ONE parameter; for a product write {product}.",
+      paramStillUsed: "The equation still uses {name}, so this row stays. Take {name} out of the equation first.",
+      paramNameEmpty: "Give the parameter a name (a letter such as k).",
+      paramNameInvalid: "“{name}” is not a valid name: start with a letter, then letters, digits or _.",
+      paramNameReserved: "“{name}” already means something here (a variable, a constant such as pi or e, or a function), so it cannot be a parameter. Choose another name.",
+      paramNameReservedV: "In a second-order equation v stands for x', so it cannot be a parameter. Choose another name.",
+      paramNameTooLong: "The name is too long (at most 24 characters).",
+      paramNameDuplicate: "{name} is already listed above; this row is ignored.",
+      paramValueEmpty: "{name} needs a value. The picture still uses {name} = {value}.",
+      paramValueNotANumber: "The value of {name} is not a number (write a decimal such as 0.8 or -2). The picture still uses {name} = {value}.",
+      paramValueOutOfRange: "The value of {name} must be between -{max} and {max}. The picture still uses {name} = {value}.",
+      paramsCap: "At most {max} parameters.",
       openFullPage: "Open full page",
       equationSystem: "x' = {f}, y' = {g}",
       equationExplicit: "dy/dt = {g}",
