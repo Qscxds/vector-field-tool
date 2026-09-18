@@ -5,8 +5,14 @@
  * stays honest ("center or weak spiral", never "center"). Boxes are chosen so the features are
  * visible; starts are chosen so the traced curves make the point. presetUrl() makes each preset a
  * shareable link (the home page can list them).
+ *
+ * Round T: five presets are written with SYMBOLIC PARAMETERS (logistic k, L; Newton cooling k, Ta;
+ * the damped oscillator b, w; beats F, g; Lotka-Volterra a, b, c, d), so a student who opens one
+ * sees what the parameter area is for. Their notes are derived for the preset's own values and say
+ * what changing a parameter does.
  */
 import type { Locale, Vec2 } from "@/lib/core/types";
+import type { ParamEntry } from "@/lib/params";
 import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState } from "@/lib/url-state";
 
 /** The form vocabulary of VectorFieldApp (explicit / differential); presets use the link vocabulary AppMode. */
@@ -29,6 +35,8 @@ export type Preset = {
   box: AppBox;
   /** Fixed trajectory starts that make the picture instructive (traced on load). */
   starts?: Vec2[];
+  /** Round T: the values of the symbolic parameters the expressions use (every free name, no spare ones; tested). */
+  params?: ParamEntry[];
 };
 
 /** Route the preset links point to. */
@@ -54,11 +62,12 @@ const sq = (r: number): AppBox => ({ xMin: -r, xMax: r, yMin: -r, yMax: r });
 export const PRESETS: Preset[] = [
   // ---- First order: separable ----
   {
-    id: "logistic", group: "separable", mode: "first", name: { zh: "Logistic dy/dt = y(1−y)", en: "Logistic dy/dt = y(1−y)" },
-    expressions: { g: "y*(1 - y)" }, box: { xMin: 0, xMax: 6, yMin: -0.5, yMax: 2 }, starts: [{ x: 0, y: 0.1 }, { x: 0, y: 1.8 }],
+    id: "logistic", group: "separable", mode: "first", name: { zh: "Logistic dy/dt = k·y(1 − y/L)", en: "Logistic dy/dt = k·y(1 − y/L)" },
+    expressions: { g: "k*y*(1 - y/L)" }, params: [{ name: "k", value: 0.8 }, { name: "L", value: 2 }],
+    box: { xMin: 0, xMax: 10, yMin: -0.5, yMax: 3 }, starts: [{ x: 0, y: 0.1 }, { x: 0, y: 2.8 }],
     note: {
-      zh: "dy/dt = y(1−y)：可分离；常数解 y = 0 不稳定、y = 1 稳定；它也是自治方程和 n = 2 的 Bernoulli 方程。",
-      en: "dy/dt = y(1−y): separable; the constant solutions are y = 0 (unstable) and y = 1 (stable); it is also autonomous and a Bernoulli equation with n = 2.",
+      zh: "dy/dt = k·y(1 − y/L)，k = 0.8、L = 2：可分离；常数解 y = 0 不稳定、y = L = 2 稳定，解是 y = L/(1 + ((L − y₀)/y₀)·e^(−kt))；它也是自治方程和 n = 2 的 Bernoulli 方程。改 L，稳定的那条线跟着移动；改 k（保持 k > 0），只改变趋近的快慢。",
+      en: "dy/dt = k·y(1 − y/L) with k = 0.8, L = 2: separable; the constant solutions are y = 0 (unstable) and y = L = 2 (stable), and y = L/(1 + ((L − y₀)/y₀)·e^(−kt)); it is also autonomous and a Bernoulli equation with n = 2. Change L and the stable line moves with it; change k (keeping k > 0) and only the speed of approach changes.",
     },
   },
   {
@@ -70,6 +79,15 @@ export const PRESETS: Preset[] = [
     },
   },
   // ---- First order: linear ----
+  {
+    id: "newton", group: "linear", mode: "first", name: { zh: "牛顿冷却 dy/dt = −k(y − Ta)", en: "Newton cooling dy/dt = −k(y − Ta)" },
+    expressions: { g: "-k*(y - Ta)" }, params: [{ name: "k", value: 0.3 }, { name: "Ta", value: 20 }],
+    box: { xMin: 0, xMax: 15, yMin: 0, yMax: 40 }, starts: [{ x: 0, y: 35 }, { x: 0, y: 5 }],
+    note: {
+      zh: "dy/dt = −k(y − Ta)，k = 0.3、环境温度 Ta = 20：线性（也可分离、自治）；解 y = Ta + (y₀ − Ta)·e^(−kt)，常数解 y = Ta = 20 稳定，热的、冷的物体都趋向环境温度。改 Ta，那条线跟着移动；k 越大趋近越快。",
+      en: "dy/dt = −k(y − Ta) with k = 0.3 and ambient temperature Ta = 20: linear (also separable and autonomous); y = Ta + (y₀ − Ta)·e^(−kt), and the constant solution y = Ta = 20 is stable: a hot body and a cold one both approach the ambient temperature. Change Ta and the line moves with it; a larger k approaches faster.",
+    },
+  },
   {
     id: "forced", group: "linear", mode: "first", name: { zh: "受迫响应 dy/dt = −y + sin t", en: "Forced response dy/dt = −y + sin t" },
     expressions: { g: "-y + sin(t)" }, box: { xMin: 0, xMax: 12, yMin: -2, yMax: 2 }, starts: [{ x: 0, y: 1.5 }, { x: 0, y: -1.5 }],
@@ -182,11 +200,12 @@ export const PRESETS: Preset[] = [
     },
   },
   {
-    id: "damped2", group: "secondOrder", mode: "second", name: { zh: "阻尼振子 x'' + 0.5x' + x = 0", en: "Damped oscillator x'' + 0.5x' + x = 0" },
-    expressions: { eq: "x'' + 0.5*x' + x = 0" }, box: sq(3), starts: [{ x: 2, y: 0 }],
+    id: "damped2", group: "secondOrder", mode: "second", name: { zh: "阻尼振子 x'' + 2b·x' + w²x = 0", en: "Damped oscillator x'' + 2b·x' + w²x = 0" },
+    expressions: { eq: "x'' + 2*b*x' + w^2*x = 0" }, params: [{ name: "b", value: 0.25 }, { name: "w", value: 1 }],
+    box: sq(3), starts: [{ x: 2, y: 0 }],
     note: {
-      zh: "x'' + 0.5x' + x = 0：令 v = x' 得 x' = v，v' = −x − 0.5v，与「阻尼振子（系统）」是同一个系统；平衡点 (x, x') = (0, 0)（物体静止）是稳定螺旋点。",
-      en: "x'' + 0.5x' + x = 0: with v = x' it is x' = v, v' = −x − 0.5v, the same system as 'Damped oscillator (system)'; the equilibrium (x, x') = (0, 0) (the body at rest) is a stable spiral.",
+      zh: "x'' + 2b·x' + w²x = 0，b = 0.25、w = 1：令 v = x' 得 x' = v，v' = −2b·v − w²x，与「阻尼振子（系统）」是同一个系统；特征值 −b ± √(b² − w²) = −1/4 ± i√15/4，平衡点 (x, x') = (0, 0)（物体静止）是稳定螺旋点（欠阻尼）。把 b 调过 w：b = w 是临界阻尼（重根），b > w 是过阻尼，螺旋点变成稳定结点。",
+      en: "x'' + 2b·x' + w²x = 0 with b = 0.25, w = 1: with v = x' it is x' = v, v' = −2b·v − w²x, the same system as 'Damped oscillator (system)'; the eigenvalues are −b ± √(b² − w²) = −1/4 ± i√15/4, so the equilibrium (x, x') = (0, 0) (the body at rest) is a stable spiral (underdamped). Move b past w: b = w is critical damping (a repeated root), b > w is overdamped and the spiral becomes a stable node.",
     },
   },
   {
@@ -207,10 +226,12 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "lotka", group: "systems", mode: "system", name: { zh: "Lotka–Volterra", en: "Lotka–Volterra" },
-    expressions: { f: "x - x*y", g: "x*y - y" }, box: { xMin: -0.5, xMax: 4, yMin: -0.5, yMax: 4 }, starts: [{ x: 1.5, y: 1.5 }, { x: 3, y: 1 }],
+    expressions: { f: "a*x - b*x*y", g: "d*x*y - c*y" },
+    params: [{ name: "a", value: 1 }, { name: "b", value: 0.5 }, { name: "c", value: 0.75 }, { name: "d", value: 0.25 }],
+    box: { xMin: -0.5, xMax: 8, yMin: -0.5, yMax: 6 }, starts: [{ x: 3, y: 1 }, { x: 6.5, y: 2 }],
     note: {
-      zh: "x' = x − xy，y' = xy − y：(0,0) 是鞍点，(1,1) 是中心或弱螺旋；H = x − ln x + y − ln y 守恒，所以第一象限的轨线是闭曲线。",
-      en: "x' = x − xy, y' = xy − y: (0,0) is a saddle, (1,1) a center-or-weak-spiral; H = x − ln x + y − ln y is conserved, so the orbits in the first quadrant are closed curves.",
+      zh: "x' = a·x − b·xy，y' = d·xy − c·y，a = 1、b = 0.5、c = 0.75、d = 0.25：(0,0) 是鞍点（特征值 a 与 −c），(c/d, a/b) = (3, 2) 是中心或弱螺旋（特征值 ±i√(ac)）；H = d·x − c·ln x + b·y − a·ln y 守恒，所以第一象限的轨线是闭曲线。改参数，第二个平衡点跟着 (c/d, a/b) 移动。",
+      en: "x' = a·x − b·xy, y' = d·xy − c·y with a = 1, b = 0.5, c = 0.75, d = 0.25: (0,0) is a saddle (eigenvalues a and −c), (c/d, a/b) = (3, 2) a center-or-weak-spiral (eigenvalues ±i√(ac)); H = d·x − c·ln x + b·y − a·ln y is conserved, so the orbits in the first quadrant are closed curves. Change a parameter and the second equilibrium moves with (c/d, a/b).",
     },
   },
   {
@@ -239,11 +260,12 @@ export const PRESETS: Preset[] = [
     },
   },
   {
-    id: "beats", group: "nonAutonomous", mode: "second", name: { zh: "拍频 x'' = −x + 0.5cos(1.2t)", en: "Beats x'' = −x + 0.5cos(1.2t)" },
-    expressions: { eq: "x'' = -x + 0.5*cos(1.2*t)" }, box: sq(3), starts: [{ x: 0, y: 0 }],
+    id: "beats", group: "nonAutonomous", mode: "second", name: { zh: "受迫振子 / 拍频 x'' = −x + F·cos(g·t)", en: "Forced oscillator / beats x'' = −x + F·cos(g·t)" },
+    expressions: { eq: "x'' = -x + F*cos(g*t)" }, params: [{ name: "F", value: 0.5 }, { name: "g", value: 1.2 }],
+    box: sq(3), starts: [{ x: 0, y: 0 }],
     note: {
-      zh: "x'' = −x + 0.5cos(1.2t)：右端含 t，方程非自治，相平面只是 t₀ 时刻的快照，不做平衡点分析。从静止出发的解是 x = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t)：外力频率 1.2 接近固有频率 1，振幅按 sin(0.1t) 缓慢起伏，这就是拍。",
-      en: "x'' = −x + 0.5cos(1.2t): t appears on the right, so the equation is non-autonomous, the phase plane is only the snapshot at t₀ and no equilibrium analysis is made. From rest the solution is x = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t): the forcing frequency 1.2 is close to the natural frequency 1, so the amplitude rises and falls slowly with sin(0.1t): beats.",
+      zh: "x'' = −x + F·cos(g·t)，F = 0.5、g = 1.2：右端含 t，方程非自治，相平面只是 t₀ 时刻的快照，不做平衡点分析。从静止出发的解是 x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t)：外力频率 g = 1.2 接近固有频率 1，振幅按 sin(0.1t) 缓慢起伏，这就是拍。把 g 调向 1：振幅 F/|g² − 1| 变大，起伏变慢（g = 1 时是共振，振幅随 t 线性增长）。",
+      en: "x'' = −x + F·cos(g·t) with F = 0.5, g = 1.2: t appears on the right, so the equation is non-autonomous, the phase plane is only the snapshot at t₀ and no equilibrium analysis is made. From rest the solution is x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t): the forcing frequency g = 1.2 is close to the natural frequency 1, so the amplitude rises and falls slowly with sin(0.1t): beats. Move g toward 1: the amplitude F/|g² − 1| grows and the beats slow down (at g = 1 it is resonance and the amplitude grows linearly in t).",
     },
   },
 ];
@@ -256,6 +278,7 @@ export function presetState(p: Preset): AppState {
     mode: p.mode,
     box: { ...p.box },
     trajectoryStarts: (p.starts ?? []).map((q) => ({ x: q.x, y: q.y })),
+    params: (p.params ?? []).map((e) => ({ ...e })),
   };
 }
 

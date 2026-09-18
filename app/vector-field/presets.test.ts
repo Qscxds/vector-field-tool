@@ -1,12 +1,15 @@
 /**
  * Preset library: every preset must compile in its mode through the kernel, carry both languages,
  * and be a link that decodes back to itself. The key-feature checks are derived by hand:
- * - logistic dy/dt = y(1 - y): below y = 0 the slope is negative, above it positive (solutions leave
- *   the line: unstable); around y = 1 the slopes point toward the line (stable).
+ * - logistic dy/dt = k y (1 - y/L) with k = 0.8 > 0, L = 2: below y = 0 the slope is negative, above it
+ *   positive (solutions leave the line: unstable); around y = L = 2 the slopes point toward the line (stable).
+ * - Newton cooling dy/dt = -k (y - Ta) with k = 0.3 > 0: the only zero is y = Ta = 20, slopes point toward it.
+ * - Lotka-Volterra x' = a x - b x y, y' = d x y - c y: equilibria (0, 0) with J = diag(a, -c) (a saddle) and
+ *   (c/d, a/b) = (3, 2) with J = [[0, -b c/d], [d a/b, 0]], trace 0, det a c = 0.75: eigenvalues ±i sqrt(0.75).
  * - dy/dt = sqrt(y): defined for y >= 0 only, so y = 0 is a domain edge with the equation defined
  *   above; the derivative 1/(2 sqrt y) is unbounded there, so the uniqueness verdict is "unbounded".
  * - x' = y, y' = -x + sin(t): g changes with t, so the system is time dependent.
- * - x'' + 0.5x' + x = 0 with y = x': x' = y, y' = -(0.5 y + x), checked numerically at sample points.
+ * - x'' + 2b x' + w² x = 0 with b = 0.25, w = 1 and y = x': x' = y, y' = -(0.5 y + x), checked numerically at sample points.
  */
 import { describe, expect, it } from "vitest";
 import { compileScalar, compileSystem } from "@/lib/core/parse";
@@ -17,6 +20,7 @@ import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box } from "@/lib/core/types";
 import { computeFeatures } from "@/lib/interactive";
 import { LOCALES } from "@/lib/labels";
+import { discoverParams, paramsRecord } from "@/lib/params";
 import { decodeState, DEFAULT_STATE, expressionKeysOf } from "@/lib/url-state";
 import { PRESET_GROUPS, PRESET_PATH, PRESETS, presetsByGroup, presetState, presetUrl, type Preset } from "./presets";
 
@@ -52,21 +56,25 @@ describe("preset library", () => {
     for (const p of PRESETS) {
       const s = presetState(p);
       for (const key of expressionKeysOf(p.mode)) expect(p.expressions[key], `${p.id}.${key}`).toBeTruthy();
+      const params = paramsRecord(s.params);
       switch (p.mode) {
         case "first":
-          expect(() => compileScalar(s.g, undefined, { variables: "ty" }), p.id).not.toThrow();
+          expect(() => compileScalar(s.g, params, { variables: "ty" }), p.id).not.toThrow();
           break;
         case "diff":
-          expect(() => compileScalar(s.M, undefined, { variables: "ty" }), p.id).not.toThrow();
-          expect(() => compileScalar(s.N, undefined, { variables: "ty" }), p.id).not.toThrow();
+          expect(() => compileScalar(s.M, params, { variables: "ty" }), p.id).not.toThrow();
+          expect(() => compileScalar(s.N, params, { variables: "ty" }), p.id).not.toThrow();
           break;
         case "system":
-          expect(() => compileSystem({ f: s.f, g: s.g }), p.id).not.toThrow();
+          expect(() => compileSystem({ f: s.f, g: s.g, ...(params ? { params } : {}) }), p.id).not.toThrow();
           break;
         case "second":
-          expect(() => reduceSecondOrder(s.eq), p.id).not.toThrow();
+          expect(() => reduceSecondOrder(s.eq, params), p.id).not.toThrow();
           break;
       }
+      // Round T: a preset gives a value to exactly the names its equation leaves free (none pending, none
+      // spare). As sets: discovery lists by appearance (a, b, d, c for Lotka-Volterra), the preset in its own order.
+      expect([...(discoverParams(p.mode, s) ?? ["does not parse"])].sort(), p.id).toEqual(s.params.map((e) => e.name).sort());
       expect(s.box.xMin, p.id).toBeLessThan(s.box.xMax);
       expect(s.box.yMin, p.id).toBeLessThan(s.box.yMax);
       for (const q of p.starts ?? []) {
@@ -89,17 +97,50 @@ describe("preset library", () => {
 describe("derived key features", () => {
   const firstOrderFeatures = (p: Preset) => {
     const s = presetState(p);
-    const spec: FirstOrderSpec = { kind: "explicit", g: s.g };
+    const params = paramsRecord(s.params);
+    const spec: FirstOrderSpec = { kind: "explicit", g: s.g, ...(params ? { params } : {}) };
     return computeFeatures(compileSystem(toSystem(spec)), spec, boxOf(p), "en").firstOrder;
   };
 
-  it("logistic: y = 0 unstable, y = 1 stable", () => {
-    const fo = firstOrderFeatures(byId("logistic"));
+  it("logistic with k = 0.8, L = 2: y = 0 unstable, y = L = 2 stable", () => {
+    const p = byId("logistic");
+    expect(p.params).toEqual([{ name: "k", value: 0.8 }, { name: "L", value: 2 }]);
+    const fo = firstOrderFeatures(p);
     expect(fo).toBeDefined();
     const at = (y: number) => fo!.solutions.find((s) => Math.abs(s.y - y) < 1e-9);
     expect(fo!.solutions).toHaveLength(2);
     expect(at(0)?.stability).toBe("unstable");
-    expect(at(1)?.stability).toBe("stable");
+    expect(at(2)?.stability).toBe("stable");
+  });
+
+  it("Newton cooling with k = 0.3, Ta = 20: the one constant solution y = Ta = 20 is stable and visible in the box", () => {
+    const p = byId("newton");
+    const fo = firstOrderFeatures(p);
+    expect(fo!.solutions).toHaveLength(1);
+    expect(fo!.solutions[0].y).toBeCloseTo(20, 9);
+    expect(fo!.solutions[0].stability).toBe("stable");
+    expect(p.box.yMin).toBeLessThan(20);
+    expect(p.box.yMax).toBeGreaterThan(20);
+  });
+
+  it("Lotka-Volterra with a = 1, b = 0.5, c = 0.75, d = 0.25: a saddle at (0, 0) with eigenvalues a, -c and (c/d, a/b) = (3, 2) with ±i sqrt(a c)", () => {
+    const p = byId("lotka");
+    const s = presetState(p);
+    const eq = computeFeatures(compileSystem({ f: s.f, g: s.g, params: paramsRecord(s.params) }), null, boxOf(p), "en").equilibria!;
+    expect(eq).toHaveLength(2);
+    const origin = eq.find((e) => Math.hypot(e.at.x, e.at.y) < 1e-9)!;
+    expect(origin.classification).toBe("saddle");
+    expect(origin.eigenvalues.map((l) => l.re).sort((u, v) => u - v).map((v) => Number(v.toFixed(6)))).toEqual([-0.75, 1]);
+    const inner = eq.find((e) => Math.hypot(e.at.x - 3, e.at.y - 2) < 1e-6)!;
+    expect(inner.classification).toBe("center_or_weak_spiral");
+    expect(Math.abs(inner.eigenvalues[0].im)).toBeCloseTo(Math.sqrt(0.75), 5);
+    // both kept orbits stay inside the box: derived from H = d x - c ln x + b y - a ln y (see the preset's note)
+    for (const q of p.starts!) expect(q.x > 0 && q.y > 0).toBe(true);
+  });
+
+  it("the logistic preset is the link a teacher hands out: k = 0.8, L = 2 in the address", () => {
+    // By the encoding rules: the default ymax = 3 is omitted, the preset's two starts come as traj, p is last.
+    expect(presetUrl(byId("logistic"))).toBe("/vector-field?m=first&g=k*y*(1+-+y/L)&tmin=0&tmax=10&ymin=-0.5&traj=0,0.1;0,2.8&p=k:0.8,L:2");
   });
 
   it("sqrt(y): y = 0 is a domain edge (defined above) whose uniqueness verdict is unbounded", () => {
@@ -121,9 +162,10 @@ describe("derived key features", () => {
     expect(detectTimeDependence(compileSystem({ f: h.f, g: h.g }), boxOf(byId("harmonic"))).dependsOnT).toBe(false);
   });
 
-  it("the second-order damped preset reduces to x' = y, y' = -(0.5 y + x)", () => {
+  it("the second-order damped preset (b = 0.25, w = 1) reduces to x' = y, y' = -(2b y + w² x) = -(0.5 y + x)", () => {
     const s = presetState(byId("damped2"));
-    const sys = compileSystem(reduceSecondOrder(s.eq).spec);
+    expect(s.params).toEqual([{ name: "b", value: 0.25 }, { name: "w", value: 1 }]);
+    const sys = compileSystem(reduceSecondOrder(s.eq, paramsRecord(s.params)).spec);
     for (const q of [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: 0, y: 1 }, { x: -1.5, y: 2.25 }, { x: 0.3, y: -0.7 }]) {
       const v = sys.eval(q);
       expect(v.x).toBeCloseTo(q.y, 12);
@@ -157,13 +199,14 @@ describe("[P2.8] the second-order chapter has its own presets, entered as x'' = 
     }
   });
 
-  it("beats x'' = -x + 0.5*cos(1.2*t) from rest: x(t) = (0.5/0.44)(cos t - cos 1.2t), checked at t = 5 by integration", () => {
-    // Particular solution -1.1364 cos(1.2t) (0.5 / (1 - 1.44)); with x(0) = x'(0) = 0 the homogeneous part is
+  it("beats x'' = -x + F*cos(g*t) with F = 0.5, g = 1.2 from rest: x(t) = (0.5/0.44)(cos t - cos 1.2t), checked at t = 5 by integration", () => {
+    // Particular solution F/(1 - g²) cos(g t) = -1.1364 cos(1.2t); with x(0) = x'(0) = 0 the homogeneous part is
     // +1.1364 cos t, so x = 1.1364 (cos t - cos 1.2 t) = 2.2727 sin(0.1 t) sin(1.1 t).
     const p = byId("beats");
     expect(p.mode).toBe("second");
     expect(p.group).toBe("nonAutonomous");
-    const sys = compileSystem(reduceSecondOrder(presetState(p).eq).spec);
+    expect(p.params).toEqual([{ name: "F", value: 0.5 }, { name: "g", value: 1.2 }]);
+    const sys = compileSystem(reduceSecondOrder(presetState(p).eq, paramsRecord(presetState(p).params)).spec);
     const tr = integrateAdaptive(sys, { x: 0, y: 0 }, 5, { rtol: 1e-9, atol: 1e-12 });
     expect(tr.status).toBe("completed");
     const expected = (0.5 / 0.44) * (Math.cos(5) - Math.cos(6));
