@@ -116,6 +116,18 @@ $ npm run smoke        （对本机生产构建 next start）
 24/24 passed          widget uri: ui://vector-field-tool/widget.html?v=t-1
 ```
 
+```
+推送之后（2026-09-18，`git push origin main --tags` 由我执行，四个新 tag 一并推上）
+GitHub Actions run 35396534765（typecheck / test / build）           ✓ success，1m37s
+Vercel 部署（commit ae6a8bf）                                        ✓ Deployment has completed
+$ npm run smoke -- https://tools.studycase.net/mcp                    24/24 passed，widget uri …?v=t-1
+线上首页                          data-news-entry="2026-09-18" 已在最前
+线上 /help                        语法一节已有「参数」一段
+线上 logistic + 讲课模式链接      服务端渲染出 k、L 两行参数，data-lecture="true"
+```
+
+一个观察：这次 Vercel 从 “deploying” 到完成用了约 **20 分钟**（21:24 → 21:44 UTC），以往是 40 秒左右。期间线上一直是旧版 `p-2`，冒烟 23/24（唯一不过的就是版本号那条），完成后才变 24/24。构建本身本机只要 30 秒，多半是 Vercel 那边排队；如果以后还这样，值得看一眼 Vercel 控制台（我没有登录权限，看不到构建日志）。
+
 测试数：958 + 2 → **1076 + 2**（新增 118 个；2 个预期失败是既有的，这一轮没有新增 `it.fails()`，没有改任何容差）。
 
 ```
