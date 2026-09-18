@@ -16,7 +16,7 @@ import { toSystem, type FirstOrderSpec } from "./core/slope-field";
 import type { Box } from "./core/types";
 import { computeFeatures } from "./interactive";
 import { constantSolutionFolded, equilibriumDetail, labels, LOCALES } from "./labels";
-import { constantSolutionLine, constantSolutionTag, equilibriumLine, equilibriumNumbers, lectureNotices, lectureQueryShort } from "./lecture";
+import { constantSolutionLine, constantSolutionTag, equilibriumLine, equilibriumNumbers, lectureCurveNote, lectureNotices, lectureQueryShort } from "./lecture";
 
 const BOX: Box = { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } };
 const planar = (f: string, g: string, params?: Record<string, number>) => computeFeatures(compileSystem({ f, g, ...(params ? { params } : {}) }), null, BOX, "en").equilibria!;
@@ -124,6 +124,16 @@ describe("the red line: folding numbers never folds honesty", () => {
     expect(constantSolutionLine(L, stable, spec, true).detail[0]).toBe("Constant solution y = 1: stable.");
     expect(constantSolutionTag(L, stable, true)).toBe("stable");
     expect(constantSolutionTag(L, stable, false)).toBe("y = 1 (stable)");
+  });
+
+  it("a kept curve through a point where uniqueness fails is still said when lecture mode hides the last-trajectory line", () => {
+    for (const locale of LOCALES) {
+      const L = labels(locale);
+      expect(lectureCurveNote(L, [{}, { nonUnique: true }])).toEqual({ short: L.ui.lectureNonUniqueCurve, detail: [L.tool.nonUniqueTrajectory] });
+      expect(L.ui.lectureNonUniqueCurve).toMatch(/^[!！]/);
+    }
+    expect(lectureCurveNote(labels("en"), [{}, {}])).toBeNull();
+    expect(lectureCurveNote(labels("en"), [])).toBeNull();
   });
 
   it("a search warning stays on the page in short form; the other notices fold into one line; nothing is dropped", () => {

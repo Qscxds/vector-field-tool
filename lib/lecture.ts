@@ -102,6 +102,16 @@ export function lectureNotices(L: LabelTable, warning: keyof LabelTable["warning
   return out;
 }
 
+/**
+ * Lecture mode hides the "last trajectory" line (it is numbers: where each direction got to). The
+ * one sentence of that line that must never be hidden is that a kept curve passes through a point
+ * where uniqueness fails: it stays, in short form with its "!", the full sentence behind the ⓘ.
+ * null when no kept curve carries the flag.
+ */
+export function lectureCurveNote(L: LabelTable, trajectories: readonly { nonUnique?: boolean }[]): Folded | null {
+  return trajectories.some((t) => t.nonUnique) ? { short: L.ui.lectureNonUniqueCurve, detail: [L.tool.nonUniqueTrajectory] } : null;
+}
+
 /** A query's answer in lecture mode: whether the target was found, in a few words (the markers are on the picture; the ⓘ opens every number). */
 export function lectureQueryShort(L: LabelTable, note: QueryNote, hits: number): string {
   if (note === "ok") return fill(L.ui.lectureQueryFound, { count: hits });

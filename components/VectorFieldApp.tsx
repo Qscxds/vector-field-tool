@@ -23,7 +23,7 @@ import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-or
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
 import { constantSolutionNotices, curveWords, eigenDirectionLines, equalScaleTexts, equilibriaNotices, featuresBoxDetail, fill, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
-import { constantSolutionLine, equilibriumLine, lectureNotices, lectureQueryShort } from "@/lib/lecture";
+import { constantSolutionLine, equilibriumLine, lectureCurveNote, lectureNotices, lectureQueryShort } from "@/lib/lecture";
 import { addParamRow, discoverParams, formatParamValue, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, MAX_SLIDER_STEPS, paramsFromEntries, paramsText, parseSliderRange, removeParamRow, resolveParams, setParamName, setParamText, setSliderField, slideParam, sliderEntries, syncParams, toggleSlider, withSliders, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
@@ -1289,6 +1289,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} eigen={aids.eigenDirections && view === "phase"} lecture={lecture} /> : null}
             {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} lecture={lecture} /> : null}
           </div>
+          {/* Round W: the last-trajectory line is numbers and is hidden in lecture mode, but never the fact that a kept curve runs through a point where uniqueness fails. */}
+          {lecture && lectureCurveNote(L, trajectories) ? (
+            <p role="status" style={{ margin: "8px 0 0", color: "#92400e" }} data-non-unique-kept>
+              <FoldedLine {...lectureCurveNote(L, trajectories)!} label={L.ui.details} data-info="non-unique-curve" />
+            </p>
+          ) : null}
           {scene && lastGroup && !lecture ? (
             <p style={{ margin: "8px 0 0", color: "#52606d" }} data-last-trajectory>
               {words.last} {trajectoryLines(scene, lastGroup, L).join("; ")}

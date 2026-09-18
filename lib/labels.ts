@@ -146,7 +146,7 @@ export type LabelTable = {
     | "eigenDirectionStable" | "eigenDirectionUnstable" | "eigenOne" | "eigenEvery" | "eigenComplex"
     // Round W: lecture mode.
     | "lectureMode" | "lectureDetail" | "lectureJoin" | "lectureConstantSolution" | "lectureNotes" | "lectureQueryFound"
-    | "lectureMarked" | "lectureImplicit" | "lectureImplicitFailed" | "lectureOtherForms"
+    | "lectureMarked" | "lectureImplicit" | "lectureImplicitFailed" | "lectureOtherForms" | "lectureNonUniqueCurve"
     | "openFullPage" | "equationSystem" | "equationExplicit" | "equationDifferential" | "equationSecond"
     | "presetCustom"
     | "secondOrderImplicitProduct"
@@ -559,6 +559,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       lectureImplicit: "隐式解已画成等值线。",
       lectureImplicitFailed: "势函数没有通过自检，所以没有画等值线。",
       lectureOtherForms: "其余类型：不一致、按定义排除或无法检验。",
+      lectureNonUniqueCurve: "！有一条固定的曲线经过唯一性失效的点：它只是无穷多条解中的一条。",
       openFullPage: "在新窗口打开",
       equationSystem: "x' = {f}，y' = {g}",
       equationExplicit: "dy/dt = {g}",
@@ -989,6 +990,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       lectureImplicit: "The implicit solutions are drawn as level curves.",
       lectureImplicitFailed: "The potential failed its own check, so no level curves are drawn.",
       lectureOtherForms: "The other forms: not consistent, ruled out by definition, or untestable.",
+      lectureNonUniqueCurve: "! A kept curve passes through a point where uniqueness fails: it is only one of infinitely many solutions.",
       openFullPage: "Open full page",
       equationSystem: "x' = {f}, y' = {g}",
       equationExplicit: "dy/dt = {g}",
