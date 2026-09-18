@@ -15,6 +15,14 @@
  *   computes at once.
  * Outside a drag nothing is deferred: a typed value is computed when it is typed, as before.
  *
+ * The FIRST measurement of a page is taken cold (the kernel is not compiled by the JavaScript
+ * engine yet; in the production build the damped oscillator's first features computation took
+ * several times its warm 12 ms) and must not lock a whole drag into the debounce, where nothing is
+ * measured again until the slider rests. So a page's first COLD_MEASUREMENTS measurements (the
+ * engine optimizes in tiers, over a few runs) are judged against the lenient FEATURE_COLD_BUDGET_MS,
+ * later ones against FEATURE_SYNC_BUDGET_MS. A system that really is expensive (seconds) is far
+ * above both.
+ *
  * Pure: the clock is an argument. The hook owns the timer; this module owns the decisions, so the
  * debounce and the "computing" flag are testable without React.
  */
@@ -22,11 +30,21 @@
 /** A features computation at most this long is repeated for every slider value (about 40 updates a second with the field and the curves). */
 export const FEATURE_SYNC_BUDGET_MS = 25;
 
+/** The budget for a page's first measurements, which are taken before the engine has compiled the kernel. */
+export const FEATURE_COLD_BUDGET_MS = 150;
+/** How many measurements of a page count as cold. */
+export const COLD_MEASUREMENTS = 3;
+
 export type FeaturePolicy = "sync" | "debounce";
 
-/** `lastCostMs`: what the previous features computation took; null before the first one (nothing is known: compute). */
-export function featurePolicy(dragging: boolean, lastCostMs: number | null): FeaturePolicy {
-  return dragging && lastCostMs !== null && lastCostMs > FEATURE_SYNC_BUDGET_MS ? "debounce" : "sync";
+/**
+ * `lastCostMs`: what the previous features computation took; null before the first one (nothing
+ * is known: compute). `measurements`: how many computations this page has timed so far (the first
+ * COLD_MEASUREMENTS are cold and get the lenient budget); omitted = warm.
+ */
+export function featurePolicy(dragging: boolean, lastCostMs: number | null, measurements = Number.POSITIVE_INFINITY): FeaturePolicy {
+  if (!dragging || lastCostMs === null) return "sync";
+  return lastCostMs > (measurements <= COLD_MEASUREMENTS ? FEATURE_COLD_BUDGET_MS : FEATURE_SYNC_BUDGET_MS) ? "debounce" : "sync";
 }
 
 /**

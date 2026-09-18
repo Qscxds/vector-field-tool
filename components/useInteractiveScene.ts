@@ -248,7 +248,8 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   // marks the results as being recomputed meanwhile (`featuresPending`).
   const current = useMemo(() => ({ sys, firstOrder, timeDependence }), [sys, firstOrder, timeDependence]);
   const lastFeatureCost = useRef<number | null>(null);
-  const debouncing = featurePolicy(dragging, lastFeatureCost.current) === "debounce";
+  const featureMeasurements = useRef(0);
+  const debouncing = featurePolicy(dragging, lastFeatureCost.current, featureMeasurements.current) === "debounce";
   const [deferred, setDeferred] = useState(() => deferredOf(current));
   useEffect(() => {
     if (!debouncing) {
@@ -267,6 +268,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     const started = performance.now();
     const result = computeFeatures(featureInputs.sys, featureInputs.firstOrder, effectiveFeatureBox, locale, { snapshotT, ...(featureInputs.timeDependence ? { timeDependence: featureInputs.timeDependence } : {}) });
     lastFeatureCost.current = performance.now() - started;
+    featureMeasurements.current += 1;
     return result;
   }, [withFeatures, featureInputs, effectiveFeatureBox, locale, snapshotT]);
 

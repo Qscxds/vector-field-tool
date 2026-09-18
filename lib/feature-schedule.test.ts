@@ -5,7 +5,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { FEATURE_DEBOUNCE_MS } from "./interactive";
-import { deferredOf, FEATURE_SYNC_BUDGET_MS, featurePolicy, flushDeferred, isStale, requestDeferred } from "./feature-schedule";
+import { COLD_MEASUREMENTS, deferredOf, FEATURE_COLD_BUDGET_MS, FEATURE_SYNC_BUDGET_MS, featurePolicy, flushDeferred, isStale, requestDeferred } from "./feature-schedule";
 
 describe("featurePolicy: what the last computation cost decides", () => {
   it("outside a drag nothing is ever deferred, whatever the cost", () => {
@@ -20,6 +20,20 @@ describe("featurePolicy: what the last computation cost decides", () => {
     expect(featurePolicy(true, FEATURE_SYNC_BUDGET_MS)).toBe("sync");
     expect(featurePolicy(true, FEATURE_SYNC_BUDGET_MS + 0.1)).toBe("debounce");
     expect(featurePolicy(true, 900)).toBe("debounce");
+  });
+
+  it("a page's first measurements are cold: they are judged against the lenient budget, so they cannot lock a cheap system into the debounce", () => {
+    expect(FEATURE_COLD_BUDGET_MS).toBeGreaterThan(FEATURE_SYNC_BUDGET_MS);
+    expect(COLD_MEASUREMENTS).toBe(3);
+    // 60 ms cold (the damped oscillator's first computations in the production build): still every value
+    for (const n of [1, 2, 3]) expect(featurePolicy(true, 60, n)).toBe("sync");
+    // the same 60 ms once the engine is warm is expensive
+    expect(featurePolicy(true, 60, 4)).toBe("debounce");
+    expect(featurePolicy(true, 60, 70)).toBe("debounce");
+    // a system that really is expensive is debounced from its first measurement
+    expect(featurePolicy(true, 1000, 1)).toBe("debounce");
+    expect(featurePolicy(true, FEATURE_COLD_BUDGET_MS, 1)).toBe("sync");
+    expect(featurePolicy(true, FEATURE_COLD_BUDGET_MS + 1, 1)).toBe("debounce");
   });
 });
 
