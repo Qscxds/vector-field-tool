@@ -56,9 +56,11 @@ parameters and results to explanations. The site is English by default; Chinese 
   two nullcline families (the equilibria are where they cross), the eigen-directions of hyperbolic
   equilibria with real eigenvalues (a degenerate node has one, complex eigenvalues have none) and the
   four separatrix branches of every saddle, with a legend; told apart by line style, not hue alone.
-- **Lecture mode** (`lecture=1`, also on `/embed`): for projecting in class. Hides the specific
-  numbers (eigenvalues, coordinates, deviations, ranges), enlarges the text and keeps the qualitative
-  conclusions and every caveat in short form ("center or weak spiral" is never shortened to
+- **Lecture mode** (`lecture=1`, also on `/embed`): for projecting in class. Positions stay,
+  evidence is hidden: the coordinates of equilibria and the values of constant solutions are shown
+  to 3 significant digits, while eigenvalues, trace / determinant, deviations, thresholds and the
+  range lines are hidden; the text is enlarged, and the qualitative conclusions and every caveat
+  stay in short form ("center or weak spiral" is never shortened to
   "center"; the "!" of a uniqueness failure stays in every mode); each line's ⓘ opens its full text.
   Display only: nothing is recomputed, and what the MCP tools return is untouched.
 - **Equilibria with honest classification**: Jacobian, eigenvalues, trace/determinant class, and a
@@ -177,7 +179,7 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
   every user must **remove and re-add the connector** in Claude (it caches the widget resource address from when the connector was added; disconnecting and reconnecting is not enough; it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `t-1` (round T: the widget's summary names the parameter values). Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
+  the old resource URI; the widget silently goes blank otherwise). The current version is `y-1` (round Y: the English canvas tags of a domain-edge constant solution). Widget changes are batched: one bump per round at most, none unless the widget really changed. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
   y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "use ping
   with hello" tests the transport alone. Inside the widget a kept trajectory can be removed by
