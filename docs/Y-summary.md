@@ -43,6 +43,17 @@
 | 浏览器 · 讲课模式 LV | `(0, 0) saddle`、`(3, 2) center or weak spiral (linearization cannot tell)`；没有 λ / tr / det；范围行隐藏 |
 | 浏览器 · 拍频预设 g 拖到 1 | 显示范围 x ∈ [−20, 20]；曲线最低点在画布第 477 行（共 518 行），手推 −16.89 对应第 477.7 行 ✓，没有出框 |
 
+推送之后（`git push origin main --tags` 由我执行，tag `y-polish-done` 一并推上）：
+
+| 检查 | 结果 |
+|---|---|
+| GitHub Actions run 35409774716（typecheck / test / build） | ✓ success |
+| Vercel 部署（commit 86d8c5c） | ✓ Deployment has completed（这次几分钟内完成，没有重现上一轮 20 分钟的排队） |
+| `npm run smoke -- https://tools.studycase.net/mcp` | **24/24**，widget uri `?v=y-1` |
+| 线上首页 | 「What's new」最前面是本轮这一条（2026-09-18，排在同日的 TUVW 条目之前） |
+| 线上 `/help` | 函数表下已有「ln = log = 自然对数」一句 |
+| 线上 `/vector-field?m=first&g=siny` | 页面顶部报告 g 是无效的链接参数（不会再悄悄画成 dy/dt = 1） |
+
 ## 提交
 
 ```
