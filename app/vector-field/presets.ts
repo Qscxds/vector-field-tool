@@ -271,10 +271,13 @@ export const PRESETS: Preset[] = [
     // The lesson is the forcing frequency approaching the natural frequency 1. The envelope
     // sin((g - 1)t/2) of the beats has period 4 pi / |g - 1| = 62.8 at g = 1.2: the t range shows one whole envelope.
     sliders: [{ name: "g", min: 0.5, max: 1.5, step: 0.01 }], timeRange: { min: 0, max: 70 },
-    box: sq(3), starts: [{ x: 0, y: 0 }],
+    // Round Y: ±20, not ±3. Dragging g to 1 is the lesson, and at resonance x = (F/2) t sin t reaches
+    // 0.25 * 67.5 = 16.9 inside t <= 70 (at t = 3 pi/2 + 20 pi), the largest |x| over the whole slider
+    // range: with ±3 the curve left the picture long before g reached 1. x' has the same size.
+    box: sq(20), starts: [{ x: 0, y: 0 }],
     note: {
-      zh: "x'' = −x + F·cos(g·t)，F = 0.5、g = 1.2：右端含 t，方程非自治，相平面只是 t₀ 时刻的快照，不做平衡点分析。从静止出发的解是 x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t)：外力频率 g = 1.2 接近固有频率 1，振幅按 sin(0.1t) 缓慢起伏，这就是拍。把 g 调向 1：振幅 F/|g² − 1| 变大，起伏变慢（g = 1 时是共振，振幅随 t 线性增长）。",
-      en: "x'' = −x + F·cos(g·t) with F = 0.5, g = 1.2: t appears on the right, so the equation is non-autonomous, the phase plane is only the snapshot at t₀ and no equilibrium analysis is made. From rest the solution is x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t): the forcing frequency g = 1.2 is close to the natural frequency 1, so the amplitude rises and falls slowly with sin(0.1t): beats. Move g toward 1: the amplitude F/|g² − 1| grows and the beats slow down (at g = 1 it is resonance and the amplitude grows linearly in t).",
+      zh: "x'' = −x + F·cos(g·t)，F = 0.5、g = 1.2：右端含 t，方程非自治，相平面只是 t₀ 时刻的快照，不做平衡点分析。从静止出发的解是 x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t)：外力频率 g = 1.2 接近固有频率 1，振幅按 sin(0.1t) 缓慢起伏，这就是拍。把 g 调向 1：振幅 F/|g² − 1| 变大，起伏变慢；g = 1 时是共振，x = (F/2)·t·sin t，振幅随 t 线性增长，在 t ≤ 70 内最大到 16.9，所以纵轴取到 ±20。",
+      en: "x'' = −x + F·cos(g·t) with F = 0.5, g = 1.2: t appears on the right, so the equation is non-autonomous, the phase plane is only the snapshot at t₀ and no equilibrium analysis is made. From rest the solution is x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t): the forcing frequency g = 1.2 is close to the natural frequency 1, so the amplitude rises and falls slowly with sin(0.1t): beats. Move g toward 1: the amplitude F/|g² − 1| grows and the beats slow down; at g = 1 it is resonance, x = (F/2)·t·sin t, whose amplitude grows linearly in t and reaches 16.9 within t ≤ 70, which is why the vertical axis runs to ±20.",
     },
   },
 ];

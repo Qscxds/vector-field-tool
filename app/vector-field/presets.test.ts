@@ -18,7 +18,8 @@ import { integrateAdaptive } from "@/lib/core/integrate";
 import { toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import { detectTimeDependence } from "@/lib/core/time-dependence";
 import type { Box } from "@/lib/core/types";
-import { computeFeatures } from "@/lib/interactive";
+import { CLICK_TSPAN, computeFeatures, traceFixed } from "@/lib/interactive";
+import { traceSpans } from "@/lib/time-series";
 import { LOCALES } from "@/lib/labels";
 import { discoverParams, paramsRecord, sliderRangeProblem, snapToSlider } from "@/lib/params";
 import { decodeState, DEFAULT_STATE, expressionKeysOf } from "@/lib/url-state";
@@ -240,6 +241,33 @@ describe("[U] presets that open with a slider", () => {
     const range = presetState(byId("beats")).timeRange;
     expect(range.max - range.min).toBeGreaterThan((4 * Math.PI) / 0.2);
     // and the link carries it, with the slider
-    expect(presetUrl(byId("beats"))).toBe("/vector-field?m=second&eq=x''+%3D+-x+%2B+F*cos(g*t)&tmax=70&traj=0,0&p=F:0.5,g:1.2&sl=g:0.5:1.5:0.01");
+    expect(presetUrl(byId("beats"))).toBe("/vector-field?m=second&eq=x''+%3D+-x+%2B+F*cos(g*t)&xmin=-20&xmax=20&xpmin=-20&xpmax=20&tmax=70&traj=0,0&p=F:0.5,g:1.2&sl=g:0.5:1.5:0.01");
+  });
+
+  it("[Y] the beats preset's box holds the curve over the WHOLE slider range: dragging g to 1 never takes it out of the picture", () => {
+    // From rest x = F/(g² - 1) (cos t - cos g t), and |cos t - cos g t| = 2 |sin((1+g)t/2) sin((1-g)t/2)| is at most both 2
+    // and |1 - g| t, so |x| <= min(2F/|g² - 1|, F t/(1 + g)). The two bounds cross at |g - 1| = 2/t = 0.0286: the
+    // supremum over the slider's g and t <= 70 is below 0.5 * 70 / 1.9714 = 17.76. At g = 1 exactly,
+    // x = (F/2) t sin t, whose largest value inside t <= 70 is at t = 3 pi/2 + 20 pi = 67.54: 0.25 * 67.54 = 16.89;
+    // its velocity (F/2)(sin t + t cos t) is largest near t = 22 pi = 69.1: 17.3. The box is ±20 for both.
+    const p = byId("beats");
+    const box = boxOf(p);
+    expect(box).toEqual({ x: { min: -20, max: 20 }, y: { min: -20, max: 20 } });
+    const slider = p.sliders!.find((s) => s.name === "g")!;
+    const spans = traceSpans(presetState(p).timeRange, 0, CLICK_TSPAN);
+    const peaks = (g: number) => {
+      const sys = compileSystem(reduceSecondOrder(presetState(p).eq, { F: 0.5, g }).spec);
+      const forward = traceFixed(sys, p.starts![0], box, 0, spans)[0];
+      expect(forward.status, `g = ${g}`).toBe("completed");
+      return { x: Math.max(...forward.points.map((q) => Math.abs(q.x))), v: Math.max(...forward.points.map((q) => Math.abs(q.y))) };
+    };
+    for (const g of [slider.min, 0.8, 0.95, 0.97, 0.99, 1, 1.01, 1.03, 1.05, 1.2, slider.max]) {
+      const { x, v } = peaks(g);
+      expect(x, `g = ${g}`).toBeLessThan(17.76);
+      expect(v, `g = ${g}`).toBeLessThan(20);
+    }
+    const resonance = peaks(1);
+    expect(resonance.x).toBeGreaterThan(16.85);
+    expect(resonance.x).toBeLessThan(16.92);
   });
 });
