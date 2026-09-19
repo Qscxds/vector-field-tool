@@ -40,7 +40,7 @@
  * away from every sample point (a piecewise x''^2 branch outside the box) cannot be detected.
  */
 import type { MathNode } from "mathjs";
-import { compileNode, compileScalar, freeSymbols, mathjs, normalizeOperators, ParseError, type ParseErrorCode, parseValidated } from "./parse";
+import { compileNode, compileScalar, freeSymbols, GLUED_ARGUMENT_LETTERS, gluedFunctionCall, mathjs, normalizeOperators, ParseError, type ParseErrorCode, parseValidated } from "./parse";
 import { boxSamplePoints, PROBE_TIMES } from "./time-dependence";
 import type { Box, SystemSpec, Vec2 } from "./types";
 
@@ -99,9 +99,14 @@ export function studentNotation(text: string): string {
   return text.replace(/xdd/g, "x''").replace(/xd/g, "x'");
 }
 
+/** The letters a glued function argument is looked for in, in a second-order equation: the alias v too (sinv = sin(v) = sin(x')). */
+export const SECOND_ORDER_GLUED_LETTERS = `${GLUED_ARGUMENT_LETTERS}v`;
+
 export function unknownSymbolInSecondOrder(name: string): string {
+  // Round Y: sinx, cost, sinhx: a function glued to its argument gets the call it stands for.
+  const call = gluedFunctionCall(name, SECOND_ORDER_GLUED_LETTERS);
   return (
-    `Unknown symbol "${name}". The unknown function is x, its derivative is x' (dx/dt), which may also be written v, and its second derivative is x''; ` +
+    `Unknown symbol "${name}".${call ? ` Did you mean "${call}"?` : ""} The unknown function is x, its derivative is x' (dx/dt), which may also be written v, and its second derivative is x''; ` +
     "t is the independent variable. Allowed symbols: t, x, x', x'', pi, e, and the names in params."
   );
 }

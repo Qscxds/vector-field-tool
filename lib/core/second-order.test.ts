@@ -648,3 +648,26 @@ describe("[T] symbolic parameters in a second-order equation", () => {
     }
   });
 });
+
+describe("[Y] a function glued to its argument in a second-order equation", () => {
+  it("x'' = -sinx: the unknown-symbol error names the call that was meant (sin(x)), with its code and symbol", () => {
+    for (const [eq, call] of [["x'' = -sinx", "sin(x)"], ["x'' + x = cost", "cos(t)"], ["x'' = -sinhx", "sinh(x)"], ["x'' = -sinv - x", "sin(v)"]] as const) {
+      try {
+        reduceSecondOrder(eq);
+        throw new Error(`expected a ParseError for ${eq}`);
+      } catch (e) {
+        expect(e, eq).toBeInstanceOf(ParseError);
+        expect((e as ParseError).code, eq).toBe("second_order_unknown_symbol");
+        expect((e as ParseError).message, eq).toContain(`Did you mean "${call}"?`);
+      }
+    }
+    // an ordinary missing parameter gets no such hint
+    expect(() => reduceSecondOrder("x'' = -k*x")).not.toThrow(/Did you mean/);
+  });
+
+  it("ln in a second-order equation: x'' = -ln(1 + x^2) reduces and evaluates (derived: -ln 2 at x = 1)", () => {
+    const sys = compileSystem(reduceSecondOrder("x'' = -ln(1 + x^2)").spec);
+    expect(sys.eval({ x: 1, y: 0.5 }).x).toBe(0.5);
+    expect(sys.eval({ x: 1, y: 0.5 }).y).toBeCloseTo(-Math.LN2, 14);
+  });
+});

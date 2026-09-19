@@ -25,13 +25,17 @@ import type { SystemSpec, VariableMode, Vec2 } from "./types";
 // it and reject more than 15 digits.
 const math = create(all, { predictable: true, number: "number", matrix: "Array", relTol: 1e-15, absTol: 0 });
 math.import({ pow: (base: number, exponent: number): number => base ** exponent }, { override: true });
+// Round Y: `ln` is an alias of the one-argument `log` (the natural logarithm; American textbooks
+// write ln). mathjs has no ln of its own. Same values as log with `predictable: true`: NaN for a
+// negative argument, -Infinity at 0.
+math.import({ ln: (value: number): number => Math.log(value) }, { override: true });
 
 /** name -> [minArgs, maxArgs] */
 export const ALLOWED_FUNCTIONS: ReadonlyMap<string, readonly [number, number]> = new Map([
   ["sin", [1, 1]], ["cos", [1, 1]], ["tan", [1, 1]],
   ["asin", [1, 1]], ["acos", [1, 1]], ["atan", [1, 1]], ["atan2", [2, 2]],
   ["sinh", [1, 1]], ["cosh", [1, 1]], ["tanh", [1, 1]],
-  ["exp", [1, 1]], ["log", [1, 2]], ["log10", [1, 1]], ["sqrt", [1, 1]],
+  ["exp", [1, 1]], ["log", [1, 2]], ["ln", [1, 1]], ["log10", [1, 1]], ["sqrt", [1, 1]],
   ["abs", [1, 1]], ["sign", [1, 1]], ["pow", [2, 2]],
   ["min", [1, Infinity]], ["max", [1, Infinity]],
   ["floor", [1, 1]], ["ceil", [1, 1]], ["round", [1, 2]],
@@ -112,6 +116,32 @@ export function assertNoLeftHandSide(expr: string, mode: VariableMode): void {
   const message = lhs[1] === "x" ? `${LHS_IN_EXPRESSION_MESSAGE} ${X_IN_FIRST_ORDER_MESSAGE}` : LHS_IN_EXPRESSION_MESSAGE;
   throw new ParseError(expr, message, "lhs_in_expression");
 }
+
+/**
+ * Round Y: a name that is a ONE-ARGUMENT function glued to its argument: "siny" = sin + y,
+ * "cost" = cos + t, "sinhx" = sinh + x (the LONGEST function name whose remainder consists of
+ * variable letters wins, so sinhx is sinh(x), never sin(hx)), "sqrtty" = sqrt + t*y. Returns the
+ * call the student most likely meant ("sin(y)", "sqrt(t*y)"), or null. `letters` are the variable
+ * letters the remainder may consist of. Functions that need several arguments (min, max, pow,
+ * atan2) never match. Static, a rule about spelling: the unknown-symbol messages use it for their
+ * hint, and the web shell's parameter discovery uses it so that "siny" is never offered as a
+ * parameter siny = 1 (which drew the picture of dy/dt = 1 without a word).
+ */
+export function gluedFunctionCall(name: string, letters: string): string | null {
+  const oneArgument = [...ALLOWED_FUNCTIONS]
+    .filter(([, [minArgs, maxArgs]]) => minArgs === 1 && maxArgs !== Infinity)
+    .map(([fn]) => fn)
+    .sort((a, b) => b.length - a.length);
+  for (const fn of oneArgument) {
+    if (name.length <= fn.length || !name.startsWith(fn)) continue;
+    const rest = name.slice(fn.length);
+    if ([...rest].every((ch) => letters.includes(ch))) return `${fn}(${rest.split("").join("*")})`;
+  }
+  return null;
+}
+
+/** The variable letters a glued argument is looked for in, in both kernel modes: x counts in "ty" mode too (the student who writes sinx there meant a variable, and is then told to write t). */
+export const GLUED_ARGUMENT_LETTERS = "xyt";
 
 /** Names that mathjs or JavaScript would interpret before our scope does. */
 const RESERVED_NAMES: ReadonlySet<string> = new Set([
@@ -348,8 +378,12 @@ function unknownSymbolMessage(name: string, paramNames: string[], mode: Variable
     name.length > 1 && letters.test(name)
       ? ` Did you mean "${name.split("").join("*")}"? Multiplication must be written explicitly.`
       : "";
+  // Round Y: a function glued to its argument (siny, cost, sinhx) gets the call it stands for; in
+  // "ty" mode an x in it also gets the write-t-instead-of-x sentence.
+  const call = gluedFunctionCall(name, GLUED_ARGUMENT_LETTERS);
+  const callHint = call ? ` Did you mean "${call}"?${mode === "ty" && /\(.*x.*\)/.test(call) ? ` ${X_IN_FIRST_ORDER_MESSAGE}` : ""}` : "";
   const known = [...MODE_VARIABLES[mode], "pi", "e", ...paramNames].join(", ");
-  return `Unknown symbol "${name}".${hint} Allowed symbols: ${known}.`;
+  return `Unknown symbol "${name}".${hint}${callHint} Allowed symbols: ${known}.`;
 }
 
 function toNumber(value: unknown): number {
@@ -600,6 +634,7 @@ function buildBound(node: MathNode): Bound {
     case "log": return args.length === 2
       ? binary((a, b) => Math.log(a) / Math.log(b), (a, b, v, ea, eb) => (ea / Math.abs(a) + (Math.abs(v) * eb) / Math.abs(b)) / Math.abs(Math.log(b)), never)
       : unary(Math.log, (a) => 1 / a);
+    case "ln": return unary(Math.log, (a) => 1 / a);
     case "log10": return unary(Math.log10, (a) => 1 / (a * Math.LN10));
     case "sqrt": return unary(Math.sqrt, (_a, v) => (v > 0 ? 1 / (2 * v) : 0));
     case "abs": return unary(Math.abs, () => 1);

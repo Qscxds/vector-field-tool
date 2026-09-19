@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, freeSymbols, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, mentionsSymbol, normalizeOperators, parameterNameProblem, ParseError } from "./parse";
+import { assertNoLeftHandSide, COMPARISON_HINT, compileScalar, compileSystem, freeSymbols, gluedFunctionCall, LHS_IN_EXPRESSION_MESSAGE, LHS_IN_SYSTEM_MESSAGE, mentionsSymbol, normalizeOperators, parameterNameProblem, ParseError } from "./parse";
 
 const near = (a: number, b: number, eps = 1e-12) => Math.abs(a - b) <= eps;
 
@@ -542,5 +542,71 @@ describe("[T] symbolic parameters: the name rule, free symbols, and the value in
     expect(freeSymbols("k*", ty)).toBeNull();
     expect(freeSymbols("", ty)).toBeNull();
     expect(freeSymbols("k*y".padEnd(600, " "), ty)).toBeNull();
+  });
+});
+
+describe("[Y] a function glued to its argument (siny), and ln as an alias of log", () => {
+  it("gluedFunctionCall: a one-argument function followed by variable letters only; the longest function name wins", () => {
+    expect(gluedFunctionCall("siny", "xyt")).toBe("sin(y)");
+    expect(gluedFunctionCall("sinx", "xyt")).toBe("sin(x)");
+    expect(gluedFunctionCall("cost", "xyt")).toBe("cos(t)");
+    expect(gluedFunctionCall("sqrty", "xyt")).toBe("sqrt(y)");
+    // sinh + x, never sin + "hx"; cosh, tanh, log10 likewise
+    expect(gluedFunctionCall("sinhx", "xyt")).toBe("sinh(x)");
+    expect(gluedFunctionCall("tanhy", "xyt")).toBe("tanh(y)");
+    expect(gluedFunctionCall("log10t", "xyt")).toBe("log10(t)");
+    expect(gluedFunctionCall("logy", "xyt")).toBe("log(y)");
+    expect(gluedFunctionCall("lny", "xyt")).toBe("ln(y)");
+    // several glued letters are a product
+    expect(gluedFunctionCall("sqrtty", "xyt")).toBe("sqrt(t*y)");
+    // the alias v of a second-order equation only when the caller says so
+    expect(gluedFunctionCall("sinv", "xytv")).toBe("sin(v)");
+    expect(gluedFunctionCall("sinv", "xyt")).toBeNull();
+  });
+
+  it("gluedFunctionCall: functions of several arguments never match, nor does a bare function name or a name with other letters", () => {
+    for (const name of ["miny", "maxt", "powx", "atan2y"]) expect(gluedFunctionCall(name, "xyt"), name).toBeNull();
+    for (const name of ["sin", "sqrt", "ln"]) expect(gluedFunctionCall(name, "xyt"), name).toBeNull();
+    // parameters people really use stay parameters
+    for (const name of ["k", "L", "Ta", "ky", "sigma", "sink", "w0", "beta", "cosk", "expa"]) expect(gluedFunctionCall(name, "xyt"), name).toBeNull();
+  });
+
+  it("the unknown-symbol error names the call that was meant; in a first-order equation an x in it also gets the write-t sentence", () => {
+    const ty = { variables: "ty" as const };
+    expect(() => compileScalar("siny", undefined, ty)).toThrow(/Unknown symbol "siny"\. Did you mean "sin\(y\)"\? Allowed symbols: t, y, pi, e\./);
+    expect(() => compileScalar("y*cost", undefined, ty)).toThrow(/Did you mean "cos\(t\)"\?/);
+    expect(() => compileScalar("sqrty", undefined, ty)).toThrow(/Did you mean "sqrt\(y\)"\?/);
+    expect(() => compileScalar("sinx", undefined, ty)).toThrow(/Did you mean "sin\(x\)"\? In a first-order equation the independent variable is t/);
+    expect(() => compileScalar("siny", undefined, ty)).not.toThrow(/independent variable is t/);
+    // planar mode: x is a variable, no t sentence
+    expect(() => compileSystem({ f: "sinhx", g: "-y" })).toThrow(/Unknown symbol "sinhx"\. Did you mean "sinh\(x\)"\? Allowed symbols: x, y, t, pi, e\./);
+    // a name that is no glued call gets no such hint
+    expect(() => compileScalar("k*y", undefined, ty)).toThrow(/^Unknown symbol "k"\. Allowed symbols/);
+  });
+
+  it("ln is the natural logarithm: the same values as log, exactly (derived: ln e = 1, ln 1 = 0, ln(e²) = 2)", () => {
+    const ty = { variables: "ty" as const };
+    const ln = compileScalar("ln(y)", undefined, ty);
+    const log = compileScalar("log(y)", undefined, ty);
+    expect(ln({ x: 0, y: Math.E })).toBe(1);
+    expect(ln({ x: 0, y: 1 })).toBe(0);
+    expect(ln({ x: 0, y: Math.E ** 2 })).toBeCloseTo(2, 14);
+    for (const y of [0.001, 0.5, 2, 37.5, 1e6]) expect(ln({ x: 0, y })).toBe(log({ x: 0, y }));
+    // outside the domain exactly as log: NaN below 0, -Infinity at 0; evaluation never throws
+    expect(ln({ x: 0, y: -1 })).toBeNaN();
+    expect(ln({ x: 0, y: 0 })).toBe(-Infinity);
+    // dy/dt = y*ln(y): the textbook equation compiles as written; at y = e the slope is e
+    expect(compileScalar("y*ln(y)", undefined, ty)({ x: 0, y: Math.E })).toBeCloseTo(Math.E, 14);
+  });
+
+  it("ln takes one argument (log(x, b) keeps the base), is a reserved name, and carries a rounding bound like log's", () => {
+    expect(() => compileScalar("ln(x, 2)")).toThrow(/Function "ln" expects 1 argument\(s\), got 2/);
+    expect(compileScalar("log(x, 2)")({ x: 8, y: 0 })).toBeCloseTo(3, 14);
+    expect(parameterNameProblem("ln")).toBe("reserved");
+    const [viaLn] = compileSystem({ f: "ln(x)", g: "y" }).roundingBound!({ x: 2, y: 1 });
+    const [viaLog] = compileSystem({ f: "log(x)", g: "y" }).roundingBound!({ x: 2, y: 1 });
+    // one operation on an exact input: eps * |ln 2|, the same bound as log's (not the Infinity of an unknown function)
+    expect(viaLn).toEqual(viaLog);
+    expect(viaLn.error).toBeCloseTo(2.220446049250313e-16 * Math.LN2, 25);
   });
 });
