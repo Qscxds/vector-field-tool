@@ -87,6 +87,37 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       en: "MCP users must remove and re-add the connector. The widget's summary now names the parameter values, so the widget resource address changed; Claude caches the address from when the connector was added, so an existing connection will silently fail to render. Remove the connector and add https://tools.studycase.net/mcp again.",
     },
   },
+  {
+    date: "2026-09-18",
+    title: {
+      zh: "小修：siny 这类漏括号、ln、讲课模式保留位置、拍频的纵轴",
+      en: "Polish: a missing parenthesis like siny, ln, lecture mode keeps positions, the beats' vertical axis",
+    },
+    points: {
+      zh: [
+        "漏写括号不再被当成参数：以前一阶方程里写 siny，会悄悄多出一个参数 siny = 1，图按 dy/dt = 1 画。现在 siny、cost、sqrty、sinhx 这类「函数名紧跟变量」会报错并提示「是不是想写 sin(y)？」。k、Ta、sigma 这样的参数名照旧。",
+        "可以写 ln 了：ln(y) 和 log(y) 是同一个函数（自然对数）；log10 以 10 为底。",
+        "讲课模式改为「位置保留，证据隐藏」：平衡点的坐标和常数解的值重新显示（最多 3 位有效数字，如 (3, 2)、(3.14, 0)），特征值、迹与行列式、偏差、阈值和范围行仍然隐藏；每行的 ⓘ 照旧展开全部内容。",
+        "预设「受迫振子 / 拍频」的纵轴从 ±3 改为 ±20：把 g 拖到 1（共振）时曲线不再跑出画面（t ≤ 70 内最大到 16.9）。",
+        "拖动滑块时分类「每个值都更新」的条件放宽了一倍，较慢的电脑上也能连续看到螺旋点变成结点。",
+        "英文界面里定义域边界上的常数解，标签从 “domain edge, left” 改为 “domain edge, solutions leave”（原来的 left 容易读成「左边」）。",
+        "帮助页补了两句实话：零斜线靠符号变化找出来，相切型的零点画不出来；单摆两个鞍点之间稳定与不稳定流形重合，图上只见一条，工具不对这种连接做数值判定。",
+      ],
+      en: [
+        "A missing parenthesis is no longer taken for a parameter: writing siny in a first-order equation used to add a parameter siny = 1 silently and draw the picture of dy/dt = 1. Names like siny, cost, sqrty and sinhx (a function glued to a variable) now give an error that asks \"Did you mean sin(y)?\". Parameter names such as k, Ta and sigma work as before.",
+        "You can write ln: ln(y) and log(y) are the same function, the natural logarithm; log10 is base 10.",
+        "Lecture mode now keeps positions and hides evidence: the coordinates of equilibria and the values of constant solutions are shown again (to at most 3 significant digits, such as (3, 2) and (3.14, 0)), while eigenvalues, trace and determinant, deviations, thresholds and the range lines stay hidden; each line's ⓘ still opens everything.",
+        "The preset \"Forced oscillator / beats\" now has a vertical axis of ±20 instead of ±3: dragging g to 1 (resonance) no longer takes the curve out of the picture (it reaches 16.9 within t ≤ 70).",
+        "While a slider is dragged, the condition for updating the classification at every value is twice as generous, so slower computers also show the spiral turning into a node continuously.",
+        "In English, a constant solution on the edge of the domain is now tagged \"domain edge, solutions leave\" instead of \"domain edge, left\" (which read like a direction).",
+        "The help page says two more honest things: nullclines are found from sign changes, so a zero where the function only touches zero cannot be drawn; and between the pendulum's two saddles the stable and unstable manifolds coincide, so only one line is seen, and the tool makes no numerical judgement on such connections.",
+      ],
+    },
+    action: {
+      zh: "MCP 用户必须删除连接器后重新添加。上面那个英文标签也画在 widget 的图上，所以 widget 资源地址变了；Claude 会缓存添加连接器时的地址，已有的连接会静默地无法渲染。请删除连接器，再重新添加 https://tools.studycase.net/mcp。（今天的两次更新只需要重新添加一次。）",
+      en: "MCP users must remove and re-add the connector. The English tag above is also drawn on the widget's picture, so the widget resource address changed; Claude caches the address from when the connector was added, so an existing connection will silently fail to render. Remove the connector and add https://tools.studycase.net/mcp again. (Today's two updates need only one re-add.)",
+    },
+  },
 ];
 
 /** The newest `count` entries, newest first (same date: the later entry in the array first). */

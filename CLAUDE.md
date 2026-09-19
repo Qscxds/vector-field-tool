@@ -18,12 +18,14 @@ reorganized /help, the kernel freeze below; trajectory removal / undo / long-pre
 initial-value inputs, solution queries and the `query_solution` tool; widget o-1);
 `docs/PQR-*.md` / `docs/S-summary.md` the 2026-09-15 rounds; `docs/TUVW-*.md` the 2026-09-18 T-W
 round (symbolic parameters in the web shell and the link, parameter sliders with live
-recomputation, nullclines / eigen-directions / separatrices, lecture mode; widget t-1).
+recomputation, nullclines / eigen-directions / separatrices, lecture mode; widget t-1);
+`docs/Y-summary.md` the 2026-09-18 Y round (polish after TUVW: the "siny" guardrail, ln, lecture mode
+keeps positions, the beats box, the 50 ms budget; widget y-1).
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
 2026-09-10 fixes and validation, and all 16 original docs in full. Historical entries retain their
-then-current status; use the current section for superseding decisions. Widget version is now t-1 (round T).
+then-current status; use the current section for superseding decisions. Widget version is now y-1 (round Y).
 
 ## Module map
 
@@ -129,7 +131,14 @@ then-current status; use the current section for superseding decisions. Widget v
   (`parameterNameProblem`, exported from parse.ts; v / xd / xdd reserved in second-order mode). A
   multi-letter name made only of the mode's variable letters ("ty" in sin(ty)) is NOT a parameter
   (the kernel's "did you mean t*y" error stays); a two-letter name with a variable letter ("ky") is
-  listed but its pending row says how it was read. `ParamState` rows: "auto" rows follow the
+  listed but its pending row says how it was read; round Y, the THIRD guardrail: a one-argument
+  function glued to variable letters (siny, cost, sqrty, sinhx; the kernel's `gluedFunctionCall`,
+  longest function name first, letters x / y / t plus v in second-order mode; min / max / pow /
+  atan2 never match) is NOT a parameter ("siny" used to become siny = 1 and draw dy/dt = 1 without
+  a word): the compiler's unknown-symbol error says Did you mean "sin(y)"?. The guardrails decide
+  what is LISTED, never what a row may SERVE: `freeParamNames` (no guardrails) is what
+  `resolveParams` and the removal rule use, so a parameter called "cost" added by hand, or given
+  by a link's p, still reaches the compiler. `ParamState` rows: "auto" rows follow the
   equation (added pending at 1, removed when unused, their values and sliders REMEMBERED and
   restored), "manual" rows stay; a value is text with the last valid number in force;
   `removeParamRow` REFUSES while the equation uses the name (never a silent reset);
@@ -143,7 +152,7 @@ then-current status; use the current section for superseding decisions. Widget v
   widget's summary say "... with k = 0.8, L = 2", never an empty "with".
 - `lib/feature-schedule.ts` (round U) WHEN the expensive results are recomputed during a slider
   drag: `featurePolicy(dragging, lastCostMs, measurements)` = recompute for every value while the
-  last features computation cost at most 25 ms (the classification line then follows the slider:
+  last features computation cost at most 50 ms (25 until round Y; the classification line then follows the slider:
   spiral -> node at b = w is seen while dragging), else debounce by the shells' 250 ms with the last
   results kept and marked stale; a page's first 3 measurements are COLD and judged against 150 ms
   (found on the production build: a cold first measurement locked the whole first drag into the
@@ -163,8 +172,10 @@ then-current status; use the current section for superseding decisions. Widget v
   an equilibrium's ⓘ.
 - `lib/lecture.ts` (round W) LECTURE MODE as pure presentation: `equilibriumLine`,
   `constantSolutionLine`, `constantSolutionTag` (canvas), `lectureNotices`, `lectureQueryShort`
-  decide what a line prints. Lecture mode hides numbers (eigenvalues, tr/det, coordinates, a
-  constant solution's value, deviations, ranges, a query's numbers) and keeps conclusions and
+  decide what a line prints. Round Y rule: POSITIONS STAY, EVIDENCE IS HIDDEN. Lecture mode shows an
+  equilibrium's coordinates and a constant solution's value to 3 significant digits (`lecturePoint`,
+  `LECTURE_POSITION_DIGITS`; round W had hidden them) and hides the evidence (eigenvalues, tr/det,
+  deviations, thresholds, resolutions, ranges, a query's numbers); it keeps conclusions and
   caveats in SHORT form (`caveatShort`, `uniquenessShort`, `warningShort`, `queryNoteShort` in
   lib/labels); every line keeps an ⓘ whose first entry is the whole normal line. RED LINE (tested):
   "center or weak spiral (linearization cannot tell)" is never shortened, a repeated-root caveat is
@@ -231,7 +242,7 @@ then-current status; use the current section for superseding decisions. Widget v
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION` (t-1 since round T: the summary names the parameter values); `app/mcp/tools.ts` the six analysis tools
+  resource + ping + `WIDGET_VERSION` (y-1 since round Y: the English domain-edge canvas tags; t-1 in round T: the summary names the parameter values); `app/mcp/tools.ts` the six analysis tools
   (`locale` is optional and defaults to en since round M; analyze_first_order's t range is
   tMin/tMax since round P2 (xMin/xMax still read as the same), and its expressions use t and y
   only; analyze_second_order's x' range is xpMin/xpMax; `query_solution`
@@ -361,6 +372,10 @@ Round T (2026-09-18) added three STATIC helpers to the kernel and nothing numeri
 it), `freeSymbols` (parse.ts) and `freeSymbolsSecondOrder` (second-order.ts): the text is parsed,
 never evaluated, no threshold exists in them. Rounds U-W did not touch lib/core: sliders reuse the
 integrator and the classifier, the overlays live in lib/phase-aids.ts, lecture mode in lib/lecture.ts.
+Round Y (2026-09-18) made two more static kernel changes, explicitly authorized: the whitelist alias
+`ln` = the one-argument `log` (the natural logarithm; its rounding bound is log's), and
+`gluedFunctionCall` with the Did you mean "sin(y)"? hint in the two unknown-symbol messages. No
+numerical mechanism and no threshold changed.
 
 2026-09-10 narrow exception explicitly authorized by the user: fix the non-autonomous zero-speed
 stop using the existing static `mentionsTime` rule, with derived integration and query regressions.
@@ -423,6 +438,13 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
 - `second-order.ts`: `AFFINITY_REL_TOL` 1e-9 affinity of E in x''; `XDD_PROBES` the eight x''
   values; `CONSTANT_REL_TOL` 1e-12 "same constant at every sample"; `CROSS_CHECK_REL_TOL` 1e-12
   F == -E0/a; `DISPLAY_DIGITS` 12; `MIN_FINITE_POINTS` 3; `SAMPLE_POINTS` the nine generic points.
+- `lib/phase-aids.ts` (OUTSIDE lib/core, frozen all the same since round Y): `NULLCLINE_RESIDUAL_FRACTION`
+  0.25, the fraction of a cell's largest |corner value| that |f| at a contour segment's midpoint
+  may reach for the segment to count as a zero (what keeps the pole of 1/x and a jump from being
+  drawn as nullclines); an unverified heuristic like the J-round ones, to change only when a real
+  classroom failure drives it, with a derived test. Its siblings are display choices, not
+  thresholds: `NULLCLINE_GRID` 80, `SEPARATRIX_OFFSET_FRACTION` 1e-3 of the box diagonal,
+  `SEPARATRIX_TSPAN` 100.
 
 ## Stack decisions
 
@@ -466,6 +488,16 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
   is gitignored and excluded from tsconfig / the vitest gate).
 - Commands: `npm run dev`, `npm test`, `npm run typecheck`, `npm run build`, `npm run smoke`.
   For a full gate run all of tsc, vitest and build.
+- PERFORMANCE CONCLUSIONS COME FROM THE PRODUCTION BUILD (`npm run build` + `next start`), never from
+  `next dev` (round U: dev is about twice as slow, double-invokes effects, and HID the cold-start
+  bug that locked a whole first slider drag into the debounce). Measure with a yield that a hidden
+  tab does not throttle (MessageChannel, not setTimeout), and say in the round's summary which
+  build a number came from.
+- WIDGET CHANGES ARE BATCHED. Every `WIDGET_VERSION` bump costs every MCP user a remove-and-re-add
+  of the connector, so: at most one bump per round, collect widget-visible changes (canvas labels
+  drawn by the shared drawScene, shared label strings the widget prints, the widget page itself)
+  and ship them together, and do not bump at all unless the widget really changed. A change that
+  only touches the web shell (parameters, sliders, overlays, lecture mode) never needs one.
 - Adversarial reviews run on a frozen tag, never on a moving main. The H round's review (6 lenses,
   3 refuters per finding) confirmed 14/14 verified findings; all are fixed in `[H2-fix]` commits
   with derived tests. Every relative tolerance in the kernel is relative to magnitudes actually
