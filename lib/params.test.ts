@@ -9,6 +9,8 @@ import {
   discoverParams,
   EMPTY_PARAMS,
   formatParamValue,
+  freeParamNames,
+  looksLikeFunctionCall,
   looksLikeProduct,
   MAX_PARAMS,
   MAX_SLIDER_STEPS,
@@ -363,5 +365,54 @@ describe("[U] sliders: the range a slider opens with, snapping, the typed range,
     s = setSliderField(toggleSlider(s, 1, true), 1, "max", "2");
     s = syncParams(syncParams(s, []), ["b"]);
     expect(row(s, "b")).toMatchObject({ value: 0.25, slider: { on: true, range: { min: 0, max: 2, step: 0.005 } } });
+  });
+});
+
+describe("[Y] the third guardrail: a function glued to its argument is a call missing its parentheses, never a parameter", () => {
+  it("siny, cost, sqrty, sinhx are not offered as parameters, in any of the four modes", () => {
+    expect(discoverParams("first", { g: "siny" })).toEqual([]);
+    expect(discoverParams("first", { g: "y*cost" })).toEqual([]);
+    expect(discoverParams("first", { g: "sqrty - sinx" })).toEqual([]);
+    expect(discoverParams("diff", { M: "sqrty", N: "cost" })).toEqual([]);
+    expect(discoverParams("system", { f: "sinhx", g: "-siny" })).toEqual([]);
+    expect(discoverParams("second", { eq: "x'' = -sinx + cost" })).toEqual([]);
+    expect(discoverParams("second", { eq: "x'' = -sinv" })).toEqual([]);
+    // a real parameter beside the typo is still listed (the compiler then complains about the typo)
+    expect(discoverParams("first", { g: "k*siny" })).toEqual(["k"]);
+  });
+
+  it("the hint is the compiler's: what discovery refuses, the compiler explains with the same call", () => {
+    expect(looksLikeFunctionCall("siny", "first")).toBe("sin(y)");
+    expect(looksLikeFunctionCall("sinhx", "system")).toBe("sinh(x)");
+    expect(looksLikeFunctionCall("lny", "first")).toBe("ln(y)");
+    expect(looksLikeFunctionCall("sinv", "second")).toBe("sin(v)");
+    expect(looksLikeFunctionCall("sinv", "system")).toBeNull();
+    expect(() => compileSystem({ f: "1", g: "siny", variables: "ty" })).toThrow(/Did you mean "sin\(y\)"\?/);
+  });
+
+  it("min, max, pow and atan2 do not take part, and ordinary names are listed as before", () => {
+    expect(discoverParams("first", { g: "miny + maxt + powy" })).toEqual(["miny", "maxt", "powy"]);
+    expect(discoverParams("first", { g: "k*y + Ta + ky + sigma" })).toEqual(["k", "Ta", "ky", "sigma"]);
+    for (const name of ["k", "Ta", "ky", "sigma"]) expect(looksLikeFunctionCall(name, "first")).toBeNull();
+    expect(looksLikeProduct("ky", "first")).toBe("k*y");
+  });
+});
+
+describe("[Y] the guardrails decide what is LISTED, never what a row the student defined may serve", () => {
+  it("freeParamNames has no guardrails: cost and ty are names a hand-made row (or a link's p) can serve", () => {
+    expect(freeParamNames("first", { g: "cost*y + sin(ty)" })).toEqual(["cost", "ty"]);
+    expect(discoverParams("first", { g: "cost*y + sin(ty)" })).toEqual([]);
+    // names that can never be parameters are in neither list
+    expect(freeParamNames("first", { g: "k*x" })).toEqual(["k"]);
+    expect(freeParamNames("first", { g: "k*" })).toBeNull();
+  });
+
+  it("a row called cost, added by hand, reaches the compiler: cost*y at cost = 2, y = 3 is 6", () => {
+    let s = addParamRow(syncParams(EMPTY_PARAMS, discoverParams("first", { g: "cost*y" })));
+    expect(s.rows).toHaveLength(1);
+    s = setParamText(setParamName(s, s.rows[0].id, "cost"), s.rows[0].id, "2");
+    const { values } = resolveParams(s, "first", freeParamNames("first", { g: "cost*y" }));
+    expect(values).toEqual({ cost: 2 });
+    expect(compileSystem(toSystem({ kind: "explicit", g: "cost*y", params: values })).eval({ x: 0, y: 3 })).toEqual({ x: 1, y: 6 });
   });
 });

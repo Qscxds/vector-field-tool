@@ -525,3 +525,12 @@ describe("[W] lecture mode in the link (lecture=1)", () => {
     expect(decodeState("lecture=yes", D)).toMatchObject({ problems: [{ param: "lecture", reason: "badChoice" }], state: { lecture: false } });
   });
 });
+
+describe("[Y] a link cannot smuggle a glued function in as a parameter either", () => {
+  it("g = siny is an invalid expression (the page's compiler says Did you mean sin(y)); ln(y) is a valid one", () => {
+    expect(decodeState("m=first&g=siny", D).problems).toEqual([{ param: "g", reason: "invalidExpression" }]);
+    expect(decodeState("m=first&g=y*ln(y)", D)).toMatchObject({ problems: [], state: { g: "y*ln(y)" } });
+    // an explicit parameter of that name in the link is the author's own decision and still works
+    expect(decodeState("m=first&g=cost*y&p=cost:2", D)).toMatchObject({ problems: [], state: { g: "cost*y", params: [{ name: "cost", value: 2 }] } });
+  });
+});

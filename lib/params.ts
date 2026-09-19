@@ -17,8 +17,8 @@
  *
  * Pure: no React, no DOM. The shell keeps a ParamState in its form state.
  */
-import { freeSymbols, parameterNameProblem } from "./core/parse";
-import { freeSymbolsSecondOrder, V, XD, XDD } from "./core/second-order";
+import { freeSymbols, GLUED_ARGUMENT_LETTERS, gluedFunctionCall, parameterNameProblem } from "./core/parse";
+import { freeSymbolsSecondOrder, SECOND_ORDER_GLUED_LETTERS, V, XD, XDD } from "./core/second-order";
 import type { SystemSpec } from "./core/types";
 
 /** The four input modes (the same union as lib/url-state's AppMode, which imports this module). */
@@ -80,22 +80,45 @@ export function paramNameProblem(name: string, mode: ParamMode): ParamNameProble
  * appearance over the mode's expressions. A free symbol that cannot be a parameter (a stray x in a
  * first-order equation, y in a second-order one) is left to the compiler, which explains it in the
  * student's notation; so is a multi-letter name made only of the mode's variable letters ("ty" in
- * sin(ty)): that is a product missing its "*", and the compiler's error says so. null while an
+ * sin(ty)): that is a product missing its "*", and the compiler's error says so. Round Y, the
+ * third guardrail: a one-argument function glued to its argument (siny, cost, sqrty, sinhx; the
+ * kernel's gluedFunctionCall, longest function name first) is a call missing its parentheses, not
+ * a parameter: "siny" used to be listed as siny = 1 and the picture of dy/dt = 1 was drawn without
+ * a word; it is now left to the compiler, whose error says Did you mean "sin(y)"?. null while an
  * expression does not parse (mid-typing): the caller keeps its rows.
  */
 export function discoverParams(mode: ParamMode, expressions: ParamExpressions): string[] | null {
-  const found: string[] = [];
+  const free = freeParamNames(mode, expressions);
+  if (free === null) return null;
   const letters = new RegExp(`^[${variableLetters(mode)}]+$`);
+  return free.filter((name) => !(name.length > 1 && letters.test(name)) && looksLikeFunctionCall(name, mode) === null);
+}
+
+/**
+ * Every free symbol of the mode's expressions that MAY be a parameter name, without the guardrails
+ * of discoverParams: the names a row can serve. The guardrails decide what is LISTED by itself;
+ * they never stop a row the student (or a link's p) defined on purpose from reaching the compiler:
+ * a student who adds a parameter called "cost" by hand gets a parameter called cost. null while an
+ * expression does not parse.
+ */
+export function freeParamNames(mode: ParamMode, expressions: ParamExpressions): string[] | null {
+  const found: string[] = [];
   for (const text of expressionTexts(mode, expressions)) {
     const names = mode === "second" ? freeSymbolsSecondOrder(text) : freeSymbols(text, { variables: mode === "system" ? "xy" : "ty" });
     if (names === null) return null;
-    for (const name of names) {
-      if (found.includes(name) || paramNameProblem(name, mode) !== null) continue;
-      if (name.length > 1 && letters.test(name)) continue;
-      found.push(name);
-    }
+    for (const name of names) if (!found.includes(name) && paramNameProblem(name, mode) === null) found.push(name);
   }
   return found;
+}
+
+/**
+ * The call a name most likely stands for when it is a one-argument function glued to variable
+ * letters ("siny" -> "sin(y)"), or null. The same rule, with the same letters, as the compiler's
+ * unknown-symbol hint (x, y, t in every mode, and the alias v in a second-order equation), so
+ * whatever discovery refuses, the compiler explains.
+ */
+export function looksLikeFunctionCall(name: string, mode: ParamMode): string | null {
+  return gluedFunctionCall(name, mode === "second" ? SECOND_ORDER_GLUED_LETTERS : GLUED_ARGUMENT_LETTERS);
 }
 
 /**

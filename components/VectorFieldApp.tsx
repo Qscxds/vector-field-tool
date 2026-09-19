@@ -24,7 +24,7 @@ import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/s
 import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
 import { constantSolutionNotices, curveWords, eigenDirectionLines, equalScaleTexts, equilibriaNotices, featuresBoxDetail, fill, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
 import { constantSolutionLine, equilibriumLine, lectureCurveNote, lectureNotices, lectureQueryShort } from "@/lib/lecture";
-import { addParamRow, discoverParams, formatParamValue, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, MAX_SLIDER_STEPS, paramsFromEntries, paramsText, parseSliderRange, removeParamRow, resolveParams, setParamName, setParamText, setSliderField, slideParam, sliderEntries, syncParams, toggleSlider, withSliders, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
+import { addParamRow, discoverParams, formatParamValue, freeParamNames, looksLikeFunctionCall, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, MAX_SLIDER_STEPS, paramsFromEntries, paramsText, parseSliderRange, removeParamRow, resolveParams, setParamName, setParamText, setSliderField, slideParam, sliderEntries, syncParams, toggleSlider, withSliders, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
 import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
@@ -152,9 +152,18 @@ function usedParams(form: Form): string[] | null {
   return discoverParams(FORM_TO_APP_MODE[form.mode], { f: form.f, g: form.g, M: form.M, N: form.N, eq: form.second });
 }
 
+/**
+ * Every name of the form's equation a parameter row can serve (round Y): the discovery's guardrails
+ * (ty, siny) only decide what is LISTED by itself; a row the student added on purpose, or a link's
+ * p, still reaches the compiler.
+ */
+function servedParams(form: Form): string[] | null {
+  return freeParamNames(FORM_TO_APP_MODE[form.mode], { f: form.f, g: form.g, M: form.M, N: form.N, eq: form.second });
+}
+
 /** What the parameter rows mean under the form's equation: the record for the compiler, the entries for the link, the row problems. */
 function resolvedParams(form: Form) {
-  return resolveParams(form.params, FORM_TO_APP_MODE[form.mode], usedParams(form));
+  return resolveParams(form.params, FORM_TO_APP_MODE[form.mode], servedParams(form));
 }
 
 /** The parameters the equation uses, as entries (for the result line and for matching a preset). */
@@ -291,7 +300,13 @@ function explain(error: unknown, L: LabelTable, mode: PresetMode): string {
       if (error.code === "lhs_in_expression") return L.ui.lhsInExpressionSystem;
     } else if (mode === "second") {
       const sentence = error.code ? SECOND_ORDER_SENTENCES[error.code] : undefined;
-      if (sentence) return fill(L.ui[sentence], { name: error.symbol ?? "" });
+      if (sentence) {
+        const text = fill(L.ui[sentence], { name: error.symbol ?? "" });
+        // Round Y: sinx, cost: a function glued to its argument gets the call it stands for (the
+        // other modes show the kernel's own message, which carries the same hint).
+        const call = error.code === "second_order_unknown_symbol" && error.symbol ? looksLikeFunctionCall(error.symbol, "second") : null;
+        return call ? `${text} ${fill(L.ui.didYouMeanCall, { call })}` : text;
+      }
     } else {
       if (error.code === "x_in_first_order") return L.ui.xInFirstOrder;
       if (error.code === "lhs_in_expression") {
@@ -621,7 +636,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     });
   };
   const removeParam = (id: number) => {
-    const result = removeParamRow(form.params, id, usedParams(form));
+    const result = removeParamRow(form.params, id, servedParams(form));
     if (result.refused !== null) {
       setParamRefused(result.refused);
       return;
