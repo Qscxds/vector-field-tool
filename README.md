@@ -109,7 +109,7 @@ Requires Node >= 20.9 (24 recommended; Vercel's default).
 ```bash
 npm install
 npm run dev          # http://localhost:3000 (the app is at /vector-field)
-npm test             # vitest: 1078 tests (1076 pass, 2 marked it.fails with derived expectations)
+npm test             # vitest: 1095 tests (1093 pass, 2 marked it.fails with derived expectations)
 npm run typecheck    # tsc --noEmit
 npm run build        # production build
 npm run smoke        # HTTP smoke test against a running server (default http://localhost:3000/mcp)
