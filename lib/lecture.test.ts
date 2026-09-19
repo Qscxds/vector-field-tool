@@ -1,7 +1,8 @@
 /**
  * Round W: lecture mode is a choice of what to PRINT. Expectations follow from the mode's rule
- * (numbers hidden, qualitative conclusions and caveats kept in short form, the full line behind
- * the ⓘ) and from mathematics derived by hand:
+ * (round Y: POSITIONS stay, to 3 significant digits; the EVIDENCE, eigenvalues, trace,
+ * determinant, deviations, is hidden; qualitative conclusions and caveats stay in short form; the
+ * full line is behind the ⓘ) and from mathematics derived by hand:
  * - x' = y, y' = -x: purely imaginary pair, "center or weak spiral", never "center".
  * - x'' + 2b x' + w² x = 0 at b = w = 1: a repeated root, which must keep its caveat.
  * - x' = sqrt|x|, y' = -y and dy/dt = sqrt(y): the derivative is unbounded at 0, uniqueness fails
@@ -16,7 +17,7 @@ import { toSystem, type FirstOrderSpec } from "./core/slope-field";
 import type { Box } from "./core/types";
 import { computeFeatures } from "./interactive";
 import { constantSolutionFolded, equilibriumDetail, labels, LOCALES } from "./labels";
-import { constantSolutionLine, constantSolutionTag, equilibriumLine, equilibriumNumbers, lectureCurveNote, lectureNotices, lectureQueryShort } from "./lecture";
+import { constantSolutionLine, constantSolutionTag, equilibriumLine, equilibriumNumbers, lectureCurveNote, lectureNotices, lecturePoint, lectureQueryShort } from "./lecture";
 
 const BOX: Box = { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } };
 const planar = (f: string, g: string, params?: Record<string, number>) => computeFeatures(compileSystem({ f, g, ...(params ? { params } : {}) }), null, BOX, "en").equilibria!;
@@ -35,11 +36,11 @@ describe("lecture mode never touches the Scene: the same entries, two ways of pr
     expect(JSON.stringify(e)).toBe(before);
     expect(normal).toEqual({ point: "(0, 0)", text: L.classification.stable_spiral, numbers: equilibriumNumbers(L, e), detail: equilibriumDetail(L, e) });
     expect(normal.numbers).toBe("λ = -0.25 ± 0.9682i · tr = -0.5, det = 1");
-    // lecture: no point, no numbers, not a single digit on the line
-    expect(lecture.point).toBeNull();
+    // lecture (round Y): the position stays, the evidence goes: no eigenvalue, trace or determinant on the line
+    expect(lecture.point).toBe("(0, 0)");
     expect(lecture.numbers).toBeNull();
     expect(lecture.text).toBe(L.classification.stable_spiral);
-    expect(lecture.text).not.toMatch(/\d/);
+    expect(`${lecture.point} ${lecture.text}`).not.toMatch(/λ|tr =|det =|0\.9682/);
     // ... and everything is still one click away: the ⓘ opens the whole normal line first
     expect(lecture.detail[0]).toBe(`(0, 0) ${L.classification.stable_spiral} · λ = -0.25 ± 0.9682i · tr = -0.5, det = 1`);
   });
@@ -50,6 +51,39 @@ describe("lecture mode never touches the Scene: the same entries, two ways of pr
     const line = equilibriumLine(labels("en"), e, { secondOrder: true, lecture: true, extra: ["extra line"] });
     expect(line.detail[0].startsWith("(x, x') = (0, 0) ")).toBe(true);
     expect(line.detail.at(-1)).toBe("extra line");
+    expect(line.point).toBe("(x, x') = (0, 0)");
+  });
+});
+
+describe("[Y] positions stay, to at most 3 significant digits", () => {
+  it("lecturePoint: (3, 2), (3.14, 0), (-6.28, 0); trailing zeros go; a second-order point names its coordinates", () => {
+    const L = labels("en");
+    expect(lecturePoint(L, { x: 3, y: 2 })).toBe("(3, 2)");
+    expect(lecturePoint(L, { x: Math.PI, y: 0 })).toBe("(3.14, 0)");
+    expect(lecturePoint(L, { x: -2 * Math.PI, y: 0 })).toBe("(-6.28, 0)");
+    // a root located to 1e-7 of 3 reads 3, not 3.00
+    expect(lecturePoint(L, { x: 2.9999999, y: 2.0000001 })).toBe("(3, 2)");
+    expect(lecturePoint(L, { x: 0.70710678, y: 1234.5 })).toBe("(0.707, 1230)");
+    expect(lecturePoint(L, { x: Math.PI, y: 0 }, true)).toBe("(x, x') = (3.14, 0)");
+  });
+
+  it("Lotka-Volterra with a = 1, b = 0.5, c = 0.75, d = 0.25 in lecture mode: (0, 0) saddle and (3, 2) center or weak spiral, no eigenvalues", () => {
+    const lvBox: Box = { x: { min: -0.5, max: 8 }, y: { min: -0.5, max: 6 } };
+    const eq = computeFeatures(compileSystem({ f: "a*x - b*x*y", g: "d*x*y - c*y", params: { a: 1, b: 0.5, c: 0.75, d: 0.25 } }), null, lvBox, "en").equilibria!;
+    const L = labels("en");
+    const lines = eq.map((e) => equilibriumLine(L, e, { lecture: true }));
+    expect(lines.map((l) => `${l.point} ${l.text}`)).toEqual(["(0, 0) saddle", "(3, 2) center or weak spiral (linearization cannot tell)"]);
+    for (const l of lines) expect(l.numbers).toBeNull();
+    // the evidence is one click away: ±i sqrt(a c) = ±0.866i
+    expect(lines[1].detail[0]).toContain("±0.866i");
+  });
+
+  it("the pendulum's saddle reads (x, x') = (3.14, 0) in lecture mode and (3.1416, 0) behind its ⓘ", () => {
+    const box: Box = { x: { min: 0.5, max: 5.5 }, y: { min: -3, max: 3 } };
+    const saddle = computeFeatures(compileSystem(reduceSecondOrder("x'' = -sin(x)").spec), null, box, "en").equilibria!.find((e) => e.classification === "saddle")!;
+    const line = equilibriumLine(labels("en"), saddle, { lecture: true, secondOrder: true });
+    expect(line.point).toBe("(x, x') = (3.14, 0)");
+    expect(line.detail[0].startsWith("(x, x') = (3.1416, 0) saddle")).toBe(true);
   });
 });
 
@@ -105,25 +139,27 @@ describe("the red line: folding numbers never folds honesty", () => {
     expect(s.uniqueness?.verdict).toBe("unbounded");
     const L = labels("en");
     const lecture = constantSolutionLine(L, s, spec, true);
-    expect(lecture.short).toContain(L.uniquenessShort.unbounded);
-    expect(lecture.short).not.toMatch(/\d/);
+    expect(lecture.short).toBe(`Constant solution y = 0: domain edge, solutions leave${L.ui.lectureJoin}${L.uniquenessShort.unbounded}`);
     // the ⓘ opens the normal line and all its detail
     const normal = constantSolutionFolded(L, s, spec);
     expect(lecture.detail).toEqual([normal.short, ...normal.detail]);
     expect(constantSolutionLine(L, s, spec, false)).toEqual(normal);
-    expect(constantSolutionTag(L, s, true).endsWith(" !")).toBe(true);
-    expect(constantSolutionTag(L, s, false).endsWith(" !")).toBe(true);
-    expect(constantSolutionTag(L, s, true)).not.toMatch(/\d/);
+    expect(constantSolutionTag(L, s, true)).toBe("y = 0 (domain edge, solutions leave) !");
+    expect(constantSolutionTag(L, s, false)).toBe("y = 0 (domain edge, solutions leave) !");
   });
 
-  it("an ordinary constant solution: 'Constant solution: stable' and the tag 'stable', the value behind the ⓘ", () => {
+  it("an ordinary constant solution keeps its value in lecture mode (3 significant digits); the full sentences stay behind the ⓘ", () => {
     const { spec, fo } = firstOrder("y*(1 - y)", { x: { min: 0, max: 6 }, y: { min: -0.5, max: 2 } });
     const L = labels("en");
     const stable = fo.solutions.find((s) => Math.abs(s.y - 1) < 1e-9)!;
-    expect(constantSolutionLine(L, stable, spec, true).short).toBe("Constant solution: stable");
+    expect(constantSolutionLine(L, stable, spec, true).short).toBe("Constant solution y = 1: stable");
     expect(constantSolutionLine(L, stable, spec, true).detail[0]).toBe("Constant solution y = 1: stable.");
-    expect(constantSolutionTag(L, stable, true)).toBe("stable");
+    expect(constantSolutionTag(L, stable, true)).toBe("y = 1 (stable)");
     expect(constantSolutionTag(L, stable, false)).toBe("y = 1 (stable)");
+    // 1.23456: 3 significant digits in lecture mode, 4 decimals otherwise
+    expect(constantSolutionTag(L, { y: 1.23456, stability: "stable" }, true)).toBe("y = 1.23 (stable)");
+    expect(constantSolutionTag(L, { y: 1.23456, stability: "stable" }, false)).toBe("y = 1.2346 (stable)");
+    expect(labels("zh").ui.lectureConstantSolution).toContain("{y}");
   });
 
   it("a kept curve through a point where uniqueness fails is still said when lecture mode hides the last-trajectory line", () => {

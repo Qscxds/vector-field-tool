@@ -552,9 +552,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       eigenEvery: "这里每个方向都是特征方向（线性化是单位矩阵的倍数），所以不单独画出。",
       eigenComplex: "特征值是复数，没有实的特征方向可画：解绕着该点转，而不是沿某条直线进出。",
       lectureMode: "讲课模式",
-      lectureDetail: "投屏讲课用：隐藏具体数值（特征值、坐标、偏差、范围等）并放大文字；定性结论和每一条注意事项都保留，只是改成短句。每一行仍有 ⓘ，点开就是这一行的完整内容。切换不会重新计算，Claude 读到的内容也完全不变。",
+      lectureDetail: "投屏讲课用：位置保留，证据隐藏。平衡点的坐标和常数解的值照常显示（最多 3 位有效数字），特征值、迹与行列式、偏差、阈值、分辨率和范围行隐藏，文字放大；定性结论和每一条注意事项都保留，只是改成短句。每一行仍有 ⓘ，点开就是这一行的完整内容。切换不会重新计算，Claude 读到的内容也完全不变。",
       lectureJoin: " · ",
-      lectureConstantSolution: "常数解：{stability}",
+      lectureConstantSolution: "常数解 y = {y}：{stability}",
       lectureNotes: "关于这次搜索的说明（{count} 条）",
       lectureQueryFound: "已找到，标在图上（{count} 处）。",
       lectureMarked: "已标在图上（{count} 个）。",
@@ -623,8 +623,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       unstable: "unstable",
       semi_stable: "semi-stable",
       varies: "varies with t",
-      edge_approach: "domain edge, approached",
-      edge_leave: "domain edge, left",
+      // Round Y: "domain edge, left" read as a direction once lecture mode made the tag the whole line.
+      edge_approach: "domain edge, solutions approach",
+      edge_leave: "domain edge, solutions leave",
     },
     side: {
       above: "above",
@@ -984,9 +985,9 @@ export const LABELS: Record<Locale, LabelTable> = {
       eigenEvery: "Every direction is an eigen-direction here (the linearization is a multiple of the identity), so none is drawn.",
       eigenComplex: "The eigenvalues are complex, so there is no real eigen-direction to draw: solutions turn around the point instead of running in or out along a line.",
       lectureMode: "Lecture mode",
-      lectureDetail: "For projecting in class: hides the specific numbers (eigenvalues, coordinates, deviations, ranges) and enlarges the text; the qualitative conclusions and every caveat stay, in short form. Every line keeps its ⓘ, which opens the full text of that line. Switching recomputes nothing, and what Claude reads is unchanged.",
+      lectureDetail: "For projecting in class: positions stay, evidence is hidden. The coordinates of equilibria and the values of constant solutions are shown (to at most 3 significant digits); eigenvalues, trace and determinant, deviations, thresholds, resolutions and the range lines are hidden, and the text is enlarged. The qualitative conclusions and every caveat stay, in short form. Every line keeps its ⓘ, which opens the full text of that line. Switching recomputes nothing, and what Claude reads is unchanged.",
       lectureJoin: " · ",
-      lectureConstantSolution: "Constant solution: {stability}",
+      lectureConstantSolution: "Constant solution y = {y}: {stability}",
       lectureNotes: "Notes about this search ({count})",
       lectureQueryFound: "Found: marked on the picture ({count}).",
       lectureMarked: "Marked on the picture ({count}).",
@@ -1102,9 +1103,13 @@ export function stabilitySentence(L: LabelTable, s: Pick<EquilibriumSolution, "s
   return s.domainEdge && spec && hasFractionalPower(spec) ? `${sentence}${L.tool.parenOpen}${L.tool.fractionalPowerHint}${L.tool.parenClose}` : sentence;
 }
 
-/** A number to 2 significant digits, for a resolution or a half-width (0.0063, 1300, 1.6e-12). */
-export function formatShort(v: number): string {
-  return Number.isFinite(v) ? String(Number(v.toPrecision(2))) : String(v);
+/**
+ * A number to `digits` significant digits (default 2, for a resolution or a half-width: 0.0063,
+ * 1300, 1.6e-12; lecture mode prints positions with 3: 3.14, 2, -6.28). Trailing zeros go; an exact
+ * 0 is "0" and nothing else is (a root found at 3e-17 prints 3e-17: what was measured).
+ */
+export function formatShort(v: number, digits = 2): string {
+  return Number.isFinite(v) ? String(Number(v.toPrecision(digits))) : String(v);
 }
 
 /**

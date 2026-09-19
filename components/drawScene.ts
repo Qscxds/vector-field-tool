@@ -18,8 +18,8 @@ import type { Scene } from "@/lib/scene";
 
 /**
  * `lecture` (round W): the picture as projected in class. The text on the canvas is larger, and the
- * numeric labels beside markers are left out (a query hit's coordinates, a constant solution's
- * value); every MARKER stays, the "!" of a point or line where uniqueness fails included, and so
+ * evidence beside markers is left out (a query hit's coordinates); a constant solution's tag keeps
+ * its value, to 3 significant digits (round Y: positions stay); every MARKER stays, the "!" of a point or line where uniqueness fails included, and so
  * do the axes and their ticks.
  */
 export type DrawSceneOptions = { arrowMode: ArrowMode; lecture?: boolean };
@@ -450,8 +450,8 @@ function drawFirstOrderLines(ctx: CanvasRenderingContext2D, v: Viewport, scene: 
     ctx.font = fonts.small;
     ctx.textAlign = "right";
     ctx.textBaseline = "bottom";
-    // The tag is a short label in the scene's language (never the internal key); lecture mode leaves
-    // the value out and keeps the stability and the "!" (lib/lecture constantSolutionTag, tested).
+    // The tag is a short label in the scene's language (never the internal key); lecture mode prints
+    // the value to 3 significant digits and keeps the stability and the "!" (lib/lecture constantSolutionTag, tested).
     ctx.fillText(constantSolutionTag(L, sol, lecture), v.width - 6, s.y - (nonUnique ? 6 : 3));
   }
 }

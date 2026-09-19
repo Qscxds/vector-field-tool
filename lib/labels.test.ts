@@ -209,7 +209,9 @@ describe("label tables", () => {
         expect(L.stabilityShort[key].length, `${locale}.${key}`).toBeLessThan(L.stability[key].length);
       }
     }
-    expect(labels("en").stabilityShort.edge_leave).toBe("domain edge, left");
+    // Round Y: "left" / "approached" read as directions; the tags now say who leaves and who approaches.
+    expect(labels("en").stabilityShort.edge_leave).toBe("domain edge, solutions leave");
+    expect(labels("en").stabilityShort.edge_approach).toBe("domain edge, solutions approach");
     expect(labels("zh").side.above).toBe("上方");
     expect(labels("en").stability.edge_leave).toContain("defined only {side} this line");
   });

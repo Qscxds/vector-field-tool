@@ -1,12 +1,14 @@
 /**
  * Lecture mode (round W, the professor's request): projected in class, the page showed too many
- * specific numbers. One switch hides the NUMBERS and keeps the QUALITATIVE CONCLUSIONS, which are
- * what the lecture is about:
+ * specific numbers. One switch hides the EVIDENCE and keeps the POSITIONS and the QUALITATIVE
+ * CONCLUSIONS, which are what the lecture is about (round Y: "positions stay, evidence is
+ * hidden"; round W had hidden the coordinates too, and a lecture on the logistic equation wants
+ * to say "y = L" and one on Lotka-Volterra "(c/d, a/b) = (3, 2)"):
  *
  *   hidden                                          kept
  *   eigenvalues, trace, determinant                 the classification name
- *   an equilibrium's numerical coordinates          the marker on the picture, that the point exists
- *   a constant solution's numerical value           its stability
+ *                                                   an equilibrium's coordinates, 3 significant digits
+ *                                                   a constant solution's value, 3 significant digits
  *   measured deviations, thresholds, sample counts  "numerically behaves like a separable equation"
  *   a query's numbers and error estimates           the hit markers, whether the target was reached
  *   the shown-range / computed-for / scan lines     the axes and their ticks
@@ -25,10 +27,19 @@
 import type { Equilibrium } from "./core/equilibria";
 import type { QueryNote } from "./core/query";
 import type { EquilibriumSolution, FirstOrderSpec } from "./core/slope-field";
-import { constantSolutionFolded, equilibriumDetail, fill, formatEigenvalues, formatNumber, pointText, type Folded, type LabelTable } from "./labels";
+import { constantSolutionFolded, equilibriumDetail, fill, formatEigenvalues, formatNumber, formatShort, pointText, type Folded, type LabelTable } from "./labels";
 
-/** One equilibrium's line: the bold point (absent in lecture mode), the text, the trailing numbers (absent in lecture mode), the ⓘ detail. */
-export type EquilibriumLine = { point: string | null; text: string; numbers: string | null; detail: string[] };
+/** Significant digits of a position in lecture mode: (3, 2), y = 2, (3.14, 0). */
+export const LECTURE_POSITION_DIGITS = 3;
+
+/** One equilibrium's line: the bold point, the text, the trailing numbers (absent in lecture mode), the ⓘ detail. */
+export type EquilibriumLine = { point: string; text: string; numbers: string | null; detail: string[] };
+
+/** A point as lecture mode prints it: LECTURE_POSITION_DIGITS significant digits per coordinate; (x, x') = (…) on a second-order picture. */
+export function lecturePoint(L: LabelTable, p: { x: number; y: number }, secondOrder = false): string {
+  const point = `(${formatShort(p.x, LECTURE_POSITION_DIGITS)}, ${formatShort(p.y, LECTURE_POSITION_DIGITS)})`;
+  return secondOrder ? fill(L.tool.pointSecond, { point }) : point;
+}
 
 /** "λ = -0.25 ± 0.9682i · tr = -0.5, det = 1": the numbers of one equilibrium, as the normal mode prints them. */
 export function equilibriumNumbers(L: LabelTable, p: Pick<Equilibrium, "eigenvalues" | "trace" | "determinant">): string {
@@ -51,8 +62,9 @@ export function equilibriumShortCaveats(L: LabelTable, p: Pick<Equilibrium, "cav
 /**
  * One equilibrium as a shell prints it. Normal mode: the point, its classification, the numbers,
  * the caveat / uniqueness sentences (and `extra`: the eigen-direction lines) behind the ⓘ.
- * Lecture mode: the classification with its short caveats; the ⓘ opens the whole normal line
- * first, then everything the normal ⓘ holds.
+ * Lecture mode: the point to 3 significant digits and the classification with its short caveats,
+ * no eigenvalues, no trace, no determinant; the ⓘ opens the whole normal line first, then
+ * everything the normal ⓘ holds.
  */
 export function equilibriumLine(L: LabelTable, p: Equilibrium, opts: { secondOrder?: boolean; lecture?: boolean; extra?: string[] } = {}): EquilibriumLine {
   const { secondOrder = false, lecture = false, extra = [] } = opts;
@@ -62,30 +74,32 @@ export function equilibriumLine(L: LabelTable, p: Equilibrium, opts: { secondOrd
   const detail = [...equilibriumDetail(L, p, secondOrder), ...extra];
   if (!lecture) return { point, text: classification, numbers, detail };
   const short = [classification, ...equilibriumShortCaveats(L, p)].join(L.ui.lectureJoin);
-  return { point: null, text: short, numbers: null, detail: [`${point} ${classification} · ${numbers}`, ...detail] };
+  return { point: lecturePoint(L, p.at, secondOrder), text: short, numbers: null, detail: [`${point} ${classification} · ${numbers}`, ...detail] };
 }
 
 /**
- * One constant solution. Normal mode: constantSolutionFolded ("Constant solution y = 2: stable").
- * Lecture mode: its stability without the value (the line on the picture shows where it is), the
- * uniqueness phrase when it speaks; the ⓘ opens the normal line and all its detail.
+ * One constant solution. Normal mode: constantSolutionFolded ("Constant solution y = 2: stable.").
+ * Lecture mode: its value to 3 significant digits and its stability, the uniqueness phrase when
+ * it speaks; the ⓘ opens the normal line and all its detail (the plateau, probe and scan notes).
  */
 export function constantSolutionLine(L: LabelTable, s: EquilibriumSolution, spec: FirstOrderSpec | undefined, lecture: boolean): Folded {
   const normal = constantSolutionFolded(L, s, spec);
   if (!lecture) return normal;
-  const phrases = [fill(L.ui.lectureConstantSolution, { stability: L.stabilityShort[s.stability] })];
+  const phrases = [fill(L.ui.lectureConstantSolution, { y: formatShort(s.y, LECTURE_POSITION_DIGITS), stability: L.stabilityShort[s.stability] })];
   if (s.uniqueness?.verdict === "unbounded") phrases.push(L.uniquenessShort.unbounded);
   else if (s.uniqueness?.verdict === "borderline") phrases.push(L.uniquenessShort.borderline);
   return { short: phrases.join(L.ui.lectureJoin), detail: [normal.short, ...normal.detail] };
 }
 
 /**
- * The tag of a constant solution's line on the canvas: "y = 2 (stable)" and, in lecture mode,
- * "stable". The " !" of a line where uniqueness fails is part of the tag in BOTH modes.
+ * The tag of a constant solution's line on the canvas: "y = 2 (stable)" in both modes, the value
+ * to 4 decimals normally and to 3 significant digits in lecture mode. The " !" of a line where
+ * uniqueness fails is part of the tag in BOTH modes.
  */
 export function constantSolutionTag(L: LabelTable, s: Pick<EquilibriumSolution, "y" | "stability" | "uniqueness">, lecture: boolean): string {
   const mark = s.uniqueness?.verdict === "unbounded" ? " !" : "";
-  return lecture ? `${L.stabilityShort[s.stability]}${mark}` : `y = ${Number(s.y.toFixed(4))} (${L.stabilityShort[s.stability]})${mark}`;
+  const value = lecture ? formatShort(s.y, LECTURE_POSITION_DIGITS) : String(Number(s.y.toFixed(4)));
+  return `y = ${value} (${L.stabilityShort[s.stability]})${mark}`;
 }
 
 /**
