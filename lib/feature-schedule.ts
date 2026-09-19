@@ -7,7 +7,7 @@
  * equation: about 6 ms for the logistic equation, 12 ms for the damped oscillator, 20 ms for
  * Lotka-Volterra, up to a second for a system with many sign changes. So the policy is decided by
  * what the last computation actually cost:
- * - cheap (at most FEATURE_SYNC_BUDGET_MS): recomputed for every value, so the classification line
+ * - cheap (at most FEATURE_SYNC_BUDGET_MS, 50 ms): recomputed for every value, so the classification line
  *   and the equilibrium's marker follow the slider continuously. This is what makes the passage
  *   from a stable spiral to a stable node at b = w visible while dragging.
  * - expensive: debounced. The last results stay on screen, marked as being recomputed, and the new
@@ -27,8 +27,14 @@
  * debounce and the "computing" flag are testable without React.
  */
 
-/** A features computation at most this long is repeated for every slider value (about 40 updates a second with the field and the curves). */
-export const FEATURE_SYNC_BUDGET_MS = 25;
+/**
+ * A features computation at most this long is repeated for every slider value. 50 ms since round Y
+ * (25 before): the numbers behind the first value were one development machine's (damped
+ * oscillator 12 ms, Lotka-Volterra 21 ms), and a classroom laptop half as fast would have put
+ * exactly the classroom examples into the debounce, where the classification only follows when the
+ * hand stops. At 50 ms a drag still gives some 15 updates a second in the worst admitted case.
+ */
+export const FEATURE_SYNC_BUDGET_MS = 50;
 
 /** The budget for a page's first measurements, which are taken before the engine has compiled the kernel. */
 export const FEATURE_COLD_BUDGET_MS = 150;

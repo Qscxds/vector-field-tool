@@ -16,7 +16,10 @@ describe("featurePolicy: what the last computation cost decides", () => {
 
   it("during a drag: cheap results follow every value, expensive ones are debounced; before any measurement, compute", () => {
     expect(featurePolicy(true, null)).toBe("sync");
+    expect(FEATURE_SYNC_BUDGET_MS).toBe(50);
     expect(featurePolicy(true, 12)).toBe("sync");
+    // a laptop half as fast as the development machine on Lotka-Volterra (21 ms there): still every value
+    expect(featurePolicy(true, 42)).toBe("sync");
     expect(featurePolicy(true, FEATURE_SYNC_BUDGET_MS)).toBe("sync");
     expect(featurePolicy(true, FEATURE_SYNC_BUDGET_MS + 0.1)).toBe("debounce");
     expect(featurePolicy(true, 900)).toBe("debounce");
@@ -25,11 +28,11 @@ describe("featurePolicy: what the last computation cost decides", () => {
   it("a page's first measurements are cold: they are judged against the lenient budget, so they cannot lock a cheap system into the debounce", () => {
     expect(FEATURE_COLD_BUDGET_MS).toBeGreaterThan(FEATURE_SYNC_BUDGET_MS);
     expect(COLD_MEASUREMENTS).toBe(3);
-    // 60 ms cold (the damped oscillator's first computations in the production build): still every value
-    for (const n of [1, 2, 3]) expect(featurePolicy(true, 60, n)).toBe("sync");
-    // the same 60 ms once the engine is warm is expensive
-    expect(featurePolicy(true, 60, 4)).toBe("debounce");
-    expect(featurePolicy(true, 60, 70)).toBe("debounce");
+    // 120 ms cold (a slow laptop's first computations of the damped oscillator): still every value
+    for (const n of [1, 2, 3]) expect(featurePolicy(true, 120, n)).toBe("sync");
+    // the same 120 ms once the engine is warm is expensive
+    expect(featurePolicy(true, 120, 4)).toBe("debounce");
+    expect(featurePolicy(true, 120, 70)).toBe("debounce");
     // a system that really is expensive is debounced from its first measurement
     expect(featurePolicy(true, 1000, 1)).toBe("debounce");
     expect(featurePolicy(true, FEATURE_COLD_BUDGET_MS, 1)).toBe("sync");
