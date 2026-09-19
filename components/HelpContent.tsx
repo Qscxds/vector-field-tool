@@ -69,6 +69,7 @@ export function HelpContent({ initialLocale }: { initialLocale: Locale | null })
           ))}
         </span>
       </p>
+      <p data-help-log>{H.notation.logLine}</p>
       <p>{H.notation.constantsLine}</p>
       <p data-help-params>{H.notation.paramsLine}</p>
       <p>{H.notation.piecewiseLine}</p>

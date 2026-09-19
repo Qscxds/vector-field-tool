@@ -96,6 +96,8 @@ export type SiteText = {
       /** The time-series view (round Q): what it draws and why the second-order chapter needs it. */
       timeSeriesLine: string;
       functionsLead: string;
+      /** Round Y: ln = log = the natural logarithm (American classrooms write ln). */
+      logLine: string;
       constantsLine: string;
       /** Round T: symbolic parameters: how to write them, the rows that appear by themselves, the link's p, one set for all modes. */
       paramsLine: string;
@@ -258,6 +260,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         equalScaleLine: "「等比」在各模式下的含义：一阶方程里，图上曲线的倾角就是斜率 dy/dt；平面系统里，箭头和轨线的方向是相平面里的真实方向（沿轨线的斜率是 dy/dx，不是随时间的变化率）；二阶方程里同理，沿轨线的斜率是 dx'/dx。",
         timeSeriesLine: "时间序列视图：横轴 t，纵轴是解的值 x(t)、y(t)（二阶方程为 x(t)、x'(t)）。这是受迫振动、拍频、共振一章要看的图：对非自治方程，相平面只是某一时刻的快照，而 x(t) 才显示振幅随时间的起伏。一阶方程的图本来就是 y 对 t 的图，没有这个切换。",
         functionsLead: "可以使用的函数：",
+        logLine: "ln 和 log 是同一个函数：自然对数（以 e 为底），写 ln(y) 或 log(y) 都可以；log10 以 10 为底，log(x, b) 以 b 为底。函数的自变量一定要加括号：写 sin(y)，不能写 siny。",
         constantsLine: "常数：pi 和 e。",
         paramsLine: "参数：方程里可以直接写字母参数，例如 k*y*(1 - y/L)、-k*(y - Ta)、x'' + 2*b*x' + w^2*x = 0。除了变量（t、x、y，二阶方程里还有 v）、pi、e 和函数名之外，你写下的每个名字都会自动出现在表达式下面的「参数」区，先取 1 并高亮，请填上你要的值（可以是负数、小数）；名字要以字母开头，乘法仍然要写出来（ky 会被当作一个叫 ky 的参数，k 乘 y 要写 k*y）。四种方程类型共用同一组参数，M 和 N、f 和 g 用的是同一个 k。仍被方程使用的参数删不掉：先把它从方程里去掉。参数的取值会写进链接（例如 &p=k:0.8,L:2），所以「k = 0.8、L = 2 的 logistic」可以作为一个直达链接发给别人；结果区、导出的 PNG 和 Claude 读到的摘要都会写明这张图用的是哪组参数。",
         piecewiseLine: "分段表达式用「条件 ? 值 : 值」，例如 y > 0 ? y : -y。",
@@ -452,6 +455,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         equalScaleLine: "What \"equal scale\" means in each picture: for a first-order equation the angle of a curve is its slope dy/dt; for a planar system the directions of arrows and trajectories are their true directions in the phase plane (the slope along a trajectory is dy/dx, not a rate of change in time); for a second-order equation likewise, the slope along a trajectory being dx'/dx.",
         timeSeriesLine: "Time-series view: t horizontally, the solution's values x(t), y(t) vertically (x(t) and x'(t) for a second-order equation). This is the picture the chapter on forced oscillations, beats and resonance needs: for a non-autonomous equation the phase plane is only a snapshot at one instant, while x(t) shows how the amplitude rises and falls in time. A first-order picture is already the graph of y against t, so it has no such toggle.",
         functionsLead: "Functions you may use:",
+        logLine: "ln and log are the same function, the natural logarithm (base e): write ln(y) or log(y). log10 is base 10, and log(x, b) is base b. A function's argument always goes in parentheses: sin(y), never siny.",
         constantsLine: "Constants: pi and e.",
         paramsLine: "Parameters: an equation may contain letters for constants, for example k*y*(1 - y/L), -k*(y - Ta), x'' + 2*b*x' + w^2*x = 0. Every name you write that is not a variable (t, x, y, and v in a second-order equation), pi, e or a function appears by itself in the Parameters area under the expression, starting at 1 and highlighted: give it the value you want (negative and decimal values are fine). A name starts with a letter, and multiplication is still written out (ky is read as one parameter called ky; k times y is k*y). The four equation types share one set of parameters, and M and N, or f and g, use the same k. A parameter the equation still uses cannot be removed: take it out of the equation first. The values are part of the link (for example &p=k:0.8,L:2), so \"the logistic equation with k = 0.8, L = 2\" is a link you can hand out; the results, the exported PNG and the summary Claude reads all say which parameter values the picture was computed for.",
         piecewiseLine: "Piecewise expressions use \"condition ? value : value\", for example y > 0 ? y : -y.",

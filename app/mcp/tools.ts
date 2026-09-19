@@ -57,7 +57,7 @@ const FRACTIONAL_POWER_NOTE =
 const EXPRESSION_RULES =
   'Expression syntax: the state variables are x and y (t is the time, rarely needed). ' +
   'Write multiplication explicitly: x*y, not xy (2*x and 2x are both fine). Powers use ^, e.g. x^2. ' +
-  'Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; ' +
+  'Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log ln log10 sqrt abs sign pow min max floor ceil round (ln and log are both the natural logarithm; log10 is base 10); ' +
   'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
   'A piecewise right-hand side may use comparisons and a conditional, e.g. "x > 0 ? 1 : -1". ' +
   FRACTIONAL_POWER_NOTE;
@@ -67,7 +67,7 @@ const FIRST_ORDER_EXPRESSION_RULES =
   'Expression syntax: the only variables are t (the independent variable) and y (the unknown function); ' +
   'there is no separate time variable, and x is rejected (write t instead). Enter only the right-hand side, ' +
   'never "dy/dt =". Write multiplication explicitly: t*y, not ty (2*t and 2t are both fine). Powers use ^, e.g. t^2. ' +
-  'Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; ' +
+  'Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log ln log10 sqrt abs sign pow min max floor ceil round (ln and log are both the natural logarithm; log10 is base 10); ' +
   'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name. ' +
   'A piecewise right-hand side may use comparisons and a conditional, e.g. "t > 0 ? 1 : -1".';
 
@@ -543,7 +543,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "several times t; a term that is only active away from every sample point (a piecewise x''^2 branch outside " +
         "the box) cannot be detected, so choose the box the student cares about. " +
         "Write multiplication explicitly: x*x', 2*x, not xx' (2x is accepted). Powers use ^, e.g. x^3. " +
-        "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log log10 sqrt abs sign pow min max floor ceil round; " +
+        "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log ln log10 sqrt abs sign pow min max floor ceil round (ln and log are both the natural logarithm; log10 is base 10); " +
         'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name (v is reserved). ' +
         FRACTIONAL_POWER_NOTE + " " +
         SECOND_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
