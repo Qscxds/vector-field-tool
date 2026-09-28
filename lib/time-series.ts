@@ -130,6 +130,25 @@ export function traceSpans(timeRange: Range, t0: number, base: number): { forwar
   return { forward: clamp(timeRange.max - t0), backward: clamp(t0 - timeRange.min) };
 }
 
+/**
+ * Round Z4: the t range of the WIDGET's solution graph, which has no t-range fields: the extent of
+ * the clock of the curves the tool itself returned (trace_trajectory / query_solution legs with
+ * `times`), so the tool's answer is shown whole; without such curves (analyze_*), the default
+ * span from the snapshot time on, where a clicked curve starts.
+ */
+export function widgetTimeRange(legs: readonly TrajectoryView[], snapshotT: number): Range {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const leg of legs) {
+    for (const t of leg.times ?? []) {
+      if (t < min) min = t;
+      if (t > max) max = t;
+    }
+  }
+  if (min < max) return { min, max };
+  return { min: snapshotT, max: snapshotT + (DEFAULT_TIME_RANGE.max - DEFAULT_TIME_RANGE.min) };
+}
+
 /** Parses the two t-range fields of the form; null while they are not a valid range (mid-typing). */
 export function parseTimeRange(minText: string, maxText: string): Range | null {
   // An empty field is not a number (Number("") would be 0).

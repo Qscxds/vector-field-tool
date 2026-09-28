@@ -4,12 +4,12 @@ import { rewriteForSandbox, WIDGET_URI, WIDGET_VERSION } from "./server";
 const BASE = "https://example.trycloudflare.com";
 
 describe("widget resource URI", () => {
-  it("carries the current widget version (y-1: the English domain-edge canvas tags, round Y); a bump means the connector must be removed and re-added in Claude", () => {
+  it("carries the current widget version (z-1: the solution graph, the view switch and the per-curve colors in the widget, round Z4); a bump means the connector must be removed and re-added in Claude", () => {
     // Claude caches the tool list with this URI per connection. Change this expectation ONLY
     // together with a real widget change, and say in the round report that the user must
     // remove and re-add the connector (disconnecting is not enough).
-    expect(WIDGET_VERSION).toBe("y-1");
-    expect(WIDGET_URI).toBe("ui://vector-field-tool/widget.html?v=y-1");
+    expect(WIDGET_VERSION).toBe("z-1");
+    expect(WIDGET_URI).toBe("ui://vector-field-tool/widget.html?v=z-1");
   });
 });
 

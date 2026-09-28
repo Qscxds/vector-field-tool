@@ -115,6 +115,8 @@ export type LabelTable = {
     | "timeSeriesEmpty" | "timeSeriesSpanNote" | "shownTimeRange" | "exportTimeRange" | "timeRangeError"
     // Round Z2: the "both" view, the caption above each picture (the student's notation), why the solution graph takes no clicks.
     | "viewBoth" | "captionPhaseSecond" | "captionPhaseSystem" | "captionGraphOne" | "captionGraphTwo" | "graphNoClick"
+    // Round Z4: the same two sentences for the widget, which has no Initial value inputs.
+    | "graphNoClickWidget" | "timeSeriesEmptyWidget"
     // Round R: the kept-curve cap, the widget's own Clear, the computing note, the problem report.
     | "trajectoryCap" | "trajectoryCapHint" | "clearOwn"
     | "reportProblem" | "reportTitle" | "reportPage" | "reportBrowser" | "reportDid" | "reportExpected" | "reportSaw"
@@ -473,6 +475,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       captionGraphOne: "解的图像 — 横轴 t，纵轴 {name}",
       captionGraphTwo: "解的图像 — 横轴 t，纵轴 {first} 与 {second}",
       graphNoClick: "添加曲线请用左栏的「初值」，或在相平面上点击；在这张图上点一下定不了初值（还缺 {vv}）。",
+      graphNoClickWidget: "在相平面上点击添加曲线；在这张图上点一下定不了初值（还缺 {vv}）。",
+      timeSeriesEmptyWidget: "还没有曲线：在相平面上点击一处，这里就画出解随 t 的变化。",
       timeFrom: "t 起",
       timeTo: "t 止",
       showVelocity: "同时画 x'(t)",
@@ -914,6 +918,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       captionGraphOne: "Solution graph — horizontal t, vertical {name}",
       captionGraphTwo: "Solution graph — horizontal t, vertical {first} and {second}",
       graphNoClick: "To add a curve, use Initial value on the left or click the phase plane; a click here cannot fix an initial value (it needs {vv} too).",
+      graphNoClickWidget: "Click the phase plane to add a curve; a click here cannot fix an initial value (it needs {vv} too).",
+      timeSeriesEmptyWidget: "No curve yet: click a point on the phase plane and this picture shows how the solution changes with t.",
       timeFrom: "t from",
       timeTo: "t to",
       showVelocity: "Also draw x'(t)",

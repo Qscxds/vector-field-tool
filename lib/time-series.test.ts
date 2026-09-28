@@ -7,7 +7,7 @@ import { compileSystem } from "./core/parse";
 import { reduceSecondOrder } from "./core/second-order";
 import { CLICK_TSPAN, traceBoth, traceFixed } from "./interactive";
 import type { TrajectoryView } from "./scene";
-import { DEFAULT_TIME_RANGE, defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, showsPhase, showsTime, timeSeriesBox, MAX_TRACE_TSPAN, traceSpans, VIEW_KINDS } from "./time-series";
+import { DEFAULT_TIME_RANGE, defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, showsPhase, showsTime, timeSeriesBox, MAX_TRACE_TSPAN, traceSpans, VIEW_KINDS, widgetTimeRange } from "./time-series";
 
 const BOX = { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } };
 
@@ -146,5 +146,22 @@ describe("[U.4] resonance with the existing integrator: the amplitude grows as t
     expect(at12).toBeGreaterThan(0.95 / 0.44);
     expect(at105).toBeLessThanOrEqual(1 / 0.1025 + 1e-6);
     expect(at105).toBeGreaterThan(0.95 / 0.1025);
+  });
+});
+
+describe("[Z4] widgetTimeRange: the extent of the tool's own curves' clock, else the default span from the snapshot time", () => {
+  it("derived cases", () => {
+    const leg = (direction: "forward" | "backward", times: number[]): TrajectoryView => ({ direction, points: times.map(() => ({ x: 0, y: 0 })), status: "completed", steps: times.length, tEnd: times[times.length - 1], times });
+    // trace_trajectory from t = 0 both ways with tSpan 2 pi: [-2 pi, 2 pi].
+    expect(widgetTimeRange([leg("forward", [0, 3, 2 * Math.PI]), leg("backward", [0, -3, -2 * Math.PI])], 0)).toEqual({ min: -2 * Math.PI, max: 2 * Math.PI });
+    // query_solution from t0 = 2 forward only to 5: [2, 5], whatever the snapshot time says.
+    expect(widgetTimeRange([leg("forward", [2, 3.5, 5])], 7)).toEqual({ min: 2, max: 5 });
+    // analyze_*: no curves, the default 20 units from the snapshot time (0 for an autonomous scene, 1.5 for a snapshot at t = 1.5).
+    expect(widgetTimeRange([], 0)).toEqual({ min: 0, max: 20 });
+    expect(widgetTimeRange([], 1.5)).toEqual({ min: 1.5, max: 21.5 });
+    // Legs without times (an older result) count for nothing; a single instant is not a range.
+    const bare = { ...leg("forward", [0, 1]), times: undefined };
+    expect(widgetTimeRange([bare], 0)).toEqual({ min: 0, max: 20 });
+    expect(widgetTimeRange([leg("forward", [4])], 0)).toEqual({ min: 0, max: 20 });
   });
 });

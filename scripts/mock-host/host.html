@@ -131,17 +131,20 @@
       mock.scenarios = scenarios;
 
       /** Debugging aids answered by the proxy (a real host has none): the widget's visible text, its canvases. */
-      const ask = (method) =>
+      const ask = (method, params) =>
         new Promise((resolve) => {
           const id = `${method}-${++rpcId}`;
           mock.pendingReads.set(id, resolve);
-          post({ jsonrpc: "2.0", id, method });
+          post({ jsonrpc: "2.0", id, method, ...(params ? { params } : {}) });
           setTimeout(() => {
             if (mock.pendingReads.delete(id)) resolve(null);
           }, 2000);
         });
       mock.readText = () => ask("mock/read-text").then((r) => (r ? r.text : null));
       mock.readCanvas = () => ask("mock/canvas").then((r) => (r ? r.canvases : null));
+      // Round Z4 diagnostics: drive the widget (its view switch, a click on its phase plane).
+      mock.click = (selector) => ask("mock/click", { selector }).then((r) => (r ? r.ok : null));
+      mock.pointer = (selector, type, x, y) => ask("mock/pointer", { selector, type, x, y }).then((r) => (r ? r.ok : null));
 
       document.getElementById("run").onclick = () => mock.runScenario(select.value).catch((e) => log("error", String(e)));
       document.getElementById("readText").onclick = () => mock.readText().then((t) => log("widget text", t));

@@ -25,11 +25,13 @@ export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
  * removed and added again (disconnecting and reconnecting is not enough), otherwise it reads the
  * old URI, gets "Resource not found" and shows a blank widget. t-1 (round T): the widget's summary
  * names the values of the symbolic parameters. y-1 (round Y): the English canvas tag of a
- * domain-edge constant solution ("domain edge, solutions leave"). Widget changes are BATCHED: one
- * bump per round at most, and none unless the widget really changed (every bump costs every MCP
- * user a remove-and-re-add of the connector).
+ * domain-edge constant solution ("domain edge, solutions leave"). z-1 (round Z4): the widget's
+ * solution graph (x(t) against t) next to the phase plane, the three-way view switch, one color
+ * per kept curve in both pictures. Widget changes are BATCHED: one bump per round at most, and
+ * none unless the widget really changed (every bump costs every MCP user a remove-and-re-add of
+ * the connector).
  */
-export const WIDGET_VERSION = "y-1";
+export const WIDGET_VERSION = "z-1";
 export const WIDGET_URI = `ui://vector-field-tool/widget.html?v=${WIDGET_VERSION}`;
 /** Next.js page that becomes the widget HTML (app/widget/page.tsx). */
 const WIDGET_PATH = "/widget";

@@ -112,6 +112,39 @@
             host.postMessage({ jsonrpc: "2.0", id: data.id, result: { canvases } }, "*");
             return;
           }
+          if (data.method === "mock/click") {
+            // Round Z4 diagnostics: click an element of the widget by selector (the view switch, a button).
+            let ok = false;
+            try {
+              const el = app && app.contentDocument ? app.contentDocument.querySelector(data.params.selector) : null;
+              if (el) {
+                el.click();
+                ok = true;
+              }
+            } catch (error) {
+              ok = `error: ${error && error.message}`;
+            }
+            host.postMessage({ jsonrpc: "2.0", id: data.id, result: { ok } }, "*");
+            return;
+          }
+          if (data.method === "mock/pointer") {
+            // Round Z4 diagnostics: a pointer event on an element at an offset from its top-left corner
+            // (pointerdown + pointerup on the phase plane is a click that keeps a curve; pointermove hovers).
+            let ok = false;
+            try {
+              const el = app && app.contentDocument ? app.contentDocument.querySelector(data.params.selector) : null;
+              if (el) {
+                const rect = el.getBoundingClientRect();
+                const win = app.contentWindow;
+                el.dispatchEvent(new win.PointerEvent(data.params.type, { bubbles: true, cancelable: true, clientX: rect.left + data.params.x, clientY: rect.top + data.params.y, pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0, buttons: data.params.type === "pointerdown" ? 1 : 0, relatedTarget: data.params.type === "pointerout" ? app.contentDocument.body : null }));
+                ok = true;
+              }
+            } catch (error) {
+              ok = `error: ${error && error.message}`;
+            }
+            host.postMessage({ jsonrpc: "2.0", id: data.id, result: { ok } }, "*");
+            return;
+          }
           if (data.method === "mock/set-height") {
             if (app) app.style.height = `${data.params.height}px`;
             return;

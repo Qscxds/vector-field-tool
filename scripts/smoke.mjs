@@ -62,7 +62,8 @@ const calls = [
   ["analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3 }, (r) => r.structuredContent?.equilibria?.length === 2 && r.structuredContent.equilibria.some((e) => e.classification === "center_or_weak_spiral" && e.caveat)],
   // Non-autonomous: a snapshot field and the note, never equilibria (they are undefined for it).
   ["analyze_system", { f: "y", g: "-x + sin(t)", t: 1.5 }, (r) => r.structuredContent?.timeDependent?.snapshotT === 1.5 && r.structuredContent.equilibria === undefined && r.structuredContent.field?.samples?.length === 400 && /t = 1\.5/.test(r.content?.[0]?.text ?? "")],
-  ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 6.283185307179586 }, (r) => r.structuredContent?.trajectories?.length === 2 && r.structuredContent.trajectories.every((t) => t.status === "completed")],
+  // Round Z4: every leg carries its clock (`times`, one per point) for the widget's solution graph.
+  ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 6.283185307179586 }, (r) => r.structuredContent?.trajectories?.length === 2 && r.structuredContent.trajectories.every((t) => t.status === "completed" && Array.isArray(t.times) && t.times.length === t.points.length)],
   ["sample_field", { f: "x", g: "y", density: 5 }, (r) => r.structuredContent?.field?.samples?.length === 25],
   [
     "analyze_first_order",
@@ -149,7 +150,7 @@ if (widget) {
   const csp = c?._meta?.ui?.csp ?? {};
   // The widget version (app/mcp/server.ts WIDGET_VERSION): a stale build would still answer with
   // the previous URI, and Claude caches the URI per connection (reconnect after a bump).
-  const WIDGET_VERSION = "y-1";
+  const WIDGET_VERSION = "z-1";
   check(`resources/list and resources/read carry the ${WIDGET_VERSION} widget URI`, widget.uri.endsWith(`?v=${WIDGET_VERSION}`) && c?.uri === widget.uri, `${widget.uri} / ${c?.uri}`);
   check("resources/read returns widget HTML", html.toLowerCase().startsWith("<!doctype html") && html.includes("<base href="), JSON.stringify(read.msg).slice(0, 300));
   check("resources/read CSP declares connect/resource/baseUri domains", ["connectDomains", "resourceDomains", "baseUriDomains"].every((k) => Array.isArray(csp[k]) && csp[k].length > 0), JSON.stringify(csp));

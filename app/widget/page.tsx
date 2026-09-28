@@ -10,10 +10,19 @@
  * click-to-keep through the shared useInteractiveScene hook. If compiling is impossible in this
  * environment, it falls back to the server's static picture and says so. Text comes from
  * lib/labels in the locale the tool was called with. No knowledge of who the host is.
+ *
+ * Round Z4: on a planar or second-order scene the widget has the web shell's three-way view
+ * switch (phase plane / solution graph / both), the solution graph STACKED under the phase plane
+ * (the widget is narrow), and the same linkage: one color per kept curve in both pictures (the
+ * tool's own curve is group 0), one hovered curve emphasized in both, the phase plane's preview
+ * and the query's hits drawn in the graph too. The tools' legs carry `times` since round Z4, so a
+ * curve drawn by trace_trajectory or query_solution is seen against t as well.
  */
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { TimeSeriesDrawing } from "@/components/drawTimeSeries";
 import { FoldedLine, Info } from "@/components/Info";
+import { TimeSeriesCanvas } from "@/components/TimeSeriesCanvas";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
 import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { useCoarsePointer } from "@/components/useCoarsePointer";
@@ -21,10 +30,13 @@ import { coordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, type CompiledSystem } from "@/lib/core/parse";
 import { sceneEquationText } from "@/lib/export-footer";
-import { constantSolutionFolded, constantSolutionNotices, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureModeOf, pointText, timeDependentFolded, withSceneParams, type Folded, type Locale } from "@/lib/labels";
+import { constantSolutionFolded, constantSolutionNotices, equalScaleTexts, equilibriaNotices, equilibriumDetail, featuresBoxDetail, fill, formatEigenvalues, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureCaptions, pictureModeOf, pointText, timeDependentFolded, withSceneParams, type Folded, type Locale } from "@/lib/labels";
 import { queryLines } from "@/lib/labels-query";
 import { groupTrajectories, trajectoryLines } from "@/lib/labels-trajectory";
+import { curveColor } from "@/lib/render/color";
+import { fitViewport } from "@/lib/render/viewport";
 import type { Scene, SceneKind } from "@/lib/scene";
+import { defaultView, hasTimeSeries, seriesCurves, seriesHits, seriesName, seriesOf, showsPhase, showsTime, timeSeriesBox, VIEW_KINDS, widgetTimeRange, type ViewKind } from "@/lib/time-series";
 import { isUndoKey } from "@/lib/undo-key";
 
 const KINDS: ReadonlySet<string> = new Set<SceneKind>(["ping", "sample_field", "analyze_system", "trace_trajectory", "analyze_first_order", "query_solution"]);
@@ -85,10 +97,16 @@ export default function WidgetPage() {
   const [resultSeq, setResultSeq] = useState(0);
   // Same pixels per unit on both axes (the web shell's toggle); off fills the canvas with the tool's box.
   const [equalScale, setEqualScale] = useState(true);
+  // Round Z4: which picture(s) a planar / second-order scene shows (null = the default rule), the
+  // x'(t) overlay of a second-order graph, and the kept curve under the pointer in the GRAPH (a
+  // group index; the hook reports the phase plane's own hover).
+  const [viewChoice, setViewChoice] = useState<ViewKind | null>(null);
+  const [showVelocity, setShowVelocity] = useState(false);
+  const [graphHover, setGraphHover] = useState<number | null>(null);
   const { ref, width } = useContainerWidth<HTMLDivElement>(640);
 
   const { isConnected, error } = useApp({
-    appInfo: { name: "vector-field-tool-widget", version: "0.3.0" },
+    appInfo: { name: "vector-field-tool-widget", version: "0.4.0" },
     capabilities: {},
     onAppCreated: (app) => {
       app.ontoolinput = () => setPhase("input");
@@ -101,6 +119,9 @@ export default function WidgetPage() {
           .map((c) => c.text);
         setFallbackText(texts.join("\n") || JSON.stringify(result.structuredContent ?? result, null, 2));
         setResultSeq((n) => n + 1);
+        // A new answer opens on the default view of its own picture.
+        setViewChoice(null);
+        setGraphHover(null);
         setPhase("result");
       };
     },
@@ -112,6 +133,7 @@ export default function WidgetPage() {
   const canvasHeight = Math.round(width * 0.68);
   const local = useLocalSystem(scene);
   const kind: SceneKind = scene && scene.kind !== "ping" ? scene.kind : "sample_field";
+  const snapshotT = scene?.timeDependent?.snapshotT ?? 0;
   const interactive = useInteractiveScene({
     sys: local.sys,
     spec: scene?.system ?? null,
@@ -129,7 +151,7 @@ export default function WidgetPage() {
     withFeatures: kind === "analyze_system" || kind === "analyze_first_order",
     equalScale,
     // The tool's snapshot time (its t parameter) is the instant the widget keeps showing.
-    snapshotT: scene?.timeDependent?.snapshotT ?? 0,
+    snapshotT,
     // query_solution: the hits stay marked on the live picture (and listed by SceneSummary).
     query: scene?.query,
     // analyze_second_order: the reduction line stays in the live summary.
@@ -137,6 +159,40 @@ export default function WidgetPage() {
   });
 
   const live = interactive.scene && interactive.viewport ? interactive : null;
+
+  // Round Z4: the solution graph and what links it to the phase plane (lib/linked-views: one hovered
+  // index, one color per kept curve). Kept curve i is pair i of the trajectories (the tool's own
+  // curve first, then the student's), entry i of the graph and curveColor(i) in both pictures.
+  const picture = live?.scene ? pictureModeOf(live.scene) : "system";
+  const timeSeriesAvailable = Boolean(live?.scene) && hasTimeSeries(picture);
+  const view: ViewKind = timeSeriesAvailable ? (viewChoice ?? defaultView(picture, Boolean(live?.scene?.timeDependent))) : "phase";
+  const groups = useMemo(() => groupTrajectories(interactive.trajectories), [interactive.trajectories]);
+  const externalGroups = useMemo(() => groupTrajectories(scene?.trajectories ?? []).length, [scene]);
+  const legColors = useMemo(() => groups.flatMap((g, i) => g.map(() => curveColor(i))), [groups]);
+  const startMarkers = useMemo(() => interactive.trajectoryStarts.map((p, i) => ({ at: p, color: curveColor(externalGroups + i) })), [interactive.trajectoryStarts, externalGroups]);
+  const hoveredGroup = graphHover ?? (interactive.hoveredIndex === null ? null : externalGroups + interactive.hoveredIndex);
+  const highlightLegs = graphHover !== null ? (groups[graphHover] ?? []) : interactive.highlight;
+  const highlightColor = hoveredGroup === null ? undefined : curveColor(hoveredGroup);
+  const series = useMemo(() => seriesOf(picture, showVelocity), [picture, showVelocity]);
+  const timeRange = useMemo(() => widgetTimeRange(scene?.trajectories ?? [], snapshotT), [scene, snapshotT]);
+  const graphHeight = Math.round(width * 0.5);
+  const graphViewport = useMemo(
+    () => (scene?.box ? fitViewport(timeSeriesBox(scene.box, series, timeRange), width, graphHeight, { equalScale: false }) : null),
+    [scene, series, timeRange, width, graphHeight],
+  );
+  const graphDrawing = useMemo<TimeSeriesDrawing>(
+    () => ({
+      curves: groups.map((g) => seriesCurves(g, series)),
+      legend: series.map((key) => ({ key, name: seriesName(picture, key) })),
+      ...(scene?.query ? { hits: seriesHits(scene.query.hits, series) } : {}),
+      t0: snapshotT,
+      highlightIndex: hoveredGroup,
+      ...(interactive.overlay.length ? { preview: seriesCurves(interactive.overlay, series) } : {}),
+    }),
+    [groups, series, picture, scene, snapshotT, hoveredGroup, interactive.overlay],
+  );
+  const captions = pictureCaptions(L, picture, series);
+  const second = Boolean(scene?.secondOrder);
 
   // Ctrl+Z / Cmd+Z undoes the last trajectory action (the web shell's rule, lib/undo-key), unless
   // the focus is in a field. The iframe only sees the keys while it has focus.
@@ -179,37 +235,88 @@ export default function WidgetPage() {
         <pre style={preStyle}>{JSON.stringify({ message: scene.message }, null, 2)}</pre>
       ) : live && live.scene && live.viewport ? (
         <>
-          <VectorFieldCanvas
-            scene={live.scene}
-            viewport={live.viewport}
-            width={width}
-            height={canvasHeight}
-            overlay={live.overlay}
-            overlayHint={live.hint}
-            // Hover feedback on a kept curve (Phase N): the highlighted pair and the pointer cursor.
-            highlight={live.highlight}
-            cursor={live.cursor}
-            {...live.handlers}
-          />
-          {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
-          {!equalScale ? (
-            <p role="status" data-scale-warning style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
-              {equalScaleTexts(L, pictureModeOf(live.scene)).warning}
-            </p>
+          {/* Round Z4: the view switch right above the pictures (planar and second-order scenes only). */}
+          {timeSeriesAvailable ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "0 0 6px", fontSize: 12, color: "#52606d" }} role="group" aria-label={L.ui.view} data-view-switch>
+              <span>{L.ui.view}</span>
+              <span style={{ display: "inline-flex" }}>
+                {VIEW_KINDS.map((k) => (
+                  <button key={k} type="button" aria-pressed={view === k} onClick={() => setViewChoice(k)} data-view={k} style={{ ...buttonStyle, ...(view === k ? pressedStyle : {}) }}>
+                    {k === "phase" ? L.ui.viewPhase : k === "time" ? L.ui.viewTime : L.ui.viewBoth}
+                  </button>
+                ))}
+              </span>
+            </div>
           ) : null}
-          <p style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }} data-shown-range>
-            {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
-              ...coordinateNames(live.scene),
-              xMin: formatNumber(live.viewport.box.x.min, 3),
-              xMax: formatNumber(live.viewport.box.x.max, 3),
-              yMin: formatNumber(live.viewport.box.y.min, 3),
-              yMax: formatNumber(live.viewport.box.y.max, 3),
-            })}{" "}
-            · {coarsePointer ? L.ui.interactionHintTouch : L.ui.interactionHint}
-          </p>
+          {showsPhase(view) ? (
+            <div data-picture="phase">
+              {/* Round Z2.3 / Z4: the caption names the picture's coordinates in the student's notation. */}
+              {timeSeriesAvailable ? (
+                <p style={captionStyle} data-caption="phase">
+                  {captions.phase}
+                </p>
+              ) : null}
+              <VectorFieldCanvas
+                scene={live.scene}
+                viewport={live.viewport}
+                width={width}
+                height={canvasHeight}
+                overlay={live.overlay}
+                overlayHint={live.hint}
+                // Hover feedback on a kept curve (Phase N): the highlighted pair and the pointer cursor;
+                // round Z4: in the curve's own color, also when the graph reports the hover.
+                highlight={highlightLegs}
+                highlightColor={highlightColor}
+                trajectoryColors={legColors}
+                starts={startMarkers}
+                cursor={live.cursor}
+                {...live.handlers}
+              />
+              {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
+              {!equalScale ? (
+                <p role="status" data-scale-warning style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
+                  {equalScaleTexts(L, pictureModeOf(live.scene)).warning}
+                </p>
+              ) : null}
+              <p style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }} data-shown-range>
+                {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
+                  ...coordinateNames(live.scene),
+                  xMin: formatNumber(live.viewport.box.x.min, 3),
+                  xMax: formatNumber(live.viewport.box.x.max, 3),
+                  yMin: formatNumber(live.viewport.box.y.min, 3),
+                  yMax: formatNumber(live.viewport.box.y.max, 3),
+                })}{" "}
+                · {coarsePointer ? L.ui.interactionHintTouch : L.ui.interactionHint}
+              </p>
+            </div>
+          ) : null}
+          {showsTime(view) && graphViewport ? (
+            <div data-picture="graph" style={{ marginTop: showsPhase(view) ? 8 : 0 }}>
+              {/* A click here fixes no initial value (a point (t, x) lacks x', or y): the caption says where to add a curve. */}
+              <p style={captionStyle} data-caption="graph">
+                {captions.graph} {fill(L.ui.graphNoClickWidget, { vv: coordinateNames(live.scene).vv })}
+              </p>
+              <TimeSeriesCanvas viewport={graphViewport} drawing={graphDrawing} onHoverCurve={setGraphHover} />
+              <p role="status" data-time-series-note style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }}>
+                {L.ui.timeSeriesScaleNote}
+              </p>
+              {interactive.trajectories.length === 0 ? (
+                <p role="status" data-time-series-empty style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
+                  {L.ui.timeSeriesEmptyWidget}
+                </p>
+              ) : null}
+              {second ? (
+                <label style={{ display: "inline-flex", gap: 6, alignItems: "center", fontSize: 11, color: "#52606d", marginTop: 4 }}>
+                  <input type="checkbox" checked={showVelocity} onChange={(e) => setShowVelocity(e.target.checked)} name="showVelocity" />
+                  <span>{L.ui.showVelocity}</span>
+                </label>
+              ) : null}
+            </div>
+          ) : null}
           <div style={{ margin: "4px 0 0", color: "#52606d", fontSize: 11 }}>
             <label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }}>
-              <input type="checkbox" checked={equalScale} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" />
+              {/* Off and disabled while only the solution graph is shown (its axes have different units); it acts on the phase plane alone. */}
+              <input type="checkbox" checked={view === "time" ? false : equalScale} disabled={view === "time"} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" />
               <span>{L.ui.equalScale}</span>
             </label>{" "}
             <Info label={L.ui.details} data-info="equal-scale">
@@ -369,6 +476,12 @@ const buttonStyle = {
   color: "#1f2933",
   cursor: "pointer",
 } as const;
+
+/** The pressed segment of the view switch. */
+const pressedStyle = { background: "#1f2933", color: "#ffffff", borderColor: "#1f2933" } as const;
+
+/** The one-line caption above each picture (round Z2.3 / Z4). */
+const captionStyle = { margin: "0 0 3px", color: "#52606d", fontSize: 11 } as const;
 
 const preStyle = {
   margin: 0,
