@@ -44,8 +44,10 @@ export type TrajectoryView = {
    */
   tEnd: number;
   /**
-   * The kernel's clock at each point of `points` (same length; round Q): what the time-series view
-   * draws x(t) / y(t) against. Absent on scenes that never had it (older tool results).
+   * The kernel's clock at each point of `points` (same length; round Q): what the solution graph
+   * draws x(t) / y(t) against. The shells fill it for every kept curve; since round Z4 so do
+   * trace_trajectory and query_solution (thinned by the same rule as `points`, so the two arrays
+   * stay aligned). Absent only on scenes written before that.
    */
   times?: number[];
   /**

@@ -26,6 +26,10 @@ async function connect(deps?: ToolDeps): Promise<Client> {
 
 /** Calls a tool; the helper supplies locale 'en' explicitly unless the test sets it (the schema default is tested separately). */
 async function call(name: string, args: Record<string, unknown>, via: Client = client): Promise<CallToolResult & { scene: Scene; text: string }> {
+  return callTool(name, args, via);
+}
+
+async function callTool(name: string, args: Record<string, unknown>, via: Client): Promise<CallToolResult & { scene: Scene; text: string }> {
   const withLocale = name === "ping" || "locale" in args ? args : { ...args, locale: "en" };
   const result = (await via.callTool({ name, arguments: withLocale })) as CallToolResult;
   const text = result.content
@@ -1934,5 +1938,71 @@ describe("[T] every summary says which parameter values the picture was computed
     const r = await call("analyze_first_order", { expr: "t*y", params: { t: 2 } });
     expect(r.isError).toBe(true);
     expect(r.text).toContain('Parameter name "t" is reserved');
+  });
+});
+
+describe("[Z4] the tools' curve legs carry the kernel's clock (`times`, one per kept point, thinned with the points)", () => {
+  // This file already makes about 240 tool calls in a minute: these tests use their own connection
+  // with a roomy speed bump, so the default limiter's refusal never masquerades as a missing Scene.
+  let own: Client;
+  beforeAll(async () => {
+    own = await connect({ limiter: new SlidingWindowLimiter(10_000, 60_000) });
+  });
+  const call = (name: string, args: Record<string, unknown>) => callTool(name, args, own);
+  // x' = y, y' = -x through (1, 0) at t = 0: x(t) = cos t, y(t) = -sin t (the integrator's tolerance is ~1e-6).
+  const onCircle = (leg: { points: { x: number; y: number }[]; times?: number[] }) => {
+    expect(leg.times).toBeDefined();
+    expect(leg.times!.length).toBe(leg.points.length);
+    for (let i = 0; i < leg.points.length; i += Math.max(1, Math.floor(leg.points.length / 7))) {
+      expect(leg.points[i].x, `i = ${i}`).toBeCloseTo(Math.cos(leg.times![i]), 4);
+      expect(leg.points[i].y, `i = ${i}`).toBeCloseTo(-Math.sin(leg.times![i]), 4);
+    }
+  };
+
+  it("trace_trajectory: both legs have times aligned with their points, starting at 0, monotone in the leg's direction, ending at tEnd", async () => {
+    const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 2 * Math.PI });
+    expect(r.isError).toBeFalsy();
+    const [fwd, back] = r.scene.trajectories!;
+    for (const leg of [fwd, back]) {
+      onCircle(leg);
+      expect(leg.times![0]).toBe(0);
+      expect(leg.times![leg.times!.length - 1]).toBeCloseTo(leg.tEnd, 12);
+    }
+    for (let i = 1; i < fwd.times!.length; i++) expect(fwd.times![i]).toBeGreaterThan(fwd.times![i - 1]);
+    for (let i = 1; i < back.times!.length; i++) expect(back.times![i]).toBeLessThan(back.times![i - 1]);
+  });
+
+  it("trace_trajectory: a capped leg (rk4, tSpan 1000) thins times by the same rule as points: 1000 entries each, still aligned, the last at tEnd", async () => {
+    const r = await call("trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0, tSpan: 1000, method: "rk4", direction: "forward", xMin: -5, xMax: 5, yMin: -5, yMax: 5 });
+    const leg = r.scene.trajectories![0];
+    expect(leg.points.length).toBe(1000);
+    expect(leg.times!.length).toBe(1000);
+    // rk4 with h = 0.01 and the thinning stride keep points and times index-aligned: the point at index i sits on the circle at times[i].
+    onCircle(leg);
+    expect(leg.times![999]).toBeCloseTo(leg.tEnd, 12);
+    expect(leg.tEnd).toBeCloseTo(1000, 6);
+  });
+
+  it("query_solution: system and second legs carry times from the start time; an explicit first-order leg's times ARE its t coordinates; a differential form's start at 0 (its own parameter)", async () => {
+    const sys = await call("query_solution", { mode: "system", f: "y", g: "-x", x0: 1, y0: 0, t0: 2, tSpan: 3, target: { kind: "t", value: 3 } });
+    for (const leg of sys.scene.trajectories!) {
+      expect(leg.times!.length).toBe(leg.points.length);
+      expect(leg.times![0]).toBe(2);
+    }
+    const second = await call("query_solution", { mode: "second", equation: "x'' + x = 0", x0: 1, xp0: 0, tSpan: 4, target: { kind: "t", value: Math.PI } });
+    onCircle(second.scene.trajectories![0]);
+    expect(second.scene.trajectories![1].times![0]).toBe(0);
+    // dy/dt = y from (0, 1): the kernel's clock starts at the t coordinate, so every time equals the point's t.
+    const first = await call("query_solution", { mode: "first", expr: "y", t0: 0.5, y0: 1, tSpan: 2, target: { kind: "t", value: 2 } });
+    for (const leg of first.scene.trajectories!) {
+      expect(leg.times!.length).toBe(leg.points.length);
+      leg.points.forEach((p, i) => expect(leg.times![i], `${leg.direction} ${i}`).toBeCloseTo(p.x, 9));
+    }
+    const diff = await call("query_solution", { mode: "diff", M: "y", N: "2", t0: 0, y0: 1, tSpan: 4, target: { kind: "t", value: 2 } });
+    expect(diff.scene.axes?.t).toBe("parameter");
+    for (const leg of diff.scene.trajectories!) {
+      expect(leg.times!.length).toBe(leg.points.length);
+      expect(leg.times![0]).toBe(0);
+    }
   });
 });

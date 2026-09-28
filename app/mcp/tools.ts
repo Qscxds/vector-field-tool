@@ -275,7 +275,12 @@ function compileOrExplainFirstOrder(spec: FirstOrderSpec, systemSpec: SystemSpec
   }
 }
 
-/** Uniformly thins a polyline to at most `max` points, always keeping the last one. */
+/**
+ * Uniformly thins a polyline to at most `max` points, always keeping the last one. The choice of
+ * indices depends on the length only, so `thin(times, max)` picks the SAME indices as
+ * `thin(points, max)` for the leg they belong to (round Z4: the legs carry their clock, and the
+ * widget draws x(t) against it; the two arrays stay aligned).
+ */
 export function thin<T>(points: T[], max: number): T[] {
   if (points.length <= max) return points;
   const stride = (points.length - 1) / (max - 1);
@@ -635,6 +640,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
           return {
             direction: dir === 1 ? "forward" : "backward",
             points: thin(tr.points, 1000),
+            // Round Z4: the clock of every kept point, thinned by the same rule (the widget's solution graph).
+            times: thin(tr.times, 1000),
             status: tr.status,
             steps: tr.steps,
             tEnd: tr.times[tr.times.length - 1],
@@ -1054,6 +1061,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const traced: TrajectoryView[] = [result.forward, result.backward].map((leg, i) => ({
           direction: i === 0 ? "forward" : "backward",
           points: thin(leg.points, 1000),
+          // Round Z4: the kernel's clock at every kept point (the student's t, or the curve's own parameter on a differential form).
+          times: thin(leg.times, 1000),
           status: leg.status,
           steps: leg.steps,
           tEnd: leg.tEnd,
