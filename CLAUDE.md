@@ -22,9 +22,10 @@ feedback, the time-series view, operations. Round 8 (S, 2026-09-15): the change 
 2026-09-18): symbolic parameters in the web shell and the link, parameter sliders with live
 recomputation, nullclines / eigen-directions / separatrices, lecture mode; widget t-1. Round 10 (Y,
 2026-09-18): polish after T-W (the "siny" guardrail, ln, lecture mode keeps positions, the beats box,
-the 50 ms budget; widget y-1). Round 11 (Z, 2026-09-28): the professor's "what is y" feedback (the
-presets that write a second-order equation as a system say y = x'; the phase plane and the solution
-graph side by side, linked, with the view switch above the pictures).
+the 50 ms budget; widget y-1). Round 11 (Z, 2026-09-28): the four planar presets that write a second-order
+equation as a system renamed to carry the equation and y = x' (twins linked); the Both view (phase
+plane + solution graph side by side, linked, the switch above the pictures); the widget gains the
+solution graph (z-1); docs numbered by round.
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
