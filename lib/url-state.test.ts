@@ -312,6 +312,9 @@ describe("[P2] t0 on a first-order link", () => {
 describe("[Q] the time-series view in a link: view and the t range of a planar picture", () => {
   it("encodes view and tmin / tmax for a planar picture only; a first-order link keeps tmin / tmax for its own t range", () => {
     expect(encodeState(withDefaults({ view: "time" }))).toBe("view=time");
+    // Round Z2.1: both pictures.
+    expect(encodeState(withDefaults({ view: "both" }))).toBe("view=both");
+    expect(encodeState(withDefaults({ mode: "second", eq: "x'' = -x", view: "both" }))).toBe("m=second&eq=x''+%3D+-x&view=both");
     expect(encodeState(withDefaults({ view: "phase", timeRange: { min: -5, max: 5 } }))).toBe("tmin=-5&tmax=5&view=phase");
     // Default t range and no choice: nothing written.
     expect(encodeState(withDefaults({ view: null, timeRange: { min: 0, max: 20 } }))).toBe("");
@@ -327,6 +330,13 @@ describe("[Q] the time-series view in a link: view and the t range of a planar p
     expect(ok.state.timeRange).toEqual({ min: -5, max: 5 });
     expect(ok.state.view).toBe("time");
     expect(ok.state.box).toEqual(D.box);
+    // Round Z2.1: view=both decodes, and links written before it (phase / time) still do.
+    expect(decodeState("view=both", D).state.view).toBe("both");
+    expect(decodeState("view=both", D).problems).toEqual([]);
+    expect(decodeState("m=second&eq=x''+%3D+-x&view=both", D).state.view).toBe("both");
+    expect(decodeState("view=phase", D).state.view).toBe("phase");
+    expect(decodeState("view=time", D).state.view).toBe("time");
+    expect(decodeState("m=first&g=y&view=both", D).problems).toEqual([{ param: "view", reason: "unusedInMode" }]);
     const bad = decodeState("view=nope", D);
     expect(bad.problems).toEqual([{ param: "view", reason: "badChoice" }]);
     expect(bad.state.view).toBeNull();
@@ -349,6 +359,8 @@ describe("[Q] the time-series view in a link: view and the t range of a planar p
       withDefaults({ view: "time", timeRange: { min: 2, max: 30 } }),
       withDefaults({ mode: "second", eq: "x'' = -x + cos(t)", view: "phase", snapshotT: 1, timeRange: { min: -10, max: 10 } }),
       withDefaults({ view: null, timeRange: { min: 0, max: 20 } }),
+      withDefaults({ view: "both", timeRange: { min: 0, max: 70 } }),
+      withDefaults({ mode: "second", eq: "x'' = -x", view: "both" }),
     ]) {
       expect(decodeState(encodeState(s), D).state).toEqual(s);
     }

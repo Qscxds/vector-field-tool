@@ -344,3 +344,18 @@ describe("[Z1] a preset that writes a second-order equation as a system explains
     }
   });
 });
+
+describe("[Z2.1] the four mechanical presets written as systems open with both pictures; the rest leave the view to the default rule", () => {
+  it("harmonic, damped, vdp and resonance carry view = both, and it travels in their links", () => {
+    for (const id of ["harmonic", "damped", "vdp", "resonance"]) {
+      expect(byId(id).view, id).toBe("both");
+      expect(presetState(byId(id)).view, id).toBe("both");
+      expect(presetUrl(byId(id)), id).toContain("view=both");
+    }
+    for (const p of PRESETS.filter((q) => !["harmonic", "damped", "vdp", "resonance"].includes(q.id))) {
+      expect(p.view, p.id).toBeUndefined();
+      expect(presetState(p).view, p.id).toBeNull();
+      expect(presetUrl(p), p.id).not.toContain("view=");
+    }
+  });
+});

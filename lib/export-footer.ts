@@ -91,6 +91,27 @@ export function exportTimeSeriesFooterText(scene: Scene, box: Box, names: string
   return parts.join(FOOTER_SEPARATOR);
 }
 
+/**
+ * Footer of a "both" export (round Z2.5): the phase plane's footer (equation with its parameter
+ * values, the entered / shown range) followed by the solution graph's t range and value range,
+ * then the snapshot instant and the origin. One line under the two pictures.
+ */
+export function exportDualFooterText(scene: Scene, viewport: Viewport, timeBox: Box, names: string, locale: Locale, origin: string, enteredBox?: Box): string {
+  const L = labels(locale);
+  const phase = exportFooterText(scene, viewport, locale, "", enteredBox);
+  const graph = fill(L.ui.exportTimeRange, {
+    tMin: formatSignificant(timeBox.x.min),
+    tMax: formatSignificant(timeBox.x.max),
+    names,
+    vMin: formatSignificant(timeBox.y.min),
+    vMax: formatSignificant(timeBox.y.max),
+  });
+  // The phase footer already ends with the snapshot instant when the field changes with t; the graph's range goes before it.
+  const parts = phase.split(FOOTER_SEPARATOR);
+  const snapshot = scene.timeDependent ? parts.pop() : undefined;
+  return [...parts, graph, ...(snapshot ? [snapshot] : []), ...(origin ? [origin] : [])].join(FOOTER_SEPARATOR);
+}
+
 /** "vector-field-<tag>-<yyyymmdd-hhmmss>.png" in local time; the tag is a preset id or a mode, made file-safe. */
 export function exportFileName(tag: string, now: Date): string {
   const safe = tag.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "scene";

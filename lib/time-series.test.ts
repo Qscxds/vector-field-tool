@@ -7,17 +7,22 @@ import { compileSystem } from "./core/parse";
 import { reduceSecondOrder } from "./core/second-order";
 import { CLICK_TSPAN, traceBoth, traceFixed } from "./interactive";
 import type { TrajectoryView } from "./scene";
-import { DEFAULT_TIME_RANGE, defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox, MAX_TRACE_TSPAN, traceSpans } from "./time-series";
+import { DEFAULT_TIME_RANGE, defaultView, hasTimeSeries, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, showsPhase, showsTime, timeSeriesBox, MAX_TRACE_TSPAN, traceSpans, VIEW_KINDS } from "./time-series";
 
 const BOX = { x: { min: -5, max: 5 }, y: { min: -5, max: 5 } };
 
-describe("[Q] which view a picture opens with", () => {
-  it("autonomous planar pictures open on the phase plane, non-autonomous ones on the time series; first-order pictures never offer the toggle", () => {
-    expect(defaultView("system", false)).toBe("phase");
-    expect(defaultView("second", false)).toBe("phase");
-    expect(defaultView("system", true)).toBe("time");
-    expect(defaultView("second", true)).toBe("time");
+describe("[Q / Z2.1] which view a picture opens with", () => {
+  it("a second-order equation opens on both pictures; an autonomous planar system on the phase plane, a non-autonomous one on the solution graph; first-order pictures never offer the switch", () => {
+    // Three modes x autonomous / non-autonomous, by the rule of round Z2.1.
+    expect(defaultView("first", false)).toBe("phase");
     expect(defaultView("first", true)).toBe("phase");
+    expect(defaultView("system", false)).toBe("phase");
+    expect(defaultView("system", true)).toBe("time");
+    expect(defaultView("second", false)).toBe("both");
+    expect(defaultView("second", true)).toBe("both");
+    expect(VIEW_KINDS).toEqual(["phase", "time", "both"]);
+    expect(VIEW_KINDS.map(showsPhase)).toEqual([true, false, true]);
+    expect(VIEW_KINDS.map(showsTime)).toEqual([false, true, true]);
     expect(hasTimeSeries("first")).toBe(false);
     expect(hasTimeSeries("system")).toBe(true);
     expect(hasTimeSeries("second")).toBe(true);

@@ -175,6 +175,30 @@ describe("[Q] exportTimeSeriesFooterText", () => {
   });
 });
 
+describe("[Z2.5] the footer of a 'both' export: the phase plane's parts, then the graph's ranges, then the instant and the origin", () => {
+  it("forced second-order equation: equation · x, x' range · t and value range · t = t0 · origin; an entered range that differs is printed as entered / shown", () => {
+    const forced: Scene = {
+      kind: "analyze_system",
+      locale: "en",
+      system: { f: "y", g: "-x + cos(t)" },
+      secondOrder: { equation: "x'' = -x + cos(t)", reduced: { f: "v", g: "-x + cos(t)" } },
+      timeDependent: { snapshotT: 1, maxRelDeviation: 1 },
+    };
+    const phaseBox = { x: { min: -3, max: 3 }, y: { min: -3, max: 3 } };
+    const viewport = { box: phaseBox, width: 400, height: 288 };
+    const timeBox = { x: { min: 0, max: 20 }, y: { min: -3, max: 3 } };
+    expect(footer.exportDualFooterText(forced, viewport, timeBox, "x, x'", "en", ORIGIN)).toBe(
+      ["x'' = -x + cos(t)", "x ∈ [-3, 3], x' ∈ [-3, 3]", "t ∈ [0, 20], x, x' ∈ [-3, 3]", "t = 1", ORIGIN].join(FOOTER_SEPARATOR),
+    );
+    // Zoomed phase plane: entered and shown ranges, then the graph's; autonomous planar system: no instant; no origin when none.
+    const planar: Scene = { kind: "analyze_system", locale: "en", system: { f: "y", g: "-x" } };
+    const zoomed = { box: { x: { min: -1, max: 1 }, y: { min: -1, max: 1 } }, width: 400, height: 288 };
+    expect(footer.exportDualFooterText(planar, zoomed, timeBox, "x, y", "en", "", phaseBox)).toBe(
+      ["x' = y, y' = -x", "entered x ∈ [-3, 3], y ∈ [-3, 3]", "shown x ∈ [-1, 1], y ∈ [-1, 1]", "t ∈ [0, 20], x, y ∈ [-3, 3]"].join(FOOTER_SEPARATOR),
+    );
+  });
+});
+
 describe("[T] the footer says which parameter values the picture was drawn for", () => {
   const box = { x: { min: 0, max: 10 }, y: { min: -0.5, max: 3 } };
   const viewport = { box, width: 720, height: 518 };

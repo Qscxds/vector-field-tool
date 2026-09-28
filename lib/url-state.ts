@@ -17,8 +17,10 @@
  *   eq     second-order equation text (second)
  *   tmin, tmax   horizontal range of a first-order picture (first, diff): the t range; on a planar
  *                picture (system, second) the t range of the time-series view (round Q; omitted at 0..20)
- *   view   phase | time   which picture a planar system / second-order equation shows (round Q;
- *          omitted = the default: the time series when the equation is non-autonomous, else the phase plane)
+ *   view   phase | time | both   which picture(s) a planar system / second-order equation shows
+ *          (round Q; both since round Z2; omitted = the default rule of lib/time-series defaultView:
+ *          both for a second-order equation, the solution graph for a non-autonomous planar
+ *          system, else the phase plane). Links written before round Z carry phase / time as before.
  *   xmin, xmax   horizontal range of a planar picture (system, second)
  *   ymin, ymax   vertical range of a first-order or planar picture (first, diff, system): the y range
  *   xpmin, xpmax vertical range of a second-order picture (second): the x' range (round P; links
@@ -60,8 +62,8 @@ export type AppMode = ParamMode;
 /** The entered range; for first / diff the horizontal range is the t range. */
 export type AppBox = { xMin: number; xMax: number; yMin: number; yMax: number };
 
-/** The two pictures of a planar system or a second-order equation (round Q); null = the default rule (non-autonomous -> time series). */
-export type ViewChoice = "phase" | "time" | null;
+/** Which picture(s) a planar system or a second-order equation shows (round Q; "both" since round Z2); null = the default rule (lib/time-series defaultView). */
+export type ViewChoice = "phase" | "time" | "both" | null;
 
 export type AppState = {
   mode: AppMode;
@@ -431,7 +433,7 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
     [state.timeRange.min, state.timeRange.max] = checkPair("tmin", "tmax", readSide("tmin", state.timeRange.min), readSide("tmax", state.timeRange.max), fallback.timeRange.min, fallback.timeRange.max);
     const view = q.get("view");
     if (view !== null) {
-      if (view === "phase" || view === "time") state.view = view;
+      if (view === "phase" || view === "time" || view === "both") state.view = view;
       else problem("view", "badChoice");
     }
   } else if (q.get("view") !== null) {

@@ -13,20 +13,35 @@ import type { QueryHit } from "./core/query";
 import type { PictureMode } from "./labels";
 import type { TrajectoryView } from "./scene";
 
-export type ViewKind = "phase" | "time";
+/** Round Z2.1: "both" shows the phase plane and the solution graph side by side. */
+export type ViewKind = "phase" | "time" | "both";
+export const VIEW_KINDS: readonly ViewKind[] = ["phase", "time", "both"];
 
 /** The default t range of the view (also the URL default: tmin / tmax omitted at these values). */
 export const DEFAULT_TIME_RANGE: Range = { min: 0, max: 20 };
 
 /**
- * The view a picture opens with when the link does not say: an autonomous system or equation
- * shows its phase plane; a non-autonomous one, for which the phase plane is only a snapshot,
- * shows the time series. First-order pictures are already graphs of y(t): always "phase" (the
- * (t, y) picture), and the toggle is not offered there.
+ * The view a picture opens with when the link does not say (round Z2.1): a second-order equation
+ * shows BOTH pictures (the professor wants the solution on the (t, x) plane next to the phase
+ * plane); an autonomous planar system shows its phase plane (that chapter is about the phase
+ * plane); a non-autonomous planar system, for which the phase plane is only a snapshot, shows the
+ * solution graph. First-order pictures are already graphs of y(t): always "phase" (the (t, y)
+ * picture), and the switch is not offered there.
  */
 export function defaultView(mode: PictureMode, timeDependent: boolean): ViewKind {
   if (mode === "first") return "phase";
+  if (mode === "second") return "both";
   return timeDependent ? "time" : "phase";
+}
+
+/** Whether a view draws the phase plane ("phase" or "both"). */
+export function showsPhase(view: ViewKind): boolean {
+  return view !== "time";
+}
+
+/** Whether a view draws the solution graph ("time" or "both"). */
+export function showsTime(view: ViewKind): boolean {
+  return view !== "phase";
 }
 
 /** Whether a picture offers the time-series view at all. */

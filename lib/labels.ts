@@ -113,6 +113,8 @@ export type LabelTable = {
     // Round Q: the time-series view of a planar system / second-order equation.
     | "view" | "viewPhase" | "viewTime" | "timeFrom" | "timeTo" | "showVelocity" | "timeSeriesScaleNote"
     | "timeSeriesEmpty" | "timeSeriesSpanNote" | "shownTimeRange" | "exportTimeRange" | "timeRangeError"
+    // Round Z2: the "both" view, the caption above each picture (the student's notation), why the solution graph takes no clicks.
+    | "viewBoth" | "captionPhaseSecond" | "captionPhaseSystem" | "captionGraphOne" | "captionGraphTwo" | "graphNoClick"
     // Round R: the kept-curve cap, the widget's own Clear, the computing note, the problem report.
     | "trajectoryCap" | "trajectoryCapHint" | "clearOwn"
     | "reportProblem" | "reportTitle" | "reportPage" | "reportBrowser" | "reportDid" | "reportExpected" | "reportSaw"
@@ -464,14 +466,20 @@ export const LABELS: Record<Locale, LabelTable> = {
       featuresBoxDetailSecond: "复位时这是输入范围，缩放或平移后是可见范围。平衡点（即常数解 x ≡ c）只在这个范围内扫描；结论依赖于所考察的范围。",
       view: "视图",
       viewPhase: "相平面",
-      viewTime: "时间序列",
+      viewTime: "解的图像",
+      viewBoth: "两张一起",
+      captionPhaseSecond: "相平面 — 横轴 x，纵轴 x'（速度）",
+      captionPhaseSystem: "相平面 — 横轴 x，纵轴 y",
+      captionGraphOne: "解的图像 — 横轴 t，纵轴 {name}",
+      captionGraphTwo: "解的图像 — 横轴 t，纵轴 {first} 与 {second}",
+      graphNoClick: "添加曲线请用左栏的「初值」，或在相平面上点击；在这张图上点一下定不了初值（还缺 {vv}）。",
       timeFrom: "t 起",
       timeTo: "t 止",
       showVelocity: "同时画 x'(t)",
-      timeSeriesScaleNote: "时间序列：横轴是 t，纵轴是解的值，两轴单位不同，等比在这里没有意义，已自动解除。",
-      timeSeriesEmpty: "还没有曲线：在「初值」里添加一条，这里就画出解随 t 的变化（时间序列视图下点击图像不添加曲线）。",
+      timeSeriesScaleNote: "解的图像：横轴是 t，纵轴是解的值，两轴单位不同，这一张永远不等比。",
+      timeSeriesEmpty: "还没有曲线：在左栏「初值」里添加一条，或在相平面上点击，这里就画出解随 t 的变化。",
       timeSeriesSpanNote: "曲线最多算到 t ∈ [{from}, {to}]（从 t₀ 向前、向后各至多 {span} 个时间单位）；这段之外图中是空白，不是解为零。",
-      shownTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]（时间序列）",
+      shownTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]（解的图像）",
       exportTimeRange: "t ∈ [{tMin}, {tMax}]，{names} ∈ [{vMin}, {vMax}]",
       timeRangeError: "t 范围无效：起点必须是小于终点的数。图中仍用上一个有效范围。",
       trajectoryCap: "已保留 {max} 条曲线（上限）：再添加前请点击一条删除它，或清除。",
@@ -899,14 +907,20 @@ export const LABELS: Record<Locale, LabelTable> = {
       featuresBoxDetailSecond: "This is the entered range at the home view and the visible range after zooming or panning. Equilibria (the constant solutions x ≡ c) are scanned inside this range only; conclusions depend on the range examined.",
       view: "View",
       viewPhase: "Phase plane",
-      viewTime: "Time series",
+      viewTime: "Solution graph",
+      viewBoth: "Both",
+      captionPhaseSecond: "Phase plane — horizontal x, vertical x' (velocity)",
+      captionPhaseSystem: "Phase plane — horizontal x, vertical y",
+      captionGraphOne: "Solution graph — horizontal t, vertical {name}",
+      captionGraphTwo: "Solution graph — horizontal t, vertical {first} and {second}",
+      graphNoClick: "To add a curve, use Initial value on the left or click the phase plane; a click here cannot fix an initial value (it needs {vv} too).",
       timeFrom: "t from",
       timeTo: "t to",
       showVelocity: "Also draw x'(t)",
-      timeSeriesScaleNote: "Time series: t horizontally, the solution's value vertically; the axes have different units, so equal scale has no meaning here and is off.",
-      timeSeriesEmpty: "No curve yet: add one under Initial value and this picture shows how the solution changes with t (in the time-series view a click on the picture does not add a curve).",
+      timeSeriesScaleNote: "Solution graph: t horizontally, the solution's value vertically; the axes have different units, so this picture is never to scale.",
+      timeSeriesEmpty: "No curve yet: add one under Initial value on the left, or click the phase plane, and this picture shows how the solution changes with t.",
       timeSeriesSpanNote: "Curves are computed for t ∈ [{from}, {to}] at most ({span} time units forward and backward from t₀); outside it the picture is blank, not a zero solution.",
-      shownTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}] (time series)",
+      shownTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}] (solution graph)",
       exportTimeRange: "t ∈ [{tMin}, {tMax}], {names} ∈ [{vMin}, {vMax}]",
       timeRangeError: "Invalid t range: the start must be a number smaller than the end. The picture keeps the last valid range.",
       trajectoryCap: "{max} curves kept (the limit): click one to remove it, or clear, before adding another.",
@@ -1264,6 +1278,18 @@ export function equalScaleTexts(L: LabelTable, mode: PictureMode): { detail: str
     detail: mode === "first" ? L.ui.equalScaleDetailFirst : mode === "second" ? L.ui.equalScaleDetailSecond : L.ui.equalScaleDetailSystem,
     warning: mode === "first" ? L.ui.equalScaleWarningFirst : L.ui.equalScaleWarningPlane,
   };
+}
+
+/**
+ * Round Z2.3: the one-line caption above each of the two pictures of a planar picture, in the
+ * student's notation: the phase plane names its two coordinates ((x, x') on a second-order
+ * equation, (x, y) on a planar system), the solution graph names t and the components it draws
+ * (`series`: x alone, or x and x' / x and y). Notation, not evidence: shown in lecture mode too.
+ */
+export function pictureCaptions(L: LabelTable, mode: PictureMode, series: readonly ("x" | "y")[]): { phase: string; graph: string } {
+  const second = mode === "second";
+  const graph = series.length > 1 ? fill(L.ui.captionGraphTwo, { first: "x", second: second ? "x'" : "y" }) : fill(L.ui.captionGraphOne, { name: "x" });
+  return { phase: second ? L.ui.captionPhaseSecond : L.ui.captionPhaseSystem, graph };
 }
 
 /** The words for a kept curve: "solution curve" on a first-order picture, "trajectory" on a phase plane (P2.5). */

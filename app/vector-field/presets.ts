@@ -21,7 +21,7 @@
  */
 import type { Locale, Range, Vec2 } from "@/lib/core/types";
 import type { ParamEntry, SliderEntry } from "@/lib/params";
-import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState } from "@/lib/url-state";
+import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState, type ViewChoice } from "@/lib/url-state";
 
 /** The form vocabulary of VectorFieldApp (explicit / differential); presets use the link vocabulary AppMode. */
 export type PresetMode = "system" | "explicit" | "differential" | "second";
@@ -56,6 +56,8 @@ export type Preset = {
    * the label says "related", never "the same equation" (tested).
    */
   twin?: { id: string; label: Record<Locale, string> };
+  /** Round Z2.1: the view the preset opens with ("both" for the four mechanical presets written as systems); absent = the default rule. */
+  view?: ViewChoice;
 };
 
 /** Route the preset links point to. */
@@ -207,6 +209,7 @@ export const PRESETS: Preset[] = [
   {
     id: "harmonic", group: "systems", mode: "system", name: { zh: "简谐振子 x'' = −x（写成系统，y = x'）", en: "Harmonic oscillator x'' = −x (as a system, y = x')" },
     expressions: { f: "y", g: "-x" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
+    view: "both",
     twin: { id: "harmonic2", label: { zh: "同一个方程的二阶写法 x'' = −x", en: "The same equation written as a second-order equation: x'' = −x" } },
     note: {
       zh: "x'' = −x 写成系统：令 y = x'（速度），得 x' = y、y' = −x。原点是中心（线性化只能说到「中心或弱螺旋」），轨线是圆 x² + y² = C，也就是 x² + x'² = C。",
@@ -216,6 +219,7 @@ export const PRESETS: Preset[] = [
   {
     id: "damped", group: "systems", mode: "system", name: { zh: "阻尼振子 x'' + 0.5x' + x = 0（写成系统，y = x'）", en: "Damped oscillator x'' + 0.5x' + x = 0 (as a system, y = x')" },
     expressions: { f: "y", g: "-x - 0.5*y" }, box: sq(3), starts: [{ x: 2, y: 0 }],
+    view: "both",
     twin: { id: "damped2", label: { zh: "同一个方程的二阶写法 x'' + 2b·x' + w²x = 0（b = 0.25、w = 1）", en: "The same equation written as a second-order equation: x'' + 2b·x' + w²x = 0 with b = 0.25, w = 1" } },
     note: {
       zh: "x'' + 0.5x' + x = 0 写成系统：令 y = x'（速度），得 x' = y、y' = −x − 0.5y。原点是稳定螺旋点，特征值 −1/4 ± i√15/4。",
@@ -245,6 +249,7 @@ export const PRESETS: Preset[] = [
   {
     id: "vdp", group: "systems", mode: "system", name: { zh: "Van der Pol x'' = (1 − x²)x' − x（写成系统，y = x'）", en: "Van der Pol x'' = (1 − x²)x' − x (as a system, y = x')" },
     expressions: { f: "y", g: "(1 - x^2)*y - x" }, box: sq(4), starts: [{ x: 0.1, y: 0 }, { x: 3, y: 3 }],
+    view: "both",
     twin: { id: "vdp2", label: { zh: "同一个方程的二阶写法 x'' = (1 − x²)x' − x", en: "The same equation written as a second-order equation: x'' = (1 − x²)x' − x" } },
     note: {
       zh: "x'' = (1 − x²)x' − x 写成系统：令 y = x'（速度），得 x' = y、y' = (1 − x²)y − x。原点是不稳定螺旋点（迹 1，行列式 1），里外的轨线都趋向同一个极限环。",
@@ -282,6 +287,7 @@ export const PRESETS: Preset[] = [
     id: "resonance", group: "nonAutonomous", mode: "system", name: { zh: "受迫振子 x'' = −x + sin t（写成系统，y = x'）", en: "Forced oscillator x'' = −x + sin t (as a system, y = x')" },
     expressions: { f: "y", g: "-x + sin(t)" }, box: sq(3), starts: [{ x: 0, y: 0 }],
     // Not the same equation as the beats preset (its forcing is F cos(g t)): the label says "related".
+    view: "both",
     twin: { id: "beats", label: { zh: "相关预设：受迫振子的二阶写法 x'' = −x + F·cos(g·t)（外力换成 F·cos(g·t)；把 g 拖到 1 就是共振）", en: "Related preset: the forced oscillator as a second-order equation, x'' = −x + F·cos(g·t) (the forcing is F·cos(g·t) there; drag g to 1 for resonance)" } },
     note: {
       zh: "x'' = −x + sin t 写成系统：令 y = x'（速度），得 x' = y、y' = −x + sin t。非自治系统，向量场随 t 变化，图上只是所选快照时刻的场，平衡点与线性化稳定性在此不适用；外力频率等于固有频率 1，共振使 x = (sin t − t·cos t)/2 的振幅随 t 线性增长。",
@@ -318,6 +324,7 @@ export function presetState(p: Preset): AppState {
     params: (p.params ?? []).map((e) => ({ ...e })),
     sliders: (p.sliders ?? []).map((e) => ({ ...e })),
     ...(p.timeRange ? { timeRange: { ...p.timeRange } } : {}),
+    ...(p.view ? { view: p.view } : {}),
   };
 }
 

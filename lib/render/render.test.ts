@@ -2,7 +2,8 @@ import { describe, expect, it } from "vitest";
 import { sampleField, type FieldGrid } from "../core/field";
 import { compileSystem } from "../core/parse";
 import { arrowPolygon, scaleArrows } from "./arrows";
-import { magnitudeColor, NEUTRAL_COLOR } from "./color";
+import { COLORS } from "@/components/drawScene";
+import { CURVE_PALETTE, curveColor, magnitudeColor, NEUTRAL_COLOR } from "./color";
 import { chooseTicks, niceStep } from "./ticks";
 import { fitViewport, pixelScale, screenToWorld, worldToScreen, type Viewport } from "./viewport";
 
@@ -97,6 +98,18 @@ describe("chooseTicks", () => {
   it("returns no ticks for a degenerate range", () => {
     expect(chooseTicks({ min: 1, max: 1 }, 5)).toEqual([]);
     expect(chooseTicks({ min: 2, max: 1 }, 5)).toEqual([]);
+  });
+});
+
+describe("[Z2.4] curveColor: one color per kept curve, the same in both pictures", () => {
+  it("the first two are the former forward / backward colors, all are distinct hex colors, none is a marker or overlay color, and the palette cycles", () => {
+    expect(curveColor(0)).toBe(COLORS.forward);
+    expect(curveColor(1)).toBe(COLORS.backward);
+    expect(new Set(CURVE_PALETTE).size).toBe(CURVE_PALETTE.length);
+    for (const c of CURVE_PALETTE) expect(c).toMatch(/^#[0-9a-f]{6}$/);
+    for (const c of CURVE_PALETTE) expect([COLORS.stable, COLORS.unstable, COLORS.saddle, COLORS.uncertain, COLORS.nullclineF, COLORS.nullclineG, COLORS.aid, COLORS.queryHit]).not.toContain(c);
+    for (let i = 0; i < 20; i++) expect(curveColor(i)).toBe(CURVE_PALETTE[i % CURVE_PALETTE.length]);
+    expect(curveColor(CURVE_PALETTE.length)).toBe(curveColor(0));
   });
 });
 
