@@ -271,3 +271,76 @@ describe("[U] presets that open with a slider", () => {
     expect(resonance.x).toBeLessThan(16.92);
   });
 });
+
+describe("[Z1] a preset that writes a second-order equation as a system explains its own y (the professor's 'it is unclear what is y here')", () => {
+  // The rule (Z1.1): whatever the tool writes into the equation box by itself must say what every symbol
+  // it introduced stands for. A planar preset whose x' is exactly y is a second-order equation in disguise.
+  const disguised = PRESETS.filter((p) => p.mode === "system" && p.expressions.f?.trim() === "y");
+  const definesY = (text: string) => /y = x'/.test(text);
+
+  it("harmonic, damped, vdp and resonance are the presets in disguise, and no other planar preset is", () => {
+    expect(disguised.map((p) => p.id).sort()).toEqual(["damped", "harmonic", "resonance", "vdp"]);
+    for (const id of ["lotka", "saddle", "star"]) expect(byId(id).expressions.f, id).not.toBe("y");
+  });
+
+  it("their NAME carries the original second-order equation and y = x', and their note opens with the reduction, in both languages", () => {
+    for (const p of disguised) {
+      for (const locale of LOCALES) {
+        expect(p.name[locale], `${p.id} ${locale} name`).toMatch(/x''/);
+        expect(definesY(p.name[locale]), `${p.id} ${locale} name`).toBe(true);
+        // The first sentence (up to the first full stop of either language) defines y before anything else is said.
+        const first = p.note[locale].split(/[。.](?=\s|$)/)[0];
+        expect(definesY(first), `${p.id} ${locale} first sentence: ${first}`).toBe(true);
+        expect(first, `${p.id} ${locale}`).toMatch(/x''/);
+      }
+    }
+    // The planar presets whose x and y are two unknown functions say nothing about x' (nothing to explain).
+    for (const id of ["lotka", "saddle", "star"]) for (const locale of LOCALES) expect(definesY(byId(id).name[locale] + byId(id).note[locale]), id).toBe(false);
+  });
+
+  it("twins point at each other, exist, and carry a label in both languages", () => {
+    const withTwin = PRESETS.filter((p) => p.twin);
+    expect(withTwin.map((p) => p.id).sort()).toEqual(["beats", "damped", "damped2", "harmonic", "harmonic2", "resonance", "vdp", "vdp2"]);
+    for (const p of withTwin) {
+      const twin = byId(p.twin!.id);
+      expect(twin.twin?.id, `${p.id} -> ${twin.id} -> back`).toBe(p.id);
+      expect(twin.mode, p.id).not.toBe(p.mode);
+      for (const locale of LOCALES) expect(p.twin!.label[locale].trim().length, `${p.id} ${locale}`).toBeGreaterThan(0);
+    }
+  });
+
+  it("a twin label says 'the same equation' exactly when the two kernel systems agree at sample points (derived), and 'related' when they do not", () => {
+    const kernelOf = (p: Preset) => {
+      const s = presetState(p);
+      const params = paramsRecord(s.params);
+      return p.mode === "second" ? compileSystem(reduceSecondOrder(s.eq, params).spec) : compileSystem({ f: s.f, g: s.g, ...(params ? { params } : {}) });
+    };
+    const samples = [{ x: 0.3, y: -1.2 }, { x: 2, y: 0.5 }, { x: -1.7, y: 2.2 }];
+    const times = [0, 1, 2.5];
+    const same = (a: Preset, b: Preset) => {
+      const A = kernelOf(a), B = kernelOf(b);
+      return samples.every((q) => times.every((t) => Math.abs(A.eval(q, t).x - B.eval(q, t).x) < 1e-12 && Math.abs(A.eval(q, t).y - B.eval(q, t).y) < 1e-12));
+    };
+    // damped: x'' + 0.5x' + x = 0 is x'' + 2b x' + w² x = 0 with b = 0.25, w = 1 (2b = 0.5, w² = 1).
+    for (const [a, b] of [["harmonic", "harmonic2"], ["damped", "damped2"], ["vdp", "vdp2"]] as const) {
+      expect(same(byId(a), byId(b)), `${a} ~ ${b}`).toBe(true);
+      for (const id of [a, b]) {
+        expect(byId(id).twin!.label.en, id).toMatch(/^The same equation/);
+        expect(byId(id).twin!.label.zh, id).toMatch(/^同一个方程/);
+      }
+    }
+    // resonance forces with sin t, the beats with 0.5 cos(1.2 t): at t = 1 the accelerations differ by sin 1 - 0.5 cos 1.2 = 0.66.
+    expect(same(byId("resonance"), byId("beats"))).toBe(false);
+    expect(Math.abs(kernelOf(byId("resonance")).eval({ x: 0, y: 0 }, 1).y - kernelOf(byId("beats")).eval({ x: 0, y: 0 }, 1).y)).toBeCloseTo(Math.sin(1) - 0.5 * Math.cos(1.2), 12);
+    for (const id of ["resonance", "beats"]) {
+      expect(byId(id).twin!.label.en, id).toMatch(/^Related preset/);
+      expect(byId(id).twin!.label.en, id).not.toMatch(/same equation/);
+      expect(byId(id).twin!.label.zh, id).toMatch(/^相关预设/);
+      expect(byId(id).twin!.label.zh, id).not.toMatch(/同一个方程/);
+    }
+    // The label that leads to a system names y = x' (it is the system's symbol); the one that leads to a second-order equation has no y to explain.
+    for (const p of PRESETS.filter((q) => q.twin)) {
+      for (const locale of LOCALES) expect(definesY(p.twin!.label[locale]), `${p.id} ${locale}`).toBe(byId(p.twin!.id).mode === "system");
+    }
+  });
+});

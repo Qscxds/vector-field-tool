@@ -763,6 +763,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const fullPageHref = `/vector-field${lastQueryRef.current ? `?${lastQueryRef.current}` : ""}`;
 
   const preset = presetId ? PRESETS.find((p) => p.id === presetId) : undefined;
+  const twinPreset = preset?.twin ? PRESETS.find((p) => p.id === preset.twin!.id) : undefined;
   const ivNames = initialValueNames(second ? "second" : hv === "t" ? "ty" : "xy");
   const words = curveWords(L, picture);
   const scale = equalScaleTexts(L, picture);
@@ -863,6 +864,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <Info label={L.ui.details} data-info="preset-note">
                 {preset.note[locale]}
               </Info>
+              {/* Round Z1.3: the same model written the other way (second-order equation <-> planar system), one click away. */}
+              {twinPreset ? (
+                <button type="button" onClick={() => loadPreset(twinPreset)} style={linkButtonStyle} data-preset-twin={twinPreset.id}>
+                  {preset.twin!.label[locale]}
+                </button>
+              ) : null}
             </div>
           ) : null}
         </section>
@@ -1375,7 +1382,7 @@ function ParameterArea({ params, problems, refused, mode, L, onText, onName, onA
       <legend style={{ padding: "0 4px" }}>{L.ui.params}</legend>
       {params.rows.length === 0 ? (
         <p style={{ margin: 0, color: "#52606d", fontSize: 13 }} data-params-empty>
-          {L.ui.paramsEmptyHint}
+          {mode === "second" ? L.ui.paramsEmptyHintSecond : L.ui.paramsEmptyHint}
         </p>
       ) : null}
       {params.rows.map((row) => {
@@ -1745,3 +1752,5 @@ const labelStyle = { display: "grid", gap: 4, color: "#1f2933" } as const;
 const INITIAL_VALUE_ERROR = { empty: "initialValueEmpty", notANumber: "initialValueNotANumber", outOfRange: "initialValueOutOfRange" } as const satisfies Record<InitialValueReason, string>;
 const inputStyle = { padding: "6px 8px", border: "1px solid #d1d5db", borderRadius: 6, font: "inherit" } as const;
 const buttonStyle = { padding: "6px 10px", border: "1px solid #d1d5db", borderRadius: 6, background: "#f9fafb", cursor: "pointer", font: "inherit" } as const;
+/** A button that reads as a link (the twin-preset hint): no border, the link color, underlined; a whole row under the note. */
+const linkButtonStyle = { flexBasis: "100%", width: "auto", padding: 0, border: 0, background: "none", color: "#1d4ed8", textDecoration: "underline", cursor: "pointer", font: "inherit", textAlign: "left", overflowWrap: "anywhere" } as const;

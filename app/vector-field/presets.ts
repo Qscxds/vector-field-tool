@@ -10,6 +10,14 @@
  * the damped oscillator b, w; beats F, g; Lotka-Volterra a, b, c, d), so a student who opens one
  * sees what the parameter area is for. Their notes are derived for the preset's own values and say
  * what changing a parameter does.
+ *
+ * Round Z (Z1.1, the professor's "it is unclear what is y here"): WHATEVER THE TOOL WRITES INTO THE
+ * EQUATION BOX BY ITSELF MUST EXPLAIN ITS OWN SYMBOLS. A student who writes x' = y chose that y; a
+ * preset that writes x' = y introduced it, so a preset that is a second-order equation written as
+ * a system (harmonic, damped, vdp, resonance) carries the original equation and "y = x'" in its
+ * NAME and opens its note with the reduction (let y = x', the velocity). The other planar presets
+ * (Lotka-Volterra, saddle, star node) are untouched: their x and y are two unknown functions with
+ * no hidden meaning. Z1.3: such a preset and its second-order twin point at each other (`twin`).
  */
 import type { Locale, Range, Vec2 } from "@/lib/core/types";
 import type { ParamEntry, SliderEntry } from "@/lib/params";
@@ -41,6 +49,13 @@ export type Preset = {
   sliders?: SliderEntry[];
   /** Round U: the t range of the time-series view, when the lesson needs more than the default 0..20. */
   timeRange?: Range;
+  /**
+   * Round Z1.3: the same model written the other way (a second-order equation <-> the planar system
+   * it reduces to), shown as a clickable hint after the note; `label` says what the reader gets.
+   * When the two are NOT the same equation (resonance's forcing is sin t, the beats' is F cos(g t))
+   * the label says "related", never "the same equation" (tested).
+   */
+  twin?: { id: string; label: Record<Locale, string> };
 };
 
 /** Route the preset links point to. */
@@ -173,6 +188,7 @@ export const PRESETS: Preset[] = [
   {
     id: "harmonic2", group: "secondOrder", mode: "second", name: { zh: "简谐振子 x'' = −x", en: "Harmonic oscillator x'' = −x" },
     expressions: { eq: "x'' = -x" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
+    twin: { id: "harmonic", label: { zh: "同一个方程写成系统 x' = y, y' = −x（y = x'）", en: "The same equation written as a system: x' = y, y' = −x (y = x')" } },
     note: {
       zh: "x'' = −x：令 v = x' 得 x' = v，v' = −x；平衡点 (x, x') = (0, 0) 是常数解 x ≡ 0（静止）。线性化只能说「中心或弱螺旋」；能量 x'²/2 + x²/2 守恒，所以它其实是中心，相平面里的轨线是圆 x² + x'² = C。",
       en: "x'' = −x: with v = x', x' = v, v' = −x; the equilibrium (x, x') = (0, 0) is the constant solution x ≡ 0 (at rest). Linearization can only say 'center or weak spiral'; the energy x'²/2 + x²/2 is conserved, so it is in fact a center and the trajectories of the phase plane are the circles x² + x'² = C.",
@@ -181,6 +197,7 @@ export const PRESETS: Preset[] = [
   {
     id: "vdp2", group: "secondOrder", mode: "second", name: { zh: "Van der Pol x'' = (1 − x²)x' − x", en: "Van der Pol x'' = (1 − x²)x' − x" },
     expressions: { eq: "x'' = (1 - x^2)*x' - x" }, box: sq(4), starts: [{ x: 0.1, y: 0 }, { x: 3, y: 3 }],
+    twin: { id: "vdp", label: { zh: "同一个方程写成系统 x' = y, y' = (1 − x²)y − x（y = x'）", en: "The same equation written as a system: x' = y, y' = (1 − x²)y − x (y = x')" } },
     note: {
       zh: "x'' = (1 − x²)x' − x：令 v = x' 得 x' = v，v' = (1 − x²)v − x，与「Van der Pol」平面系统是同一个系统；平衡点 (x, x') = (0, 0) 是不稳定螺旋点（迹 1，行列式 1），里外的轨线都趋向同一个极限环。",
       en: "x'' = (1 − x²)x' − x: with v = x', x' = v, v' = (1 − x²)v − x, the same system as the planar 'Van der Pol'; the equilibrium (x, x') = (0, 0) is an unstable spiral (trace 1, determinant 1), and trajectories from inside and outside approach the same limit cycle.",
@@ -188,19 +205,21 @@ export const PRESETS: Preset[] = [
   },
   // ---- Planar systems ----
   {
-    id: "harmonic", group: "systems", mode: "system", name: { zh: "简谐振子", en: "Harmonic oscillator" },
+    id: "harmonic", group: "systems", mode: "system", name: { zh: "简谐振子 x'' = −x（写成系统，y = x'）", en: "Harmonic oscillator x'' = −x (as a system, y = x')" },
     expressions: { f: "y", g: "-x" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }],
+    twin: { id: "harmonic2", label: { zh: "同一个方程的二阶写法 x'' = −x", en: "The same equation written as a second-order equation: x'' = −x" } },
     note: {
-      zh: "x' = y，y' = −x：原点是中心（线性化只能说到「中心或弱螺旋」），轨线是圆 x² + y² = C。",
-      en: "x' = y, y' = −x: the origin is a center (linearization can only say 'center or weak spiral'); the orbits are the circles x² + y² = C.",
+      zh: "x'' = −x 写成系统：令 y = x'（速度），得 x' = y、y' = −x。原点是中心（线性化只能说到「中心或弱螺旋」），轨线是圆 x² + y² = C，也就是 x² + x'² = C。",
+      en: "x'' = −x written as a system: let y = x' (the velocity), so x' = y, y' = −x. The origin is a center (linearization can only say 'center or weak spiral'); the orbits are the circles x² + y² = C, that is x² + x'² = C.",
     },
   },
   {
-    id: "damped", group: "systems", mode: "system", name: { zh: "阻尼振子（系统）", en: "Damped oscillator (system)" },
+    id: "damped", group: "systems", mode: "system", name: { zh: "阻尼振子 x'' + 0.5x' + x = 0（写成系统，y = x'）", en: "Damped oscillator x'' + 0.5x' + x = 0 (as a system, y = x')" },
     expressions: { f: "y", g: "-x - 0.5*y" }, box: sq(3), starts: [{ x: 2, y: 0 }],
+    twin: { id: "damped2", label: { zh: "同一个方程的二阶写法 x'' + 2b·x' + w²x = 0（b = 0.25、w = 1）", en: "The same equation written as a second-order equation: x'' + 2b·x' + w²x = 0 with b = 0.25, w = 1" } },
     note: {
-      zh: "x' = y，y' = −x − 0.5y：原点是稳定螺旋点，特征值 −1/4 ± i√15/4。",
-      en: "x' = y, y' = −x − 0.5y: the origin is a stable spiral, eigenvalues −1/4 ± i√15/4.",
+      zh: "x'' + 0.5x' + x = 0 写成系统：令 y = x'（速度），得 x' = y、y' = −x − 0.5y。原点是稳定螺旋点，特征值 −1/4 ± i√15/4。",
+      en: "x'' + 0.5x' + x = 0 written as a system: let y = x' (the velocity), so x' = y, y' = −x − 0.5y. The origin is a stable spiral, eigenvalues −1/4 ± i√15/4.",
     },
   },
   {
@@ -209,6 +228,7 @@ export const PRESETS: Preset[] = [
     // The lesson is the passage through critical damping b = w = 1: the slider runs well past it.
     sliders: [{ name: "b", min: 0, max: 2, step: 0.01 }],
     box: sq(3), starts: [{ x: 2, y: 0 }],
+    twin: { id: "damped", label: { zh: "同一个方程写成系统 x' = y, y' = −x − 0.5y（y = x'）", en: "The same equation written as a system: x' = y, y' = −x − 0.5y (y = x')" } },
     note: {
       zh: "x'' + 2b·x' + w²x = 0，b = 0.25、w = 1：令 v = x' 得 x' = v，v' = −2b·v − w²x，与「阻尼振子（系统）」是同一个系统；特征值 −b ± √(b² − w²) = −1/4 ± i√15/4，平衡点 (x, x') = (0, 0)（物体静止）是稳定螺旋点（欠阻尼）。把 b 调过 w：b = w 是临界阻尼（重根），b > w 是过阻尼，螺旋点变成稳定结点。",
       en: "x'' + 2b·x' + w²x = 0 with b = 0.25, w = 1: with v = x' it is x' = v, v' = −2b·v − w²x, the same system as 'Damped oscillator (system)'; the eigenvalues are −b ± √(b² − w²) = −1/4 ± i√15/4, so the equilibrium (x, x') = (0, 0) (the body at rest) is a stable spiral (underdamped). Move b past w: b = w is critical damping (a repeated root), b > w is overdamped and the spiral becomes a stable node.",
@@ -223,11 +243,12 @@ export const PRESETS: Preset[] = [
     },
   },
   {
-    id: "vdp", group: "systems", mode: "system", name: { zh: "Van der Pol", en: "Van der Pol" },
+    id: "vdp", group: "systems", mode: "system", name: { zh: "Van der Pol x'' = (1 − x²)x' − x（写成系统，y = x'）", en: "Van der Pol x'' = (1 − x²)x' − x (as a system, y = x')" },
     expressions: { f: "y", g: "(1 - x^2)*y - x" }, box: sq(4), starts: [{ x: 0.1, y: 0 }, { x: 3, y: 3 }],
+    twin: { id: "vdp2", label: { zh: "同一个方程的二阶写法 x'' = (1 − x²)x' − x", en: "The same equation written as a second-order equation: x'' = (1 − x²)x' − x" } },
     note: {
-      zh: "x' = y，y' = (1 − x²)y − x：原点是不稳定螺旋点（迹 1，行列式 1），里外的轨线都趋向同一个极限环。",
-      en: "x' = y, y' = (1 − x²)y − x: the origin is an unstable spiral (trace 1, determinant 1); trajectories from inside and outside approach the same limit cycle.",
+      zh: "x'' = (1 − x²)x' − x 写成系统：令 y = x'（速度），得 x' = y、y' = (1 − x²)y − x。原点是不稳定螺旋点（迹 1，行列式 1），里外的轨线都趋向同一个极限环。",
+      en: "x'' = (1 − x²)x' − x written as a system: let y = x' (the velocity), so x' = y, y' = (1 − x²)y − x. The origin is an unstable spiral (trace 1, determinant 1); trajectories from inside and outside approach the same limit cycle.",
     },
   },
   {
@@ -258,11 +279,13 @@ export const PRESETS: Preset[] = [
   },
   // ---- Non-autonomous ----
   {
-    id: "resonance", group: "nonAutonomous", mode: "system", name: { zh: "受迫振子 x' = y, y' = −x + sin t", en: "Forced oscillator x' = y, y' = −x + sin t" },
+    id: "resonance", group: "nonAutonomous", mode: "system", name: { zh: "受迫振子 x'' = −x + sin t（写成系统，y = x'）", en: "Forced oscillator x'' = −x + sin t (as a system, y = x')" },
     expressions: { f: "y", g: "-x + sin(t)" }, box: sq(3), starts: [{ x: 0, y: 0 }],
+    // Not the same equation as the beats preset (its forcing is F cos(g t)): the label says "related".
+    twin: { id: "beats", label: { zh: "相关预设：受迫振子的二阶写法 x'' = −x + F·cos(g·t)（外力换成 F·cos(g·t)；把 g 拖到 1 就是共振）", en: "Related preset: the forced oscillator as a second-order equation, x'' = −x + F·cos(g·t) (the forcing is F·cos(g·t) there; drag g to 1 for resonance)" } },
     note: {
-      zh: "x' = y，y' = −x + sin t：非自治系统，向量场随 t 变化，图上只是所选快照时刻的场，平衡点与线性化稳定性在此不适用；外力频率等于固有频率 1，共振使 x = (sin t − t·cos t)/2 的振幅随 t 线性增长。",
-      en: "x' = y, y' = −x + sin t: a non-autonomous system; the field changes with t, the picture is the snapshot at the chosen time, and equilibria / linearized stability do not apply; the forcing frequency equals the natural frequency 1, so resonance makes x = (sin t − t·cos t)/2 grow linearly in amplitude.",
+      zh: "x'' = −x + sin t 写成系统：令 y = x'（速度），得 x' = y、y' = −x + sin t。非自治系统，向量场随 t 变化，图上只是所选快照时刻的场，平衡点与线性化稳定性在此不适用；外力频率等于固有频率 1，共振使 x = (sin t − t·cos t)/2 的振幅随 t 线性增长。",
+      en: "x'' = −x + sin t written as a system: let y = x' (the velocity), so x' = y, y' = −x + sin t. A non-autonomous system: the field changes with t, the picture is the snapshot at the chosen time, and equilibria / linearized stability do not apply; the forcing frequency equals the natural frequency 1, so resonance makes x = (sin t − t·cos t)/2 grow linearly in amplitude.",
     },
   },
   {
@@ -275,6 +298,8 @@ export const PRESETS: Preset[] = [
     // 0.25 * 67.5 = 16.9 inside t <= 70 (at t = 3 pi/2 + 20 pi), the largest |x| over the whole slider
     // range: with ±3 the curve left the picture long before g reached 1. x' has the same size.
     box: sq(20), starts: [{ x: 0, y: 0 }],
+    // Not the same equation as the resonance preset (its forcing is sin t): the label says "related".
+    twin: { id: "resonance", label: { zh: "相关预设：写成系统的共振例子 x' = y, y' = −x + sin t（y = x'；外力 sin t 正好在固有频率上）", en: "Related preset: the resonance example written as a system, x' = y, y' = −x + sin t (y = x'; the forcing sin t is exactly at the natural frequency)" } },
     note: {
       zh: "x'' = −x + F·cos(g·t)，F = 0.5、g = 1.2：右端含 t，方程非自治，相平面只是 t₀ 时刻的快照，不做平衡点分析。从静止出发的解是 x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t)：外力频率 g = 1.2 接近固有频率 1，振幅按 sin(0.1t) 缓慢起伏，这就是拍。把 g 调向 1：振幅 F/|g² − 1| 变大，起伏变慢；g = 1 时是共振，x = (F/2)·t·sin t，振幅随 t 线性增长，在 t ≤ 70 内最大到 16.9，所以纵轴取到 ±20。",
       en: "x'' = −x + F·cos(g·t) with F = 0.5, g = 1.2: t appears on the right, so the equation is non-autonomous, the phase plane is only the snapshot at t₀ and no equilibrium analysis is made. From rest the solution is x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t): the forcing frequency g = 1.2 is close to the natural frequency 1, so the amplitude rises and falls slowly with sin(0.1t): beats. Move g toward 1: the amplitude F/|g² − 1| grows and the beats slow down; at g = 1 it is resonance, x = (F/2)·t·sin t, whose amplitude grows linearly in t and reaches 16.9 within t ≤ 70, which is why the vertical axis runs to ±20.",
