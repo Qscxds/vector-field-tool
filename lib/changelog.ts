@@ -118,6 +118,29 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       en: "MCP users must remove and re-add the connector. The English tag above is also drawn on the widget's picture, so the widget resource address changed; Claude caches the address from when the connector was added, so an existing connection will silently fail to render. Remove the connector and add https://tools.studycase.net/mcp again. (Today's two updates need only one re-add.)",
     },
   },
+  {
+    date: "2026-09-28",
+    title: {
+      zh: "预设说清楚 y 是什么；相平面与解的图像并排；视图控件移到图的正上方",
+      en: "Presets say what y is; the phase plane and the solution graph side by side; the view switch above the pictures",
+    },
+    points: {
+      zh: [
+        "教授反馈「不清楚 y 是什么」：把二阶方程写成系统的四个预设（简谐振子、阻尼振子、Van der Pol、受迫振子）名字里带上原方程和「y = x'」，说明的第一句先讲降阶「令 y = x'（速度）」；每条都有一句可点的提示切到同一个方程的二阶写法，反过来也有。二阶模式本身的坐标一直是 (x, x')，没有改。",
+        "视图三选一「相平面 / 解的图像 / 两张一起」搬到了图的正上方（以前是左栏里的一个单选钮，而且两张图只能二选一）。二阶方程默认两张一起，自治平面系统默认相平面，非自治平面系统默认解的图像；链接里是 view=both。",
+        "每张图上方一行小字写明横轴、纵轴：二阶方程的相平面是「横轴 x，纵轴 x'（速度）」，解的图像是「横轴 t，纵轴 x」。讲课模式下也保留。",
+        "两张图联动：同一条曲线在两张图里是同一个颜色（初值点画成同色的小圆点）；鼠标放到任一张图的曲线上，两张图里它都加粗；相平面上的预览曲线也出现在解的图像里；固定、删除、撤销、清除两张图同步；查询到的点两张图都标。解的图像上点击不添加曲线（(t, x) 上的一个点定不了初值），页面上写明了怎么添加。",
+        "「时间序列」改称「解的图像」；两张一起时「下载 PNG」把两张图导成一张；嵌入页支持 view=both；帮助页里嵌入高度按新布局重新量过。",
+      ],
+      en: [
+        "The professor's \"it is unclear what is y here\": the four presets that write a second-order equation as a system (harmonic, damped, Van der Pol, forced oscillator) now carry the original equation and \"y = x'\" in their names, and their notes open with the reduction \"let y = x' (the velocity)\"; each has a clickable hint to the same equation written as a second-order equation, and back. Second-order mode itself always used (x, x') and is unchanged.",
+        "The view switch, Phase plane / Solution graph / Both, now sits right above the pictures (it used to be a radio button inside the form, and the two pictures were either-or). A second-order equation opens with both, an autonomous planar system with the phase plane, a non-autonomous one with the solution graph; in a link it is view=both.",
+        "A line above each picture names its coordinates: for a second-order equation the phase plane is \"horizontal x, vertical x' (velocity)\" and the solution graph \"horizontal t, vertical x\". Kept in lecture mode.",
+        "The two pictures are linked: one kept curve has one color in both (its initial point is a dot of that color); put the pointer on a curve in either picture and it is emphasized in both; the phase plane's preview curve appears in the solution graph too; keep, remove, undo and clear act on both; a query's points are marked in both. A click on the solution graph adds no curve (a point (t, x) cannot fix an initial value), and the page says how to add one.",
+        "\"Time series\" is now called \"Solution graph\"; with both pictures shown, Download PNG exports them as one file; the embedded page takes view=both; the embed heights on the help page were measured again for the new layout.",
+      ],
+    },
+  },
 ];
 
 /** The newest `count` entries, newest first (same date: the later entry in the array first). */

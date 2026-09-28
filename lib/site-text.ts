@@ -15,13 +15,16 @@ export const GITHUB_URL = "https://github.com/Qscxds/vector-field-tool";
 /** The example every snippet embeds: the logistic equation, the first picture of the course. */
 export const EMBED_EXAMPLE_QUERY = "m=first&g=y*(1-y)&tmin=0&tmax=10&ymin=-0.5&ymax=1.5";
 /**
- * Measured on the real /embed page for the logistic example (document height, results included):
- * with the form 1267 px at a 960 px wide frame (two columns; below 800 px the form stacks above the
- * picture and the page needs about 1820 px), without the form 1243 px at 733 px and 1219 px at
- * 960 px. Rounded up to 20 px. A shorter frame scrolls inside and hides the results.
+ * Measured on the production build of the real /embed page for the logistic example (document
+ * height, results included; round Z, 2026-09-28): with the form 1191 px at a 960 px wide frame (two
+ * columns; below 800 px the form stacks above the picture and the page needs 2295 px), without the
+ * form 895 px at 960 px and 1014 px at 733 px. Rounded up. A planar system or a second-order
+ * equation showing BOTH pictures stacks them inside a 960 px frame (its picture column is 596 px,
+ * too narrow for two) and needs 1483 px with the form / 1348 px without; below 800 px 3139 / 1678
+ * (the help text says so). A shorter frame scrolls inside and hides the results.
  */
-export const EMBED_HEIGHT_WITH_CONTROLS = 1280;
-export const EMBED_HEIGHT_WITHOUT_CONTROLS = 1260;
+export const EMBED_HEIGHT_WITH_CONTROLS = 1200;
+export const EMBED_HEIGHT_WITHOUT_CONTROLS = 900;
 
 /** The iframe snippet shown on the help page; `controls: false` is the read-only variant. */
 export function embedSnippet(locale: Locale, controls = true): string {
@@ -93,8 +96,10 @@ export type SiteText = {
       termsLine: string;
       /** What "equal scale" means in each picture. */
       equalScaleLine: string;
-      /** The time-series view (round Q): what it draws and why the second-order chapter needs it. */
+      /** The solution graph (round Q's time-series view): what it draws and why the second-order chapter needs it. */
       timeSeriesLine: string;
+      /** Round Z3: x and y of a planar system are the student's two unknowns; the second coordinate of a second-order equation is always x'. */
+      yLine: string;
       functionsLead: string;
       /** Round Y: ln = log = the natural logarithm (American classrooms write ln). */
       logLine: string;
@@ -215,13 +220,13 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "类型：二维系统 x' = f, y' = g；一阶方程 dy/dt = g(t, y)；一阶方程 M dt + N dy = 0；二阶方程 x'' = F(t, x, x')。切换类型会换成对应的输入框。",
           "范围：横轴（x 或 t）和纵轴（y，二阶方程为 x'）的输入范围。平衡点、常数解和方程类型都在这个范围内扫描。",
           "参数：方程里写了字母参数（例如 k*y*(1 - y/L)），表达式下面的「参数」区就会自动出现对应的一行「名字 = 值」，填上你要的值即可；也可以用「添加参数」自己加一行。四种类型共用这一组参数。详见下面「记号」一节。",
-          "滑块：参数行里勾选「显示滑块」，出现一个滑块和它的最小值、最大值、步长（默认按当前值给一个范围，可以改）。拖动时方向场、固定的曲线、平衡点及其分类、方程类型全部实时重算；计算量大的方程在拖动过程中先保留上一次的结果（变淡并标「计算中」），停手约 0.25 秒后更新。例：预设「阻尼振子」拖动 b 过 w，稳定螺旋点在 b = w 处变成稳定结点；预设「受迫振子 / 拍频」在时间序列视图里把 g 拖向 1，振幅越来越大。滑块的状态也编在链接里。",
+          "滑块：参数行里勾选「显示滑块」，出现一个滑块和它的最小值、最大值、步长（默认按当前值给一个范围，可以改）。拖动时方向场、固定的曲线、平衡点及其分类、方程类型全部实时重算；计算量大的方程在拖动过程中先保留上一次的结果（变淡并标「计算中」），停手约 0.25 秒后更新。例：预设「阻尼振子」拖动 b 过 w，稳定螺旋点在 b = w 处变成稳定结点；预设「受迫振子 / 拍频」在解的图像里把 g 拖向 1，振幅越来越大。滑块的状态也编在链接里。",
           "在图上显示：零斜线、特征方向、鞍点的分界线三个开关（一阶方程只有零斜线），默认都关；图右上角的图例说明每种线。详见下面「怎么读结果」里的标记列表。",
           "讲课模式（页面右上角的按钮）：投屏讲课用。位置保留，证据隐藏：平衡点的坐标和常数解的值照常显示（最多 3 位有效数字，如 (3, 2)、y = 2、(3.14, 0)），隐藏的是特征值、迹和行列式、偏差与阈值、扫描分辨率、范围行、查询的数值；文字放大；保留分类名、图上的标记、「与可分离方程一致」这类结论，以及短句形式的注意事项——「中心或弱螺旋」绝不会缩成「中心」，唯一性失效的「!」在任何模式下都在。每一行仍有 ⓘ，点开就是这一行的全部内容；切换不重新计算，退出后所有数字立刻回来。导出的 PNG 跟随当前模式（底部仍写明方程、参数取值和范围）。链接里是 lecture=1，嵌入页同样支持；Claude 读到的内容不受影响。",
           "网格密度：每个方向上箭头的个数。",
           "箭头：「等长」把每个箭头画成一样长、用颜色表示模长（方向一目了然，快慢看颜色）；「按模长」让箭头长度随模长变化（快的地方箭头长，慢的地方几乎看不见）。",
           "等比：勾选时横轴与纵轴每单位的像素相同，图上的角度就是真实的（一阶方程里是斜率 dy/dt，相平面里是箭头和轨线的真实方向），为此显示范围会向一个方向扩大以填满画布；取消勾选时输入范围正好填满画布，两个方向比例不同，图上会一直显示「横纵比例不同」的提醒。图下方那一行给出实际显示范围，并注明「等比」或「填满」。",
-          "视图（平面系统和二阶方程）：「相平面」画向量场和轨线；「时间序列」以 t 为横轴画每条固定曲线的 x(t)、y(t)（二阶方程画 x(t)，勾选「同时画 x'(t)」再叠加 x'(t)），带图例；「t 起 / t 止」定横轴范围，纵轴范围取输入范围。默认：自治 → 相平面，非自治（右端含 t）→ 时间序列；链接记住你的选择。时间序列里等比没有意义，自动解除并常驻说明；曲线仍按相平面的规则算到 t₀ 前后各 50 个时间单位，超出的部分空白并有说明；点击图像不添加曲线，请用「初值」添加，「清除」「撤销」照常；查询到的点同样标在曲线上。",
+          "视图（平面系统和二阶方程；控件在图的正上方，三选一）：「相平面」画向量场和轨线；「解的图像」以 t 为横轴画每条固定曲线的 x(t)、y(t)（二阶方程画 x(t)，勾选「同时画 x'(t)」再叠加 x'(t)），也就是 (t, x) 平面上的解，带图例；「两张一起」并排显示两张图（框太窄时上下堆叠）。每张图上方一行小字写明它的横轴、纵轴是什么。默认：二阶方程 → 两张一起，自治平面系统 → 相平面，非自治平面系统（右端含 t）→ 解的图像；链接记住你的选择。「t 起 / t 止」定解的图像的横轴范围，纵轴范围取输入范围。两张图是联动的：同一条曲线在两张图里是同一个颜色（相平面上它的初值点画成同色的小圆点）；把鼠标放到任一张图的某条曲线上，两张图里它都会加粗；在相平面空白处悬停，预览曲线两张图里同时出现；在相平面上点击固定、删除、撤销、清除，两张图同时变；查询到的点两张图都标。解的图像上点击不添加曲线：(t, x) 上的一个点定不了初值（二阶方程还缺 x'，平面系统还缺 y），鼠标在那张图上也不会变成手型——请用「初值」添加，或在相平面上点。解的图像永远不等比（横纵单位不同），常驻说明挂在它下面；曲线从 t₀ 向前、向后各算到 50 个时间单位或你填的 t 范围（上限 500），超出的部分空白并有说明。",
           "快照时刻 t：只在平面系统或二阶方程的右端含 t（非自治）时出现，图画的是这一时刻的向量场；二阶方程里这个输入框叫 t₀，初值 x(t₀)、x'(t₀) 和解曲线都从这一时刻出发。一阶方程 dy/dt = g(t, y) 不需要它：t 就是横轴，画的是整张斜率场。",
           "清除解曲线 / 清除轨线（按钮名随图而变）：删掉所有固定下来的曲线。",
           "复制链接：当前方程、范围、语言、视图选项和固定曲线的起点都编在链接里，打开链接就是同一张图。",
@@ -230,7 +235,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         ],
         mouseHeading: "鼠标",
         mouse: [
-          "悬停：预览通过该点的解曲线（预览用一种青色画双向；固定后才分为蓝色向前、橙色向后）。",
+          "悬停：预览通过该点的解曲线（预览用一种青色画双向；固定后每条曲线有自己的颜色，相平面和解的图像里相同，初值点画成同色的小圆点）。",
           "单击：把这条解曲线固定下来。",
           "滚轮：以指针为中心缩放。",
           "拖动：平移视野。",
@@ -258,7 +263,8 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         secondOrderLine: "二阶方程里 x'' 必须线性出现（x''^2、sin(x'') 之类无法降阶），而且它的系数不能为零：这两点是在观察范围内的采样点和原点附近几个固定点上、若干时刻上数值检验的，只在采样点之外才出现的项（例如只在范围外生效的分段项）检查不到。",
         termsLine: "术语按模式区分：平面系统和二阶方程的相平面里说「平衡点」（f = g = 0 的点，有稳定性分类；二阶时它就是常数解 x ≡ c）；一阶方程说「常数解」y = c（它是一个解，不是一个点，稳定性指两侧的解是趋向它还是离开它）；微分形式说「方向场奇点」（M = N = 0，方向无定义，没有稳定性可言）。固定下来的曲线在一阶方程里叫「解曲线」，在相平面里叫「轨线」。",
         equalScaleLine: "「等比」在各模式下的含义：一阶方程里，图上曲线的倾角就是斜率 dy/dt；平面系统里，箭头和轨线的方向是相平面里的真实方向（沿轨线的斜率是 dy/dx，不是随时间的变化率）；二阶方程里同理，沿轨线的斜率是 dx'/dx。",
-        timeSeriesLine: "时间序列视图：横轴 t，纵轴是解的值 x(t)、y(t)（二阶方程为 x(t)、x'(t)）。这是受迫振动、拍频、共振一章要看的图：对非自治方程，相平面只是某一时刻的快照，而 x(t) 才显示振幅随时间的起伏。一阶方程的图本来就是 y 对 t 的图，没有这个切换。",
+        timeSeriesLine: "解的图像：横轴 t，纵轴是解的值 x(t)、y(t)（二阶方程为 x(t)、x'(t)），即 (t, x) 平面上的解。这是受迫振动、拍频、共振一章要看的图：对非自治方程，相平面只是某一时刻的快照，而 x(t) 才显示振幅随时间的起伏。一阶方程的图本来就是 y 对 t 的图，没有这个切换。",
+        yLine: "平面系统里的 x 和 y 是你自己选的两个未知函数；二阶方程里第二个坐标永远是 x'（速度），不是一个独立的未知函数。预设把二阶方程写成系统时（例如「简谐振子 x'' = −x（写成系统，y = x'）」），会在名字和说明里写明 y = x'，并给出同一个方程的二阶写法。",
         functionsLead: "可以使用的函数：",
         logLine: "ln 和 log 是同一个函数：自然对数（以 e 为底），写 ln(y) 或 log(y) 都可以；log10 以 10 为底，log(x, b) 以 b 为底。函数的自变量一定要加括号：写 sin(y)，不能写 siny。",
         constantsLine: "常数：pi 和 e。",
@@ -280,7 +286,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "标记旁的「!」徽章：该点处唯一性可能失效。",
           "一阶方程的常数解画成横线：实线稳定，虚线不稳定，点线半稳定或随 t 变化；定义域边界上的常数解用点划线。",
           "橙色空心圆加中心小点：微分形式的方向场奇点（M = N = 0，此处方向无定义）。",
-          "蓝色曲线向前（t 增大），橙色曲线向后；微分形式 M dt + N dy = 0 的固定曲线只有一种颜色，因为这种形式没有方向。经过唯一性失效点的曲线画成虚线。恰当方程的紫色曲线是势函数的等值线。",
+          "每条固定曲线有自己的颜色（相平面和解的图像里相同），初值点画成同色的小圆点，方向看箭头；微分形式 M dt + N dy = 0 的固定曲线同样一种颜色，因为这种形式没有方向。经过唯一性失效点的曲线画成虚线。恰当方程的紫色曲线是势函数的等值线。（Claude 里的小部件仍是蓝色向前、橙色向后。）",
           "灰色小圆环：向量场在该采样点无定义或无穷大。",
           "零斜线（「在图上显示」里打开）：x' = 0 画成青色实线，y' = 0 画成棕色虚线（二阶方程是 x' = 0 与 x'' = 0；一阶方程只有 dy/dt = 0 一族；微分形式是 N = 0 与 M = 0）。两族的交点就是平衡点，所以一眼能看出平衡点为什么在那里；一阶方程里它是解曲线取极大、极小值的位置。零斜线是靠函数值的符号变化找出来的，所以「相切型」的零点画不出来：例如 x' = (y − x²)² 处处 ≥ 0，在抛物线 y = x² 上为零却不变号，那条零斜线不会出现在图上。",
           "特征方向：在特征值为实数的双曲平衡点处，沿线性化的特征向量画的一小段深色直线。稳定方向是实线、箭头朝里，不稳定方向是虚线、箭头朝外；退化结点只有一条（这正是它的定义特征），特征值是复数（螺旋点、中心或弱螺旋）时没有实的特征方向，不画。点开该平衡点的 ⓘ 可以看到哪条是哪条。",
@@ -323,7 +329,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "粘贴上面的代码，点「插入」。",
           "发布网站。",
         ],
-        heights: `高度：带表单约 ${EMBED_HEIGHT_WITH_CONTROLS} 像素（框宽不足 800 像素时表单会叠在图上方，约需 1820 像素），不带表单约 ${EMBED_HEIGHT_WITHOUT_CONTROLS} 像素；图下方的结果需要这个高度，框太矮时结果只能在框内滚动。宽度用 100%。`,
+        heights: `高度：Logistic 这个例子在 960 像素宽的框里，带表单约 ${EMBED_HEIGHT_WITH_CONTROLS} 像素，不带表单约 ${EMBED_HEIGHT_WITHOUT_CONTROLS} 像素（框宽不足 800 像素时表单会叠在图上方，带表单约需 2300 像素）。平面系统和二阶方程默认「两张一起」，两张图在框里上下堆叠，需要更高：带表单约 1500 像素、不带约 1350 像素（框宽不足 800 像素时约 3150 / 1700 像素）。图下方的结果需要这个高度，框太矮时结果只能在框内滚动。宽度用 100%。`,
         publicNote: "被嵌入的页面必须是公开的（不需要登录才能看到），否则学生看不到。",
       },
       claude: {
@@ -410,13 +416,13 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "Type: a planar system x' = f, y' = g; a first-order equation dy/dt = g(t, y); a first-order equation M dt + N dy = 0; or a second-order equation x'' = F(t, x, x'). Switching the type switches the input fields.",
           "Range: the entered range of the horizontal coordinate (x or t) and of the vertical one (y, or x' for a second-order equation). Equilibria, constant solutions and equation types are scanned inside it.",
           "Parameters: when the equation contains letters for constants (for example k*y*(1 - y/L)), the Parameters area under the expression lists a row \"name = value\" for each of them by itself; give each the value you want, or add a row yourself with \"Add a parameter\". The four equation types share this one set. See the Notation section below.",
-          "Sliders: tick \"Show a slider\" in a parameter's row to get a slider with its min, max and step (they open around the current value and are yours to change). While you drag, the field, the kept curves, the equilibria with their classification and the equation type are all recomputed live; for an equation whose analysis is expensive, the last results stay during the drag (dimmed, with \"Computing…\") and are updated about a quarter of a second after you stop. Examples: in the preset \"Damped oscillator\" drag b past w and the stable spiral becomes a stable node at b = w; in the preset \"Forced oscillator / beats\", in the time-series view, drag g toward 1 and the amplitude grows. The sliders are part of the link.",
+          "Sliders: tick \"Show a slider\" in a parameter's row to get a slider with its min, max and step (they open around the current value and are yours to change). While you drag, the field, the kept curves, the equilibria with their classification and the equation type are all recomputed live; for an equation whose analysis is expensive, the last results stay during the drag (dimmed, with \"Computing…\") and are updated about a quarter of a second after you stop. Examples: in the preset \"Damped oscillator\" drag b past w and the stable spiral becomes a stable node at b = w; in the preset \"Forced oscillator / beats\", in the solution graph, drag g toward 1 and the amplitude grows. The sliders are part of the link.",
           "Show on the picture: three switches, nullclines, eigen-directions and separatrices of saddles (a first-order equation has its nullcline only), all off by default; a legend in the picture's top right corner names every line. See the list of markers under \"Reading the results\" below.",
           "Lecture mode (the button at the top right): for projecting in class. Positions stay, evidence is hidden: the coordinates of equilibria and the values of constant solutions are shown (to at most 3 significant digits: (3, 2), y = 2, (3.14, 0)); what is hidden is the eigenvalues, trace and determinant, deviations and thresholds, the scan resolution, the range lines and a query's numbers. The text is enlarged. It keeps the classification names, the markers on the picture, conclusions such as \"numerically behaves like a separable equation\", and every caveat in short form: \"center or weak spiral\" is never shortened to \"center\", and the \"!\" of a point where uniqueness fails is there in every mode. Every line keeps its ⓘ, which opens everything about that line; switching recomputes nothing, and leaving the mode brings every number back at once. A downloaded PNG follows the mode (its footer still names the equation, the parameter values and the range). In a link it is lecture=1, and the embedded page takes it too; what Claude reads is not affected.",
           "Grid density: the number of arrows in each direction.",
           "Arrows: Uniform draws every arrow at the same length and encodes the magnitude in the color (the direction is easy to read, the speed is in the color); Scaled makes the length follow the magnitude (long where the field is fast, almost invisible where it is slow).",
           "Equal scale: when checked, the horizontal and vertical coordinates have the same pixels per unit, so an angle in the picture is true (the slope dy/dt on a first-order picture, the true direction of arrows and trajectories on a phase plane); to achieve that the displayed range is widened in one direction to fill the canvas. Unchecked, the entered range fills the canvas exactly, the two directions are scaled differently, and a persistent warning says that the axes are not to the same scale. The line under the picture gives the displayed range with \"(equal scale)\" or \"(filled)\".",
-          "View (planar systems and second-order equations): Phase plane draws the field and the trajectories; Time series draws, against t, every kept curve's x(t) and y(t) (for a second-order equation x(t), plus x'(t) when \"Also draw x'(t)\" is checked), with a legend; \"t from / t to\" set the horizontal range, the vertical range is the entered range. Default: autonomous → phase plane, non-autonomous (t on the right-hand side) → time series; the link remembers your choice. Equal scale has no meaning in a time series and is switched off with a persistent note; the curves are still computed by the phase plane's rule, 50 time units before and after t₀, and the picture is blank beyond that (a note says so); a click on the picture does not add a curve (use Initial value; Clear and Undo work as usual); the points found by a query are marked on the curves too.",
+          "View (planar systems and second-order equations; the switch sits right above the pictures, three choices): Phase plane draws the field and the trajectories; Solution graph draws, against t, every kept curve's x(t) and y(t) (for a second-order equation x(t), plus x'(t) when \"Also draw x'(t)\" is checked): the solution on the (t, x) plane, with a legend; Both shows the two pictures side by side (stacked when the frame is too narrow). A line above each picture says what its horizontal and vertical coordinates are. Default: a second-order equation → both, an autonomous planar system → the phase plane, a non-autonomous one (t on the right-hand side) → the solution graph; the link remembers your choice. \"t from / t to\" set the solution graph's horizontal range, its vertical range is the entered range. The two pictures are linked: one kept curve has one color in both (its initial point is a dot of that color on the phase plane); put the pointer on a curve in either picture and it is emphasized in both; hover empty space on the phase plane and the preview curve appears in both; keep, remove, undo or clear on the phase plane and both change; the points found by a query are marked in both. A click on the solution graph adds no curve: a point (t, x) cannot fix an initial value (a second-order equation also needs x', a planar system also needs y), and the pointer does not turn into a hand there; add under Initial value or click the phase plane. The solution graph is never to scale (its axes have different units) and says so under the picture; curves are computed 50 time units before and after t₀ or over the t range you enter (500 at most), and the picture is blank beyond that (a note says so).",
           "Snapshot time t: shown only for a planar system or a second-order equation whose right-hand side contains t (non-autonomous); the picture is then the field at that instant. For a second-order equation the field is called t₀: the initial values x(t₀), x'(t₀) and the solution curves start at that instant. A first-order equation dy/dt = g(t, y) never needs one: t is its horizontal axis and the whole slope field is drawn.",
           "Clear solution curves / Clear trajectories (the button's name follows the picture): removes every kept curve.",
           "Copy link: the equation, the range, the language, the view options and the starting points of the kept curves are all encoded in the link; opening it shows the same picture.",
@@ -425,7 +431,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         ],
         mouseHeading: "Mouse",
         mouse: [
-          "Hover: preview the solution curve through that point (the preview is drawn in one teal color both ways; only a kept curve splits into blue forward, orange backward).",
+          "Hover: preview the solution curve through that point (the preview is drawn in one teal color both ways; a kept curve gets a color of its own, the same in the phase plane and in the solution graph, with a dot of that color at its initial point).",
           "Click: keep that solution curve.",
           "Wheel: zoom around the pointer.",
           "Drag: pan the view.",
@@ -453,7 +459,8 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
         secondOrderLine: "In a second-order equation x'' must appear linearly (x''^2, sin(x'') and the like cannot be reduced) and its coefficient must never vanish; both are checked numerically at sample points inside the entered range and at a few fixed points near the origin, at several times, so a term that is only active away from every sample point (a piecewise branch outside the box) cannot be detected.",
         termsLine: "Terms by mode: on the phase plane of a planar system or a second-order equation the tool says \"equilibrium point\" (a point where f = g = 0, with a stability classification; for a second-order equation it is the constant solution x ≡ c); for a first-order equation it says \"constant solution\" y = c (a solution, not a point; its stability is whether the solutions on either side approach or leave it); for a differential form it says \"singular point of the direction field\" (M = N = 0, direction undefined, no stability to speak of). A kept curve is a \"solution curve\" on a first-order picture and a \"trajectory\" on a phase plane.",
         equalScaleLine: "What \"equal scale\" means in each picture: for a first-order equation the angle of a curve is its slope dy/dt; for a planar system the directions of arrows and trajectories are their true directions in the phase plane (the slope along a trajectory is dy/dx, not a rate of change in time); for a second-order equation likewise, the slope along a trajectory being dx'/dx.",
-        timeSeriesLine: "Time-series view: t horizontally, the solution's values x(t), y(t) vertically (x(t) and x'(t) for a second-order equation). This is the picture the chapter on forced oscillations, beats and resonance needs: for a non-autonomous equation the phase plane is only a snapshot at one instant, while x(t) shows how the amplitude rises and falls in time. A first-order picture is already the graph of y against t, so it has no such toggle.",
+        timeSeriesLine: "Solution graph: t horizontally, the solution's values x(t), y(t) vertically (x(t) and x'(t) for a second-order equation): the solution on the (t, x) plane. This is the picture the chapter on forced oscillations, beats and resonance needs: for a non-autonomous equation the phase plane is only a snapshot at one instant, while x(t) shows how the amplitude rises and falls in time. A first-order picture is already the graph of y against t, so it has no such switch.",
+        yLine: "In a planar system x and y are the two unknown functions you chose; in a second-order equation the second coordinate is always x' (the velocity), never an unknown function of its own. When a preset writes a second-order equation as a system (for example \"Harmonic oscillator x'' = −x (as a system, y = x')\"), its name and its note say y = x' and point at the same equation written as a second-order equation.",
         functionsLead: "Functions you may use:",
         logLine: "ln and log are the same function, the natural logarithm (base e): write ln(y) or log(y). log10 is base 10, and log(x, b) is base b. A function's argument always goes in parentheses: sin(y), never siny.",
         constantsLine: "Constants: pi and e.",
@@ -475,7 +482,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "A \"!\" badge beside a marker: uniqueness may fail at that point.",
           "Constant solutions of a first-order equation are horizontal lines: solid stable, dashed unstable, dotted semi-stable or varying with t; a constant solution on the domain edge uses a dash-dot pattern.",
           "Hollow orange circle with a center dot: a singular point of the direction field in differential form (M = N = 0, direction undefined there).",
-          "Blue curves run forward (t increasing), orange curves backward; on a differential form M dt + N dy = 0 a kept curve is one color, because the form has no direction. A curve through a point where uniqueness fails is dashed. The violet curves of an exact equation are level curves of the potential.",
+          "Every kept curve has a color of its own (the same in the phase plane and in the solution graph) and a dot of that color at its initial point; the arrows give the direction. On a differential form M dt + N dy = 0 a kept curve is one color too, because the form has no direction. A curve through a point where uniqueness fails is dashed. The violet curves of an exact equation are level curves of the potential. (The widget inside Claude still draws blue forward, orange backward.)",
           "Small gray rings: sample points where the vector field is undefined or infinite.",
           "Nullclines (switch them on under \"Show on the picture\"): x' = 0 is a solid teal curve and y' = 0 a dashed brown one (x' = 0 and x'' = 0 for a second-order equation; the single family dy/dt = 0 for a first-order equation; N = 0 and M = 0 for a differential form). The equilibria are exactly where the two families cross, so you can see why they are where they are; on a first-order picture the nullcline is where solution curves have their maxima and minima. Nullclines are found from sign changes of the function, so a zero where the function only touches zero cannot be drawn: x' = (y − x²)² is ≥ 0 everywhere and vanishes on the parabola y = x² without changing sign, and that nullcline does not appear.",
           "Eigen-directions: at a hyperbolic equilibrium with real eigenvalues, a short dark line along each eigenvector of the linearization. A stable direction is solid with arrows pointing in, an unstable one dashed with arrows pointing out; a degenerate node has only one (that is what makes it degenerate), and complex eigenvalues (spirals, center or weak spiral) have no real eigen-direction, so nothing is drawn. The ⓘ of the equilibrium says which line is which.",
@@ -518,7 +525,7 @@ export const SITE_TEXT: Record<Locale, SiteText> = {
           "Paste the code above and click Insert.",
           "Publish the site.",
         ],
-        heights: `Height: about ${EMBED_HEIGHT_WITH_CONTROLS} px with the form (below an 800 px frame width the form stacks above the picture and needs about 1820 px), about ${EMBED_HEIGHT_WITHOUT_CONTROLS} px without; the results below the picture need that height, and a shorter frame only scrolls inside. Use 100% for the width.`,
+        heights: `Height: the logistic example in a 960 px wide frame needs about ${EMBED_HEIGHT_WITH_CONTROLS} px with the form and about ${EMBED_HEIGHT_WITHOUT_CONTROLS} px without (below an 800 px frame width the form stacks above the picture and needs about 2300 px with the form). A planar system or a second-order equation opens with both pictures, stacked inside the frame, and needs more: about 1500 px with the form, about 1350 px without (below 800 px about 3150 / 1700 px). The results below the picture need that height, and a shorter frame only scrolls inside. Use 100% for the width.`,
         publicNote: "The embedding page must be public (visible without signing in), or students will not see it.",
       },
       claude: {

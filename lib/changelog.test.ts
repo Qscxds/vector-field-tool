@@ -33,11 +33,11 @@ describe("[S] changelog entries", () => {
     for (const locale of LOCALES) expect(first.action?.[locale]).toContain(MCP_ENDPOINT);
   });
 
-  it("does not speak the reduction's language to students: no lone y in the zh or en points of a second-order line other than the sentence that says the y is gone", () => {
+  it("does not speak the reduction's language to students: no lone y in the zh or en points of a second-order line other than the sentence that says the y is gone or the one that defines it (y = x', round Z1)", () => {
     for (const entry of CHANGELOG) {
       for (const locale of LOCALES) {
         for (const p of entry.points[locale]) {
-          if (/internal y|内部的 y/.test(p)) continue;
+          if (/internal y|内部的 y|y = x'/.test(p)) continue;
           if (/x''|second-order|二阶/.test(p)) expect(p, p).not.toMatch(/(?<![A-Za-z'])y(?![A-Za-z(])/);
         }
       }

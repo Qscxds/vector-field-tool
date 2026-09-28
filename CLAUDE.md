@@ -86,7 +86,9 @@ then-current status; use the current section for superseding decisions. Widget v
 - `lib/render/` pure geometry: `viewport` (`fitViewport` equal-scale by default, `equalScale: false`
   returns the entered box unchanged so it fills the canvas; cursor-anchored `zoomAt`, `panBy`,
   `resetViewport`), `arrows`, `ticks`, `axis-names` (where the axis names go without covering the
-  tick numbers), `color`, `contours` (marching squares).
+  tick numbers), `color` (the magnitude ramp; round Z2.4 `CURVE_PALETTE` / `curveColor`: one color
+  per kept curve of the WEB SHELL, the same in both pictures, no marker or overlay color, the first
+  two the old forward / backward colors), `contours` (marching squares).
 - `lib/scene.ts` the data contract: every visual tool returns a `Scene` as structuredContent (with
   `locale`, `system`, `firstOrder.spec` for analysis and `firstOrderSpec` for queries so clients can
   recompute without fabricating an analysis); the widget and the web shell only
@@ -115,18 +117,29 @@ then-current status; use the current section for superseding decisions. Widget v
   `{vv}`, the PNG footer and both shells read them here. `Scene.axes` (filled by every tool and by
   the hook) tells a reader of structuredContent the same thing, plus whether the kernel's t /
   tEnd fields are the student's t or a differential form's own parameter.
-- `lib/time-series.ts` (round Q) the time-series view's pure helpers: `defaultView` (a
-  non-autonomous planar picture opens on it, an autonomous one on the phase plane, a first-order
-  picture never offers it), `seriesOf` / `seriesName` (x(t), y(t); x(t) and x'(t) on request),
-  `timeSeriesBox` (the chosen t range across, the union of the drawn components' entered ranges
-  up, never equal-scale), `seriesCurves` (both legs of a kept curve against `TrajectoryView.times`,
-  the backward leg reversed, the start once), `seriesHits`, `parseTimeRange`.
-  `components/drawTimeSeries.ts` draws it (grid, legend, diamond hits, dashed t₀ line), shared by
-  `components/TimeSeriesCanvas.tsx` (no interaction: a click cannot fix an initial velocity) and
-  `exportTimeSeriesPng`; the footer is `exportTimeSeriesFooterText`. The curves are the SAME kept
-  curves as the phase plane (one store, one Clear / Undo / link) computed by the same rule
-  (t₀ ± CLICK_TSPAN): a wider t range shows blank and a note says so. The widget has no time-series
-  view (tool results carry no `times`).
+- `lib/time-series.ts` (round Q; round Z2 renamed the picture "solution graph" for students) the
+  solution graph's pure helpers: `ViewKind` phase / time / both (`VIEW_KINDS`, `showsPhase`,
+  `showsTime`), `defaultView` (round Z2.1: a second-order equation opens on BOTH pictures, an
+  autonomous planar system on the phase plane, a non-autonomous one on the solution graph, a
+  first-order picture never offers the switch), `seriesOf` / `seriesName` (x(t), y(t); x(t) and
+  x'(t) on request), `timeSeriesBox` (the chosen t range across, the union of the drawn
+  components' entered ranges up, never equal-scale), `seriesCurves` (both legs of a kept curve
+  against `TrajectoryView.times`, the backward leg reversed, the start once), `seriesHits`,
+  `parseTimeRange`. `components/drawTimeSeries.ts` draws it (grid, legend by LINE STYLE, crimson
+  diamond hits, dashed t₀ line; round Z2.4: kept curve i in `curveColor(i)`, x(t) solid and the
+  second component dotted, the hovered curve emphasized, the phase plane's preview in the preview
+  color), shared by `components/TimeSeriesCanvas.tsx` (its only interaction is reporting the curve
+  under the pointer through lib/linked-views; a click does nothing and the cursor stays the
+  arrow: a point (t, x) fixes no initial value) and `exportTimeSeriesPng`; the footer is
+  `exportTimeSeriesFooterText` (`exportDualFooterText` for the "both" PNG). The curves are the SAME
+  kept curves as the phase plane (one store, one Clear / Undo / link) computed by the same rule
+  (t₀ ± CLICK_TSPAN, or the t range through `traceSpans`): a wider t range shows blank and a note
+  says so. The widget has no solution graph (tool results carry no `times`).
+- `lib/linked-views.ts` (round Z2.4, pure) what links the two pictures: ONE hovered index (the
+  kept curve under the pointer in either picture; pair i of the phase plane = entry i of the graph
+  = `curveColor(i)`), `nearestSeriesCurve` (8 screen px, lib/trajectory-hit's threshold) and
+  `reduceGraphPointer`, the solution graph's pointer machine whose only action is a hover (a click
+  emits nothing; tested).
 - `lib/params.ts` (rounds T, U) the pure state of the web shell's PARAMETER AREA. The kernel always
   took `params`; the web form could not define any. `discoverParams(mode, expressions)` = the free
   symbols of the mode's expressions (`freeSymbols` / `freeSymbolsSecondOrder`, static helpers in
@@ -281,8 +294,16 @@ then-current status; use the current section for superseding decisions. Widget v
   with a selected read-only fallback, the ignored-parameters notice, a `<select>` of presets with
   one `<optgroup>` per chapter, fixed trajectory starts passed to the hook as
   `initialTrajectoryStarts` (the hook exposes `trajectoryStarts`), a vf- prefixed `<style>` layout
-  (two columns, one column below 800 px) and a container-sized canvas (ResizeObserver, width
-  clamped 300..900, height = round(width * 0.72)). Round R: the picture follows the form through
+  (two columns, one column below 800 px) and, round Z2, a picture column with up to TWO picture
+  slots (`.vf-pictures` / `.vf-picture`: side by side when two of 340 px fit, stacked otherwise and
+  below 800 px), each slot measured by its own callback-ref ResizeObserver (measured at once on
+  mount) and sizing its canvas from it (width clamped 300..900, height = round(width * 0.72));
+  the three-way view switch (Phase plane / Solution graph / Both, `data-view-switch`) sits right
+  above the pictures in every mode and on /embed, a caption above each picture names its
+  coordinates in the student's notation (`pictureCaptions`, kept in lecture mode), the phase
+  plane gets `trajectoryColors` / `starts` / `highlightColor`, the graph gets `highlightIndex` /
+  `preview` and reports its hover through the hook's `hoverTrajectory`; "Download PNG" exports the
+  phase plane, the graph or both (`exportDualPng`). Round R: the picture follows the form through
   `useDeferredValue` (`shown`): the inputs read `form`, everything computed reads `shown`, and a
   "Computing…" note floats over the picture while they differ (a slow equilibria search no longer
   hides the typed text; the kernel is not faster). The cap notice and the disabled Add button at
@@ -317,9 +338,15 @@ then-current status; use the current section for superseding decisions. Widget v
 - `app/vector-field/presets.ts` the preset library: `PRESET_GROUPS` (chapters) and `PRESETS` of
   `{ id, group, mode: AppMode, name, note, expressions, box, starts?, params?, sliders?, timeRange? }`
   (round T: logistic, newton, damped2, beats and lotka are written with parameters; round U:
-  damped2 opens with a slider on b, beats with one on g and t in [0, 70]) with hand-derived honest
-  notes; `presetState`, `presetUrl` (a shareable link per preset), `presetsByGroup`. Tests check
-  compilation per mode, both languages, unique ids, link round trips and derived key features.
+  damped2 opens with a slider on b, beats with one on g and t in [0, 70]; round Z1: the four planar
+  presets whose x' is exactly y (harmonic, damped, vdp, resonance) carry the original second-order
+  equation and "y = x'" in their NAME, open their note with the reduction, and point at their
+  second-order twin through `twin` (rendered as a link-like button under the note; the label says
+  "the same equation" only where the kernel systems agree, "related" for resonance <-> beats);
+  round Z2: `view` (those four open with both pictures)) with hand-derived honest notes;
+  `presetState`, `presetUrl` (a shareable link per preset), `presetsByGroup`. Tests check
+  compilation per mode, both languages, unique ids, link round trips, derived key features and
+  the Z1.1 rule for every system preset whose f is "y".
 - `scripts/smoke.mjs` HTTP smoke test against a running server (`npm run smoke`; 20 checks, 7
   tools, the widget URI version). `scripts/mock-host/` (`serve.mjs`, `host.html`, `sandbox.html`)
   the two-origin mock MCP Apps host (`npm run mock-host -- --mcp <url>`): the sandbox page is served
@@ -511,6 +538,17 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
   drawn by the shared drawScene, shared label strings the widget prints, the widget page itself)
   and ship them together, and do not bump at all unless the widget really changed. A change that
   only touches the web shell (parameters, sliders, overlays, lecture mode) never needs one.
+- LINKED PICTURES (round Z2.4). The phase plane and the solution graph are linked by DATA, never by
+  one drawing knowing about the other: kept curve i is pair i of `trajectories` (lib/labels-trajectory
+  groupTrajectories), entry i of the graph's `curves` and `curveColor(i)` in both; one hovered index
+  (the hook's `hoveredIndex`, set by the phase plane's own hover or by the graph through
+  `hoverTrajectory`) emphasizes it in both; the phase plane's `overlay` preview is drawn on the
+  graph as `preview`; the store (add / delete / undo / clear) and the query hits are shared already.
+  The solution graph takes NO click (a point (t, x) fixes no initial value): its pointer machine
+  (lib/linked-views) has no add or delete action, the cursor stays the arrow, and its caption says
+  where to add a curve. Per-curve colors and start dots are web-shell options of drawScene
+  (`trajectoryColors`, `starts`): the widget passes none and keeps blue forward / orange
+  backward until its next batched bump.
 - Adversarial reviews run on a frozen tag, never on a moving main. The H round's review (6 lenses,
   3 refuters per finding) confirmed 14/14 verified findings; all are fixed in `[H2-fix]` commits
   with derived tests. Every relative tolerance in the kernel is relative to magnitudes actually

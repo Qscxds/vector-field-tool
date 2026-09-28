@@ -38,11 +38,19 @@ parameters and results to explanations. The site is English by default; Chinese 
   more crossings may exist beyond the integrated span.
 - **Second-order equations** `x'' = F(t, x, x')` (t is the independent variable), entered as a full equation (`x'' + 0.5*x' + x = 0`) or
   as the right-hand side: reduced with `v = x'` to the planar system `x' = v, v' = F(t, x, v)` and analyzed as one; the phase plane is (x, x').
-- **Time-series view** for planar systems and second-order equations: the kept curves' `x(t)`, `y(t)`
-  (for a second-order equation `x(t)`, with an optional `x'(t)` overlay) against t, with a legend, its
-  own t range (`tmin` / `tmax` in the link) and the query hits marked on the curves. A non-autonomous
-  equation opens on it, an autonomous one on the phase plane (`view=phase|time` in the link). Equal
-  scale is off there, with a persistent note; the curves are the same kept curves as the phase plane.
+- **Solution graph** for planar systems and second-order equations: the kept curves' `x(t)`, `y(t)`
+  (for a second-order equation `x(t)`, with an optional `x'(t)` overlay) against t, the solution on
+  the (t, x) plane, with a legend, its own t range (`tmin` / `tmax` in the link) and the query hits
+  marked on the curves. Never equal-scale; the curves are the same kept curves as the phase plane.
+- **Both pictures at once**: a three-way switch right above the pictures (Phase plane / Solution
+  graph / Both; `view=phase|time|both` in the link) shows the phase plane and the solution graph
+  side by side (stacked when the frame is narrow), each with a caption naming its coordinates in
+  the student's notation ("Phase plane — horizontal x, vertical x' (velocity)"). A second-order
+  equation opens with both, an autonomous planar system with the phase plane, a non-autonomous
+  one with the solution graph. The two are linked: one kept curve has one color in both (a dot
+  marks its initial point), hovering a curve in either picture emphasizes it in both, the phase
+  plane's preview shows in the graph too, and a click on the graph adds nothing (a point (t, x)
+  fixes no initial value; the caption says where to add one). "Download PNG" exports both.
 - **Symbolic parameters and sliders**: write `k*y*(1 - y/L)`, `-k*(y - Ta)` or
   `x'' + 2*b*x' + w^2*x = 0` and every name that is not a variable, `pi`, `e` or a function appears
   by itself in the Parameters area under the expression (one set for all four equation types). The
@@ -80,7 +88,9 @@ parameters and results to explanations. The site is English by default; Chinese 
   self-check is stated, never hidden.
 - **Shareable links**: the whole state of the page lives in the URL (`/vector-field?...`), with a
   "Copy link" button; 24 presets grouped by chapter, each a link (five of them written with
-  parameters, two opening with a slider).
+  parameters, two opening with a slider). The four planar presets that are second-order equations
+  written as systems say so and "y = x'" in their names, open their notes with the reduction, and
+  link to the same equation written as a second-order equation (and back).
 - **`/embed` for Google Sites** and other course pages: the same parameters, a compact top bar,
   `controls=0` to hide the form. Only this route sends `Content-Security-Policy: frame-ancestors *`.
 - **PNG export** at 2x with a one-line footer (equation, entered and displayed ranges when they
