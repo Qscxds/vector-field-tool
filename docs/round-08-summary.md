@@ -1,7 +1,9 @@
 # S 段总结（2026-09-15）：更新说明 + 视图控件清理
 
+> 第 8 轮的交付物（原代号 S；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 **做到哪**：S.1–S.4 全部完成并在浏览器实测；tag `s-changelog-done`。widget 未动（`WIDGET_VERSION` 仍是 `p-2`）。
-**你需要做的**：推送后照 `docs/PQR-summary.md` 第 6 节的清单验证；连接器要**删除后重新添加**（只断开重连不够）。
+**你需要做的**：推送后照 `docs/round-07-summary.md` 第 6 节的清单验证；连接器要**删除后重新添加**（只断开重连不够）。
 
 ## 做了什么
 
@@ -11,7 +13,7 @@
 | S.2 首页渲染 | 「更新说明 / What's new」区块放在「例子」之后、「它能做什么」之前；每条：ISO 日期（`<time>`，不用相对时间）+ 标题 + 要点列表；`action` 用琥珀色边框 + 底色的 `.site-action` 框，前缀「需要你做的： / Action required:」；跟随现有 locale |
 | S.3 MCP 提示 | 同一句话（每种语言一个常量 `MCP_RECONNECT_*`，含端点地址）放在三处：首页 MCP 段落开头、`/help`「连接 Claude」一节开头（紧接标题）、更新说明的 action。三处都写明 widget 版本变了、必须删除连接器重新添加、只断开重连不够、否则静默不渲染 |
 | S.4 视图控件 | 时间序列视图下隐藏（不是置灰）「网格密度」「箭头」；切回相平面恢复；值留在表单和链接里（实测：`d=12&arrows=scaled` 切换两次后仍在）。顺便核查：「同时画 x'(t)」「t 起/止」本来就只在时间序列下显示；「等比」按 Q 段决定保留为置灰 + 常驻说明（不隐藏，因为要解释为什么无效）；t₀ 两个视图都用（曲线从 t₀ 出发） |
-| 措辞统一 | README、CLAUDE.md、`docs/PQR-summary.md`、`server.test.ts` 里的「断开并重新连接」全部改为「删除连接器再重新添加」 |
+| 措辞统一 | README、CLAUDE.md、`docs/round-07-summary.md`、`server.test.ts` 里的「断开并重新连接」全部改为「删除连接器再重新添加」 |
 
 一处与简报原文的差别：术语那条写的是「常数解、平衡点与奇点」（英文 constant solution），不是简报里的 equilibrium solution——工具里一阶方程的术语是「常数解 y = c」（P2.3 决定），更新说明必须用工具自己的词。
 
@@ -32,4 +34,4 @@
 ## 线上状态（2026-09-15 晚）
 
 - origin/main = `s-changelog-done` 之后的提交都是 CI 与文档（`00de271` 超时、`77f63bd` actions v5、`5a1d61a` 记录）；Vercel 已部署，线上 smoke 24/24。
-- 你只剩一件事：在 Claude 里**删除连接器再重新添加** `https://tools.studycase.net/mcp`（widget `p-2`），然后按 `docs/PQR-summary.md` 第 6 节第 10–11 步验证 widget。
+- 你只剩一件事：在 Claude 里**删除连接器再重新添加** `https://tools.studycase.net/mcp`（widget `p-2`），然后按 `docs/round-07-summary.md` 第 6 节第 10–11 步验证 widget。

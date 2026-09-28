@@ -223,7 +223,9 @@ direction, a 2 s wall-clock budget per call (returned as a readable `isError`), 
 ## Development notes
 
 `docs/*.md` and `CLAUDE.md` are internal working notes and are kept in Chinese (decisions, open
-questions, review rounds; code, comments and commit messages are English). Architecture in one line: one pure computation kernel
+questions, review rounds; code, comments and commit messages are English). The deliverables of every
+round are numbered `docs/round-NN-{summary,decisions,open-questions}.md`; `docs/ROUNDS.md` maps the
+numbers to the letter codes that git tags and commit prefixes still use. Architecture in one line: one pure computation kernel
 (`lib/core`, `lib/render`), one data contract (`lib/scene.ts`), two shells (the web page and the
 MCP Apps widget) sharing the same components and interaction hook; all user-facing text lives in
 `lib/labels.ts` and `lib/site-text.ts` in both languages.

@@ -6,21 +6,25 @@ Teaching tool for differential-equations courses. Claude answers students' quest
 tools; every number comes from deterministic code in `lib/core`. The AI only translates language to
 parameters and results to explanations. README.md (English, public-facing) has run / tunnel /
 deploy steps; the docs/ notes are Chinese.
-`docs/NIGHT-*.md` record the 2026-09-02 overnight build (stages A-E); `docs/FG-*.md` the 2026-09-03
-S/F/G round (sandbox spike, differential forms, bilingual labels, interaction); `docs/H-*.md` the
-H round (deploy readiness, cost caps, and the math-first re-decisions listed below);
-`docs/IJKL-*.md` the 2026-09-08/09 I-L round (dy/dt notation and the equal-scale toggle; the
-equilibria / uniqueness / non-autonomous / second-order math with three review-and-fix rounds; the
+The docs/ deliverables are numbered by round, `docs/round-NN-{summary,decisions,open-questions}.md`;
+`docs/ROUNDS.md` maps every number to its letter code, dates and closing tag (tags and commit prefixes
+keep the letter codes). Round 1 (P0, 2026-09-02): the skeleton handoff. Round 2 (NIGHT, stages A-E,
+2026-09-02): the overnight build. Round 3 (S/F/G, 2026-09-03): sandbox spike, differential forms,
+bilingual labels, interaction. Round 4 (H): deploy readiness, cost caps, and the math-first
+re-decisions listed below. Round 5 (I-L, 2026-09-08/09): dy/dt notation and the equal-scale toggle;
+the equilibria / uniqueness / non-autonomous / second-order math with three review-and-fix rounds; the
 website: URL state, /embed, /help, presets, touch gestures, PNG export, metadata; the call-first
-rule in every tool description and widget l-1); `docs/MNO-*.md` the 2026-09-09 M-O round (English
-by default with the language only from the URL, trimmed copy with folded caveats and the
-reorganized /help, the kernel freeze below; trajectory removal / undo / long-press delete,
-initial-value inputs, solution queries and the `query_solution` tool; widget o-1);
-`docs/PQR-*.md` / `docs/S-summary.md` the 2026-09-15 rounds; `docs/TUVW-*.md` the 2026-09-18 T-W
-round (symbolic parameters in the web shell and the link, parameter sliders with live
-recomputation, nullclines / eigen-directions / separatrices, lecture mode; widget t-1);
-`docs/Y-summary.md` the 2026-09-18 Y round (polish after TUVW: the "siny" guardrail, ln, lecture mode
-keeps positions, the beats box, the 50 ms budget; widget y-1).
+rule in every tool description and widget l-1. Round 6 (M-O, 2026-09-09): English by default with the
+language only from the URL, trimmed copy with folded caveats and the reorganized /help, the kernel
+freeze below; trajectory removal / undo / long-press delete, initial-value inputs, solution queries and
+the `query_solution` tool; widget o-1. Round 7 (PQR, 2026-09-15): the professor's second-order
+feedback, the time-series view, operations. Round 8 (S, 2026-09-15): the change log. Round 9 (T-W,
+2026-09-18): symbolic parameters in the web shell and the link, parameter sliders with live
+recomputation, nullclines / eigen-directions / separatrices, lecture mode; widget t-1. Round 10 (Y,
+2026-09-18): polish after T-W (the "siny" guardrail, ln, lecture mode keeps positions, the beats box,
+the 50 ms budget; widget y-1). Round 11 (Z, 2026-09-28): the professor's "what is y" feedback (the
+presets that write a second-order equation as a system say y = x'; the phase plane and the solution
+graph side by side, linked, with the view switch above the pictures).
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
@@ -385,7 +389,7 @@ No numerical threshold is changed; the freeze continues for unrelated numerical 
 by agents during the J rounds (equilibria / uniqueness / non-autonomous / second-order and the three
 review-and-fix rounds); they are unverified heuristics that may only change when a real classroom
 failure drives it, with a derived test for that failure. The extreme-box open questions
-(`docs/IJKL-open-questions.md`: sin(1/y), the 637 roots of sin(100y), K >= 1e9 systems, half-widths
+(`docs/round-05-open-questions.md`: sin(1/y), the 637 roots of sin(100y), K >= 1e9 systems, half-widths
 >= 1.5e5) stay as they are.
 
 - `uniqueness.ts`: `LIPSCHITZ_MAX_LEVELS` 60 most offset levels per side; `LIPSCHITZ_FIRST_FRACTION`
@@ -464,7 +468,7 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
 - Changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and the user must
   remove and re-add the connector in Claude (it keeps the widget resource address from when the connector was added: disconnecting and reconnecting is NOT enough), and append a lib/changelog.ts entry whose `action` says so.
 - Local compute in the sandbox works WITHOUT `unsafe-eval`: mathjs `compile()` builds closures, no
-  code strings (S spike, `docs/FG-decisions.md`). `new Function` is blocked there; never depend on it.
+  code strings (S spike, `docs/round-03-decisions.md`). `new Function` is blocked there; never depend on it.
 - Tools take `locale` (`zh` | `en`, optional, default `en` since round M; H2.9 had it REQUIRED, but
   the isError of a forgotten locale reached the student, whereas the default only costs an English
   summary): the model sets `zh` when the student writes Chinese. The site is English by default and

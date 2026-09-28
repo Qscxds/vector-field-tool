@@ -1,5 +1,7 @@
 # 夜跑总结（2026-09-02 夜）
 
+> 第 2 轮的交付物（原代号 NIGHT；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 仓库已推到 GitHub：<https://github.com/Qscxds/vector-field-tool>（public，44 个提交、7 个 tag 与本地一致，2026-09-03）。
 
 **跑到了哪个阶段**：A、B、C、D、E 五个阶段全部完成，之后又根据后台审查修了计算内核的 13 处 bug（`[A-fix]` 系列提交）。
@@ -17,7 +19,7 @@
 | E | `app/widget/page.tsx` 用 Scene 渲染；四个工具挂 `_meta.ui.resourceUri`；版本号 `e-1` | 冒烟 15/15；本地模拟主机（不同源沙箱 iframe + 规范 CSP）中 `analyze_system` 与 `analyze_first_order` 两种场景渲染成功、握手与 size-changed 正常 | `e-widget-done` |
 | 修复 | classify 容差与溢出、equilibria 二重根、slope-field 极点与自治性、integrate 边界情况、parse 安全加固 | 180 个单测；tsc；build | `night-final` |
 
-所有偏离原文档的决定：`docs/NIGHT-decisions.md`。需要你拍板的事：`docs/NIGHT-open-questions.md`。
+所有偏离原文档的决定：`docs/round-02-decisions.md`。需要你拍板的事：`docs/round-02-open-questions.md`。
 
 ## 审查结论
 

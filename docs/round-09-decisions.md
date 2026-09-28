@@ -1,5 +1,7 @@
 # TUVW 轮决定记录（2026-09-18）
 
+> 第 9 轮的交付物（原代号 TUVW；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 ## 1. 开工前的工作区勘察
 
 - `git log --oneline s-changelog-done..HEAD`：4 个提交，全部是 `[S]` 前缀、作者 Vc、日期 2026-09-15——`00de271`（vitest `testTimeout` 20 s）、`77f63bd`（CI 的 checkout / setup-node 升 v5）、`5a1d61a`、`8998eca`（S-summary 文档）。diffstat 只有 `.github/workflows/ci.yml`、`vitest.config.mts`、两份 docs，共 14 行。**没有别的 AI 或人改过代码**，没有需要先读懂的外来改动。

@@ -147,35 +147,37 @@ MCP：POST → 每请求新建 server / transport → 工具输入 schema → �
 
 共 16 份原始记录，以下 SHA-256 按原文件字节计算。归档正文仅统一换行并降低 Markdown 标题层级，代码围栏内的内容保持原样。
 
+2026-09-28（第 11 轮）：原始文件已按轮次改名为 `round-NN-*.md`（轮次、代号与 tag 的对照表见 [ROUNDS.md](ROUNDS.md)）。改名时每份文件只在标题下加了一行轮次说明、并把文件内交叉引用的文件名换成新名，其余一字未动；所以下表的 SHA-256 仍是改名前的原文件哈希（提交 `1fe1b4e`），核对时用 `git show 1fe1b4e:docs/<原名>` 取原文件。
+
 | 顺序 | 原始文件 / 归档位置 | SHA-256 |
 |---|---|---|
-| 1 | [P0-handoff.md](P0-handoff.md) · [本文全文](#history-p0-handoff) | `158dcedb6ae8b0603226fa6c3525bafa2a599ef81bd6ba285bf7e731de50eb42` |
-| 2 | [NIGHT-summary.md](NIGHT-summary.md) · [本文全文](#history-night-summary) | `66e7cf0b0c1e8afca7e26ada3fc3c7c6163e0ede2288025b936d08a79f9eb838` |
-| 3 | [NIGHT-decisions.md](NIGHT-decisions.md) · [本文全文](#history-night-decisions) | `7ec2c5d3667cbf68f829ade6087e58ad975f0d41886afefd35b84697348a49a3` |
-| 4 | [NIGHT-open-questions.md](NIGHT-open-questions.md) · [本文全文](#history-night-open-questions) | `eca6f2c568f04045a5f3838f9859e22f48af9ed083ad0a685538420bd14d3aa2` |
-| 5 | [FG-summary.md](FG-summary.md) · [本文全文](#history-fg-summary) | `6677ac556b5082c18c98b7a0b28cadc15c3955056ec7d2aff09a9823aa5739c7` |
-| 6 | [FG-decisions.md](FG-decisions.md) · [本文全文](#history-fg-decisions) | `855f77c6685de51fd98f97ced61104632b526442ffb9fae0e6bd4dc734d6a6ea` |
-| 7 | [FG-open-questions.md](FG-open-questions.md) · [本文全文](#history-fg-open-questions) | `2f690dde9ab711137387789f20c32111c436742bdf006ac0d110a95296d6b8b1` |
-| 8 | [H-summary.md](H-summary.md) · [本文全文](#history-h-summary) | `83175d0fdb296b1dcf9342529a164d317b4dc670946fd369e56cf45a8fabd48d` |
-| 9 | [H-decisions.md](H-decisions.md) · [本文全文](#history-h-decisions) | `10781bd06fe681ba8c3765cf15bc16a8fbb89d996eccaf803787e44664859f8a` |
-| 10 | [H-open-questions.md](H-open-questions.md) · [本文全文](#history-h-open-questions) | `c51213764d46f5b2a92fcd56277042aacd6f56fccc0b86da5a45cc0e84f0cdac` |
-| 11 | [IJKL-summary.md](IJKL-summary.md) · [本文全文](#history-ijkl-summary) | `455f80653b66f5b6e8e3bba47cc8317cf472746219b1f4b80f8d9a4e96fe61f0` |
-| 12 | [IJKL-decisions.md](IJKL-decisions.md) · [本文全文](#history-ijkl-decisions) | `09e20450a6058620d8cc0607785ce4f23644fdbc918e41c3cdf84813e68d622e` |
-| 13 | [IJKL-open-questions.md](IJKL-open-questions.md) · [本文全文](#history-ijkl-open-questions) | `445dc9c512fcec4aaaae9e7f155e37d4794e60005ca605ff658b268b307dc438` |
-| 14 | [MNO-summary.md](MNO-summary.md) · [本文全文](#history-mno-summary) | `0a893a051e345ccebbdccb48385a32d5c30a509516ec77af8e5dcd53166318a0` |
-| 15 | [MNO-decisions.md](MNO-decisions.md) · [本文全文](#history-mno-decisions) | `3427ee6cefff40320713c252139f83d15f6bda41a4dd82f1f57301d731ab1aeb` |
-| 16 | [MNO-open-questions.md](MNO-open-questions.md) · [本文全文](#history-mno-open-questions) | `556fa57ad0de6c6e8add2d98431bb906211ddf28d672dc0c80b12b5c6c7ed6f3` |
+| 1 | [round-01-handoff.md](round-01-handoff.md)（原名 P0-handoff.md）· [本文全文](#history-p0-handoff) | `158dcedb6ae8b0603226fa6c3525bafa2a599ef81bd6ba285bf7e731de50eb42` |
+| 2 | [round-02-summary.md](round-02-summary.md)（原名 NIGHT-summary.md）· [本文全文](#history-night-summary) | `66e7cf0b0c1e8afca7e26ada3fc3c7c6163e0ede2288025b936d08a79f9eb838` |
+| 3 | [round-02-decisions.md](round-02-decisions.md)（原名 NIGHT-decisions.md）· [本文全文](#history-night-decisions) | `7ec2c5d3667cbf68f829ade6087e58ad975f0d41886afefd35b84697348a49a3` |
+| 4 | [round-02-open-questions.md](round-02-open-questions.md)（原名 NIGHT-open-questions.md）· [本文全文](#history-night-open-questions) | `eca6f2c568f04045a5f3838f9859e22f48af9ed083ad0a685538420bd14d3aa2` |
+| 5 | [round-03-summary.md](round-03-summary.md)（原名 FG-summary.md）· [本文全文](#history-fg-summary) | `6677ac556b5082c18c98b7a0b28cadc15c3955056ec7d2aff09a9823aa5739c7` |
+| 6 | [round-03-decisions.md](round-03-decisions.md)（原名 FG-decisions.md）· [本文全文](#history-fg-decisions) | `855f77c6685de51fd98f97ced61104632b526442ffb9fae0e6bd4dc734d6a6ea` |
+| 7 | [round-03-open-questions.md](round-03-open-questions.md)（原名 FG-open-questions.md）· [本文全文](#history-fg-open-questions) | `2f690dde9ab711137387789f20c32111c436742bdf006ac0d110a95296d6b8b1` |
+| 8 | [round-04-summary.md](round-04-summary.md)（原名 H-summary.md）· [本文全文](#history-h-summary) | `83175d0fdb296b1dcf9342529a164d317b4dc670946fd369e56cf45a8fabd48d` |
+| 9 | [round-04-decisions.md](round-04-decisions.md)（原名 H-decisions.md）· [本文全文](#history-h-decisions) | `10781bd06fe681ba8c3765cf15bc16a8fbb89d996eccaf803787e44664859f8a` |
+| 10 | [round-04-open-questions.md](round-04-open-questions.md)（原名 H-open-questions.md）· [本文全文](#history-h-open-questions) | `c51213764d46f5b2a92fcd56277042aacd6f56fccc0b86da5a45cc0e84f0cdac` |
+| 11 | [round-05-summary.md](round-05-summary.md)（原名 IJKL-summary.md）· [本文全文](#history-ijkl-summary) | `455f80653b66f5b6e8e3bba47cc8317cf472746219b1f4b80f8d9a4e96fe61f0` |
+| 12 | [round-05-decisions.md](round-05-decisions.md)（原名 IJKL-decisions.md）· [本文全文](#history-ijkl-decisions) | `09e20450a6058620d8cc0607785ce4f23644fdbc918e41c3cdf84813e68d622e` |
+| 13 | [round-05-open-questions.md](round-05-open-questions.md)（原名 IJKL-open-questions.md）· [本文全文](#history-ijkl-open-questions) | `445dc9c512fcec4aaaae9e7f155e37d4794e60005ca605ff658b268b307dc438` |
+| 14 | [round-06-summary.md](round-06-summary.md)（原名 MNO-summary.md）· [本文全文](#history-mno-summary) | `0a893a051e345ccebbdccb48385a32d5c30a509516ec77af8e5dcd53166318a0` |
+| 15 | [round-06-decisions.md](round-06-decisions.md)（原名 MNO-decisions.md）· [本文全文](#history-mno-decisions) | `3427ee6cefff40320713c252139f83d15f6bda41a4dd82f1f57301d731ab1aeb` |
+| 16 | [round-06-open-questions.md](round-06-open-questions.md)（原名 MNO-open-questions.md）· [本文全文](#history-mno-open-questions) | `556fa57ad0de6c6e8add2d98431bb906211ddf28d672dc0c80b12b5c6c7ed6f3` |
 
 <a id="history-archive"></a>
 
 ## 完整历史记录
 
-<!-- BEGIN SOURCE P0-handoff.md -->
+<!-- BEGIN SOURCE round-01-handoff.md -->
 <a id="history-p0-handoff"></a>
 
-## 历史 1：P0-handoff.md
+## 历史 1：round-01-handoff.md（原名 P0-handoff.md）
 
-来源：[P0-handoff.md](P0-handoff.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-01-handoff.md](round-01-handoff.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### P0 交接：骨架轮完成（2026-09-02）
 
@@ -228,16 +230,16 @@ JSON-RPC 手测见 README「手动验证 MCP 端点」。不依赖 Claude 复现
 
 按原始路线图：mathjs 解析、网格采样、RK4、数值求平衡点、雅可比特征值与稳定性分类，全部放进 `lib/core/`，用课本上有解析解的例子（线性系统、简谐振子、Lotka-Volterra）写 vitest。P1 不碰 MCP 工具和 widget（那是 P2/P3）。
 
-<!-- END SOURCE P0-handoff.md -->
+<!-- END SOURCE round-01-handoff.md -->
 
 ---
 
-<!-- BEGIN SOURCE NIGHT-summary.md -->
+<!-- BEGIN SOURCE round-02-summary.md -->
 <a id="history-night-summary"></a>
 
-## 历史 2：NIGHT-summary.md
+## 历史 2：round-02-summary.md（原名 NIGHT-summary.md）
 
-来源：[NIGHT-summary.md](NIGHT-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-02-summary.md](round-02-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### 夜跑总结（2026-09-02 夜）
 
@@ -258,7 +260,7 @@ JSON-RPC 手测见 README「手动验证 MCP 端点」。不依赖 Claude 复现
 | E | `app/widget/page.tsx` 用 Scene 渲染；四个工具挂 `_meta.ui.resourceUri`；版本号 `e-1` | 冒烟 15/15；本地模拟主机（不同源沙箱 iframe + 规范 CSP）中 `analyze_system` 与 `analyze_first_order` 两种场景渲染成功、握手与 size-changed 正常 | `e-widget-done` |
 | 修复 | classify 容差与溢出、equilibria 二重根、slope-field 极点与自治性、integrate 边界情况、parse 安全加固 | 180 个单测；tsc；build | `night-final` |
 
-所有偏离原文档的决定：`docs/NIGHT-decisions.md`。需要你拍板的事：`docs/NIGHT-open-questions.md`。
+所有偏离原文档的决定：`docs/round-02-decisions.md`。需要你拍板的事：`docs/round-02-open-questions.md`。
 
 #### 审查结论
 
@@ -356,16 +358,16 @@ p0-verified
 
 这三处改动其实一直在工作区里、也一直被每次门禁覆盖，只是早先那一轮 `git commit` 链因为 tsc 撞上审查子智能体的临时文件而中断，没有提交成功。`night-final` 标签已移到包含它们的最后一个提交。
 
-<!-- END SOURCE NIGHT-summary.md -->
+<!-- END SOURCE round-02-summary.md -->
 
 ---
 
-<!-- BEGIN SOURCE NIGHT-decisions.md -->
+<!-- BEGIN SOURCE round-02-decisions.md -->
 <a id="history-night-decisions"></a>
 
-## 历史 3：NIGHT-decisions.md
+## 历史 3：round-02-decisions.md（原名 NIGHT-decisions.md）
 
-来源：[NIGHT-decisions.md](NIGHT-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-02-decisions.md](round-02-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### 夜跑决策记录（2026-09-02 夜）
 
@@ -466,16 +468,16 @@ p0-verified
 - **抖动原因**：画布宽度按带内边距的容器外宽减 2 计算，横向溢出 18 像素；widget 内一旦出现纵向滚动条又会吃掉约 15 像素宽度，画布随之变窄变矮、内容装得下、滚动条消失、宽度回涨、再溢出，形成振荡，每轮还向主机上报一次尺寸。
 - **修法**：画布宽度取一个无内边距的内层容器；widget 文档 `html, body { overflow: hidden }`（主机靠 size-changed 调高，不需要内部滚动条）；宽度变化不足 4 像素不重绘。资源版本升到 `e-2`，需要重连连接器。
 
-<!-- END SOURCE NIGHT-decisions.md -->
+<!-- END SOURCE round-02-decisions.md -->
 
 ---
 
-<!-- BEGIN SOURCE NIGHT-open-questions.md -->
+<!-- BEGIN SOURCE round-02-open-questions.md -->
 <a id="history-night-open-questions"></a>
 
-## 历史 4：NIGHT-open-questions.md
+## 历史 4：round-02-open-questions.md（原名 NIGHT-open-questions.md）
 
-来源：[NIGHT-open-questions.md](NIGHT-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-02-open-questions.md](round-02-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### 夜跑待决事项（2026-09-02 夜）
 
@@ -492,11 +494,11 @@ p0-verified
 
 #### 被标记的失败测试
 
-无。171 个测试全部通过，没有 `it.skip` / `it.fails`。夜里有五处测试期望被改动，全部是推导错误的改正或收紧，逐条记录在 NIGHT-decisions.md（雅可比奇异点选错、SDK 错误包装形式、单位矩阵是星形结点、(y-1)³ 不稳定、箭头翼正负号约定）。
+无。171 个测试全部通过，没有 `it.skip` / `it.fails`。夜里有五处测试期望被改动，全部是推导错误的改正或收紧，逐条记录在 round-02-decisions.md（雅可比奇异点选错、SDK 错误包装形式、单位矩阵是星形结点、(y-1)³ 不稳定、箭头翼正负号约定）。
 
 #### 后台审查里没有处理的发现
 
-审查（数学 / 数值 / 测试诚实性三个视角）共 42 条，已修复的见 NIGHT-decisions.md「A-fix」一节。以下有意未动：
+审查（数学 / 数值 / 测试诚实性三个视角）共 42 条，已修复的见 round-02-decisions.md「A-fix」一节。以下有意未动：
 
 - integrate：`accept()` 会重复求一次场值、DOPRI5 的 FSAL 性质没用上（每步多算一次右端）。性能问题，n 最多几千，可读性优先。
 - integrate：缺「自适应全局误差与 rtol 成比例」的测试。控制器的比例关系不是严格可推导的，怕写成凑数的期望值，没加。
@@ -510,7 +512,7 @@ p0-verified
 
 #### 工具安装
 
-- **playwright：未安装**（150MB 浏览器下载，无人值守夜里不赌它在 Windows 上能装好）。改用会话自带的浏览器面板做了等价的冒烟，步骤与结果见 NIGHT-decisions.md「D 阶段」。
+- **playwright：未安装**（150MB 浏览器下载，无人值守夜里不赌它在 Windows 上能装好）。改用会话自带的浏览器面板做了等价的冒烟，步骤与结果见 round-02-decisions.md「D 阶段」。
 
 #### 其他
 
@@ -519,21 +521,21 @@ p0-verified
 
 #### 补记：安全视角已返回
 
-安全视角共 9 条，除以下两条外都已修复（见 NIGHT-decisions.md「解析器加固」）：
+安全视角共 9 条，除以下两条外都已修复（见 round-02-decisions.md「解析器加固」）：
 
 - mathjs 的隐式乘法语义 `2e-3x` = 0.002·x、`50%` = 0.5、`#` 后为注释。这是 mathjs 的既定语法，没有改；如果要对学生隐藏这些，需要在 parse.ts 里对原始字符串做额外拒绝。
 - 51 条发现的两两交叉验证已完成：41 条驳回（多数因已修复而无法复现）、2 条有争议、8 条确认。确认项里 classify 的大数溢出已修（`9e56ea9`），其余 7 条就是本文件「后台审查里没有处理的发现」一节列出的那些。
 
-<!-- END SOURCE NIGHT-open-questions.md -->
+<!-- END SOURCE round-02-open-questions.md -->
 
 ---
 
-<!-- BEGIN SOURCE FG-summary.md -->
+<!-- BEGIN SOURCE round-03-summary.md -->
 <a id="history-fg-summary"></a>
 
-## 历史 5：FG-summary.md
+## 历史 5：round-03-summary.md（原名 FG-summary.md）
 
-来源：[FG-summary.md](FG-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-03-summary.md](round-03-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### S/F/G 轮总结（2026-09-03）
 
@@ -610,16 +612,16 @@ probe: {"harness":"after-3s","canvas":true,"canvasSize":[640,435],"nonWhite":897
 4. 看 FG-open-questions 里 G 阶段的 8 条待拍板项。
 5. 若 widget 交互在 Claude 里有问题而网页外壳没有：先看 iframe 控制台是否出现 `localComputeUnavailable` 文案（编译被挡）；回滚点 `g-render-done`（widget 回到静态 e-2，需再次重连连接器）。
 
-<!-- END SOURCE FG-summary.md -->
+<!-- END SOURCE round-03-summary.md -->
 
 ---
 
-<!-- BEGIN SOURCE FG-decisions.md -->
+<!-- BEGIN SOURCE round-03-decisions.md -->
 <a id="history-fg-decisions"></a>
 
-## 历史 6：FG-decisions.md
+## 历史 6：round-03-decisions.md（原名 FG-decisions.md）
 
-来源：[FG-decisions.md](FG-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-03-decisions.md](round-03-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### F/G 轮决策记录（2026-09-03）
 
@@ -680,16 +682,16 @@ probe: {"harness":"after-3s","canvas":true,"canvasSize":[640,435],"nonWhite":897
 
 在 widget 里平移 2xy dx + (x²+y²) dy = 0 时发现：原始范围 [−2,2]² 报「没有常数解」，平移后的范围却报「y = 0，稳定性随 x 变化」。推导：沿 y = 0 有 M = 0、N = x² ≠ 0（x ≠ 0），dy = 0 在奇点 (0,0) 两侧都成立，y = 0 确实是常数解；x > 0 一侧吸引（斜率 ≈ −2y/x）、x < 0 一侧排斥，所以 `varies` 是对的。原代码要求每个探测 x 处 N ≠ 0，对称范围的中点探测 x = 0 正好落在奇点上，于是整条线被否定——答案随范围是否对称翻转，这不能接受。修正：探测点上 M = N = 0 视为「线穿过奇点」而跳过（既不算反例也不算证据），要求至少 3 个有效探测点，稳定性也只在有效探测点上比较；`y dx + y dy = 0` 这种整条线都奇异的情况仍然不报。新增 3 个测试，期望值来自上面的推导。提交 `[G-fix] slope-field: ...`，在 `g-widget-done` 之后。
 
-<!-- END SOURCE FG-decisions.md -->
+<!-- END SOURCE round-03-decisions.md -->
 
 ---
 
-<!-- BEGIN SOURCE FG-open-questions.md -->
+<!-- BEGIN SOURCE round-03-open-questions.md -->
 <a id="history-fg-open-questions"></a>
 
-## 历史 7：FG-open-questions.md
+## 历史 7：round-03-open-questions.md（原名 FG-open-questions.md）
 
-来源：[FG-open-questions.md](FG-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-03-open-questions.md](round-03-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### F/G 轮待决事项（2026-09-03）
 
@@ -728,22 +730,22 @@ probe: {"harness":"after-3s","canvas":true,"canvasSize":[640,435],"nonWhite":897
 - **常数解穿过奇点时的判定**（见 FG-decisions「G-fix」）：2xy dx + (x²+y²) dy = 0 的 y = 0 是常数解，但它穿过奇点 (0,0)。修正前只要某个探测 x 恰好落在奇点上（对称范围时 x = 0 正好是探测点）就整条否定，结果随范围是否对称而翻转；修正后奇点处的探测点跳过、要求至少 3 个有效探测点。这一修正是 G 阶段在 widget 里平移时发现的。
 - Claude 实机验证 widget 的交互（滚轮、拖动、悬停、点击）还没做；本地模拟主机在规范 CSP 下验证过。见 FG-summary 的清单。
 
-<!-- END SOURCE FG-open-questions.md -->
+<!-- END SOURCE round-03-open-questions.md -->
 
 ---
 
-<!-- BEGIN SOURCE H-summary.md -->
+<!-- BEGIN SOURCE round-04-summary.md -->
 <a id="history-h-summary"></a>
 
-## 历史 8：H-summary.md
+## 历史 8：round-04-summary.md（原名 H-summary.md）
 
-来源：[H-summary.md](H-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-04-summary.md](round-04-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### H 轮总结（2026-09-03）
 
 - **做到哪了**：H1（上线准备）、H2（数学优先重新拍板，十条全部）完成；对抗式审查确认的 14 条全部修复；tsc 0 错误、337 个测试全绿、build 通过、隧道 smoke 15/15；main 线性，已推 origin。
 - **最后一个良好 tag**：`h2-reviewed`（审查修复之后）；之前的回滚点依次是 `h2-math-done`、`h1-deploy-ready`。
-- **你要手动做的**：去 Vercel 导入仓库、关 Deployment Protection、绑域名、在项目环境变量设 `BASE_URL=https://tools.<域名>` 后重新部署；Claude 里断开重连连接器（widget 版本 h-2）；看 `docs/H-open-questions.md` 里的拍板项（最要紧的是积分器默认 `atol`）。
+- **你要手动做的**：去 Vercel 导入仓库、关 Deployment Protection、绑域名、在项目环境变量设 `BASE_URL=https://tools.<域名>` 后重新部署；Claude 里断开重连连接器（widget 版本 h-2）；看 `docs/round-04-open-questions.md` 里的拍板项（最要紧的是积分器默认 `atol`）。
 
 **H1 完成，可以部署了。** 步骤在 README「部署到 Vercel」；绑完域名不设 `BASE_URL` 会静默白屏，日志里会有 `[base-url]` 警告提醒。
 
@@ -883,16 +885,16 @@ a61ff69 [H2-fix] integrate: relative equilibrium rule, stability-capped steps, e
 be58eff [H2] equilibria: a continuum needs geometry, not just a count; classify: repeated-root caveat and a field-scale floor
 ```
 
-<!-- END SOURCE H-summary.md -->
+<!-- END SOURCE round-04-summary.md -->
 
 ---
 
-<!-- BEGIN SOURCE H-decisions.md -->
+<!-- BEGIN SOURCE round-04-decisions.md -->
 <a id="history-h-decisions"></a>
 
-## 历史 9：H-decisions.md
+## 历史 9：round-04-decisions.md（原名 H-decisions.md）
 
-来源：[H-decisions.md](H-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-04-decisions.md](round-04-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### H 轮决策记录（2026-09-03）
 
@@ -995,16 +997,16 @@ be58eff [H2] equilibria: a continuum needs geometry, not just a count; classify:
 - **C7 常数解与自治检验的绝对下界**（同一提交）：|M| ≤ 1e-9·max(1, mScale) 让 dy/dx = e^(−x) 在 [30, 40] 上有几百个「常数解」并被判为自治。全部改为相对 M、N、斜率的实测量级；M 或 N 在探测点无定义时跳过该点（dy/dx = y/x 的 y = 0 在对称盒上找回来了）。
 - **C9 课本恰当方程超 2 秒预算**（`d3fc151`）：势函数每点约 130 次求值，等值线阶段对 8 条水平线各自重采 61×61 网格（387 万次 M/N 求值），Zill §2.4 例 3 在默认参数下就超时，而报错却怪 density 和范围。改为采样一次网格、所有水平线复用（`sampleGrid` / `contourSegmentsFromGrid` / `potentialLevelsFromValues`），并给 sampleField、detectForms、firstOrderEquilibria、firstOrderSingularities 加上 checkpoint；预算报错文案改成说明哪些阶段可能贵。同一提交里：只有 exact 判定为 consistent 才算势函数（borderline 不再产生「方程恰当」句子和等值线）；解析错误按 M、N 各自编译归因；formatNumber 不再吞掉 1e30 的指数；缩放后清掉旧的悬停预览；widget 每次新结果都重置轨线；两个外壳「以下结果按范围…计算」用的是实际计算范围（防抖期间不再指着新范围）。widget 版本 h-2。
 
-<!-- END SOURCE H-decisions.md -->
+<!-- END SOURCE round-04-decisions.md -->
 
 ---
 
-<!-- BEGIN SOURCE H-open-questions.md -->
+<!-- BEGIN SOURCE round-04-open-questions.md -->
 <a id="history-h-open-questions"></a>
 
-## 历史 10：H-open-questions.md
+## 历史 10：round-04-open-questions.md（原名 H-open-questions.md）
 
-来源：[H-open-questions.md](H-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-04-open-questions.md](round-04-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### H 轮待决事项（2026-09-03）
 
@@ -1055,16 +1057,16 @@ be58eff [H2] equilibria: a continuum needs geometry, not just a count; classify:
 - **所有 isError 文本都是英文**，与必填的 `locale` 无关——有意为之（错误是给模型看的），记录在此。
 - **`star_node` 在 sqrt(tol) 带内的判定**已加 caveat；带宽本身（√1e-9 ≈ 3e-5）是 A 阶段定的。
 
-<!-- END SOURCE H-open-questions.md -->
+<!-- END SOURCE round-04-open-questions.md -->
 
 ---
 
-<!-- BEGIN SOURCE IJKL-summary.md -->
+<!-- BEGIN SOURCE round-05-summary.md -->
 <a id="history-ijkl-summary"></a>
 
-## 历史 11：IJKL-summary.md
+## 历史 11：round-05-summary.md（原名 IJKL-summary.md）
 
-来源：[IJKL-summary.md](IJKL-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-05-summary.md](round-05-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### I–L 轮总结（2026-09-08/09 夜跑）
 
@@ -1426,16 +1428,16 @@ cd E:\project\vector-field-tool && git push origin main && git push origin i-not
 
 推完等 Vercel 部署结束，跑 `npm run smoke -- https://tools.studycase.net/mcp`（应看到 widget uri `?v=l-1`、19/19），然后在 Claude 里断开并重新连接连接器。
 
-<!-- END SOURCE IJKL-summary.md -->
+<!-- END SOURCE round-05-summary.md -->
 
 ---
 
-<!-- BEGIN SOURCE IJKL-decisions.md -->
+<!-- BEGIN SOURCE round-05-decisions.md -->
 <a id="history-ijkl-decisions"></a>
 
-## 历史 12：IJKL-decisions.md
+## 历史 12：round-05-decisions.md（原名 IJKL-decisions.md）
 
-来源：[IJKL-decisions.md](IJKL-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-05-decisions.md](round-05-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### I–L 轮决策记录（2026-09-08/09 夜跑）
 
@@ -1589,16 +1591,16 @@ cd E:\project\vector-field-tool && git push origin main && git push origin i-not
 - **行尾**：仓库按文件混用 LF / CRLF，每个智能体把改过的文件恢复到 index 里的约定再提交（CLAUDE.md 是混合行尾文件，K3 rebase 时整文件冲突，按 main 的版本逐段插入）。
 - **提交粒度**：一个模块一个提交，`npm test` 每个提交绿；`git add` 用显式路径；JB 的一组改动只有一个提交（内核改动同时改了 tools.test 和 labels.test 的期望，拆开会有红的中间提交）；`[J-fix] uniqueness` 和 `interactive` 拆成两个提交而不是任务写的一个。
 
-<!-- END SOURCE IJKL-decisions.md -->
+<!-- END SOURCE round-05-decisions.md -->
 
 ---
 
-<!-- BEGIN SOURCE IJKL-open-questions.md -->
+<!-- BEGIN SOURCE round-05-open-questions.md -->
 <a id="history-ijkl-open-questions"></a>
 
-## 历史 13：IJKL-open-questions.md
+## 历史 13：round-05-open-questions.md（原名 IJKL-open-questions.md）
 
-来源：[IJKL-open-questions.md](IJKL-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-05-open-questions.md](round-05-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### I–L 轮待决事项（2026-09-08/09 夜跑）
 
@@ -1677,16 +1679,16 @@ cd E:\project\vector-field-tool && git push origin main && git push origin i-not
 - 工作树：报告提到 `E:\project\vft-wt\j4` 等 worktree 和 `wip/*` 分支「留在原地」；清理前先 `git worktree list` / `git branch --list 'wip/*'` 看哪些还在（本文档没有核实）。
 - 所有 `isError` 文本仍是英文（给模型看，有意），与 H 轮一致。
 
-<!-- END SOURCE IJKL-open-questions.md -->
+<!-- END SOURCE round-05-open-questions.md -->
 
 ---
 
-<!-- BEGIN SOURCE MNO-summary.md -->
+<!-- BEGIN SOURCE round-06-summary.md -->
 <a id="history-mno-summary"></a>
 
-## 历史 14：MNO-summary.md
+## 历史 14：round-06-summary.md（原名 MNO-summary.md）
 
-来源：[MNO-summary.md](MNO-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-06-summary.md](round-06-summary.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### M–O 轮总结（2026-09-09）
 
@@ -1888,16 +1890,16 @@ o-mcp-done p0-verified s-spike-done
 12. **Claude：widget 交互**：悬停固定轨线高亮、点击删除、Undo 恢复；`x' = y, y' = −x` 从 (1, 0) 查 x = 0 → 6 个菱形标记。失败：`n-features-done`。
 13. **`npm run smoke -- https://tools.studycase.net/mcp`** —— 20/20，7 个工具，`widget asset URLs are absolute` PASS 且指向你的域名，widget uri `?v=o-1`。失败：`n-features-done`（回到 l-1，smoke 期望也随之回到 l-1）；`[base-url]` 警告看 Vercel 构建日志。
 
-<!-- END SOURCE MNO-summary.md -->
+<!-- END SOURCE round-06-summary.md -->
 
 ---
 
-<!-- BEGIN SOURCE MNO-decisions.md -->
+<!-- BEGIN SOURCE round-06-decisions.md -->
 <a id="history-mno-decisions"></a>
 
-## 历史 15：MNO-decisions.md
+## 历史 15：round-06-decisions.md（原名 MNO-decisions.md）
 
-来源：[MNO-decisions.md](MNO-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-06-decisions.md](round-06-decisions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### M–O 轮决策记录（2026-09-09）
 
@@ -1979,16 +1981,16 @@ o-mcp-done p0-verified s-spike-done
 - **智能体输出纪律**沿用上一轮：固定小节（summary / commits / done / notDone / decisions / openQuestions / apiChanges），长材料写 scratchpad，单次工具输出 ≤ 约 200 行；本文档同样分块写。
 - **提交粒度**：`git add` 显式路径；每个提交 `npm test` 绿（NB 重建行尾后的中间提交除外，见「环境」）；M 完成后单独一个 docs 提交（05a67e3）以便先部署 M。
 
-<!-- END SOURCE MNO-decisions.md -->
+<!-- END SOURCE round-06-decisions.md -->
 
 ---
 
-<!-- BEGIN SOURCE MNO-open-questions.md -->
+<!-- BEGIN SOURCE round-06-open-questions.md -->
 <a id="history-mno-open-questions"></a>
 
-## 历史 16：MNO-open-questions.md
+## 历史 16：round-06-open-questions.md（原名 MNO-open-questions.md）
 
-来源：[MNO-open-questions.md](MNO-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
+来源：[round-06-open-questions.md](round-06-open-questions.md)。下文为阶段原记录，时间和状态保持当时口径。
 
 ### M–O 轮待决事项（2026-09-09）
 
@@ -2049,6 +2051,6 @@ o-mcp-done p0-verified s-spike-done
 - **worktree**：`git worktree list` 只剩 main，`wip/m1`、`wip/n2` 分支已不存在；`E:\project\vft-wt\` 目录本身是否还有残留未核实。
 - 所有 `isError` 文本仍是英文（给模型看，有意）。
 
-<!-- END SOURCE MNO-open-questions.md -->
+<!-- END SOURCE round-06-open-questions.md -->
 
 ---

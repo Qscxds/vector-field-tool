@@ -1,8 +1,10 @@
 # H 轮总结（2026-09-03）
 
+> 第 4 轮的交付物（原代号 H；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 - **做到哪了**：H1（上线准备）、H2（数学优先重新拍板，十条全部）完成；对抗式审查确认的 14 条全部修复；tsc 0 错误、337 个测试全绿、build 通过、隧道 smoke 15/15；main 线性，已推 origin。
 - **最后一个良好 tag**：`h2-reviewed`（审查修复之后）；之前的回滚点依次是 `h2-math-done`、`h1-deploy-ready`。
-- **你要手动做的**：去 Vercel 导入仓库、关 Deployment Protection、绑域名、在项目环境变量设 `BASE_URL=https://tools.<域名>` 后重新部署；Claude 里断开重连连接器（widget 版本 h-2）；看 `docs/H-open-questions.md` 里的拍板项（最要紧的是积分器默认 `atol`）。
+- **你要手动做的**：去 Vercel 导入仓库、关 Deployment Protection、绑域名、在项目环境变量设 `BASE_URL=https://tools.<域名>` 后重新部署；Claude 里断开重连连接器（widget 版本 h-2）；看 `docs/round-04-open-questions.md` 里的拍板项（最要紧的是积分器默认 `atol`）。
 
 **H1 完成，可以部署了。** 步骤在 README「部署到 Vercel」；绑完域名不设 `BASE_URL` 会静默白屏，日志里会有 `[base-url]` 警告提醒。
 

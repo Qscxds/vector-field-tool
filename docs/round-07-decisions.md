@@ -1,5 +1,7 @@
 # PQR 轮决策记录（2026-09-15）
 
+> 第 7 轮的交付物（原代号 PQR；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 任务书：`vfield-pqr-prompt-v2.md`（教授反馈修复 + 同类漏洞普查）。段落顺序 P0 → P1 → P2 → Q → R。
 
 ## 1. P0 勘察：Codex 在交接之后改了什么
@@ -26,7 +28,7 @@
 | `app/mcp/server.ts` + 测试 + smoke + README | `WIDGET_VERSION` o-1 → o-2 | 未部署（线上仍 o-1） | P1 直接升到 **p-1**，o-2 不单独发布 |
 | `scripts/smoke.mjs` `scripts/mock-host/host.html` | 新增 3 个查询场景（sqrt 非唯一 first/diff、零初速非自治） | 与实现配套 | 保留 |
 | `lib/interactive-scene.test.ts`（新） | 用 react-dom/server 真实渲染 hook 验证最终 Scene | 覆盖了「两个外壳实际消费的数据」这一空档 | 保留 |
-| `docs/ENGINEERING-RECORD.md`（新） | 16 份阶段记录全文合并 + 2026-09-10 修复记录 + SHA-256 来源索引 | 原文件未删；与本轮 PQR 文档并列 | 保留，不再维护它的「当前」节（本轮记录在 PQR-*.md） |
+| `docs/ENGINEERING-RECORD.md`（新） | 16 份阶段记录全文合并 + 2026-09-10 修复记录 + SHA-256 来源索引 | 原文件未删；与本轮 PQR 文档并列 | 保留，不再维护它的「当前」节（本轮记录在 round-07-*.md） |
 | `CLAUDE.md` | 模块图补 o-2 / firstOrderSpec / 内核例外说明；首行 `@AGENTS.md` | 与代码一致 | 保留；P2 末尾再按本轮修订 |
 
 ### 1.3 门禁（P0，在 Codex 改动之上）

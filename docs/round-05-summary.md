@@ -1,5 +1,7 @@
 # I–L 轮总结（2026-09-08/09 夜跑）
 
+> 第 5 轮的交付物（原代号 IJKL；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 - **做到哪了**：I（记号改为 dy/dt）→ J（数学正确性）→ K（网站完整化）→ L（MCP 收尾）四个阶段全部完成，四个 tag 都打了：`i-notation-done`（f562d39）、`j-math-done`（3dd4f27）、`k-website-done`（f7ab5ca）、`l-mcp-done`（1e825bc）。J 阶段跑了三轮对抗式审查（39 + 41 + 21 条发现）和三轮修复；K 阶段在会话自带浏览器面板逐条验收；L 阶段用本地模拟主机跑通 widget。最终门禁：tsc 0 错误、808 个测试通过 + 3 个标记为预期失败（共 811）、build 通过、本地生产构建 smoke 19/19。main 直线，`h2-reviewed..HEAD` 共 85 个提交。
 - **最后一个良好 tag**：`l-mcp-done` = 1e825bc（main HEAD）。往前依次是 `k-website-done`（f7ab5ca）、`j-math-done`（3dd4f27）、`i-notation-done`（f562d39）、`h2-reviewed`。
 - **你要手动做的**：(1) **推 origin 就是 Vercel 生产部署**（`git push origin main`）——编排者只在被告知时才会在会话末尾推，推没推看本文件末尾编排者追加的那一行，没有那行就是没推；(2) widget 版本 h-2 → l-1，**Claude 里必须断开并重新连接连接器**（否则旧的 URI 缓存会导致 widget 空白 / Resource not found）；(3) `BASE_URL` 已在 Vercel 设好，不用改；(4) 第一次部署后打开 `https://tools.studycase.net/opengraph-image`，看中文那行有没有变成方块（构建时 next/og 要联网取字体，见 open-questions）；(5) 部署后跑 `npm run smoke -- https://tools.studycase.net/mcp`；(6) 帮助页给的 iframe 高度（带控件 1280 px / 只读 1260 px）是代理在窄视口量的，嵌进 Google Sites 后按实际调；(7) Claude 实机测 widget 交互和「先调工具」规则（验证清单第 9–12 步），今晚没法替你做。

@@ -1,5 +1,7 @@
 # P0 交接：骨架轮完成（2026-09-02）
 
+> 第 1 轮的交付物（原代号 P0；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 ## 状态
 
 - **P0 验收线已过**：本地 `next start` 经 cloudflared 隧道接入 Claude 自定义连接器，调用 `ping` 工具后 widget 在对话里渲染出「connected to host」和 `{"message":"hello"}`。

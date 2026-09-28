@@ -1,5 +1,7 @@
 # M–O 轮总结（2026-09-09）
 
+> 第 6 轮的交付物（原代号 MNO；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 - **做到哪了**：M（英文默认 + 文案精简 + 排版修复 + /help 重排）→ N（轨线单条删除 / 撤销 / 长按删除 + 初值输入 + 解的查询 + N.3 六条修复）→ O（`query_solution` 描述、widget o-1、模拟主机实测、smoke 更新）三个阶段全部完成，三个 tag 都打了：`m-english-done`（de1665b）、`n-features-done`（ec8329a）、`o-mcp-done`（8e54eef）。按简报要求本轮没有跑大规模对抗式审查：M、N 在会话自带浏览器面板逐条验收，O 用本地模拟主机跑通 widget。最终门禁（8e54eef）：tsc 0 错误、36 个测试文件、883 通过 + 2 预期失败（共 885）、build 通过、本地生产构建 smoke 20/20。main 直线，`l-mcp-done..HEAD` 共 25 个提交（其中 6826d02、bb907f5 是上一轮的 docs 提交；本轮 23 个，加上本文档所在的 docs 提交）。
 - **最后一个良好 tag**：`o-mcp-done` = 8e54eef（本文档提交之前的 main HEAD）。往前依次是 `n-features-done`（ec8329a）、`m-english-done`（de1665b）、`l-mcp-done`（1e825bc）。
 - **你要手动做的**：(1) **推 origin 就是 Vercel 生产部署**——编排者推不了（`git push` 被会话的权限分类器拦下，与上一轮相同），要你来：`cd E:\project\vector-field-tool && git push origin main && git push origin m-english-done n-features-done o-mcp-done`；(2) widget 版本 l-1 → o-1，**部署后必须在 Claude 里断开并重新连接连接器**（连接器缓存了带 `?v=l-1` 的资源 URI，否则 widget 空白 / "Resource not found"）；(3) 部署后跑 `npm run smoke -- https://tools.studycase.net/mcp`，应 20/20、7 个工具、widget uri `?v=o-1`；(4) Claude 实机：`query_solution` 是否被先调用、「先调工具」规则、widget 里的删除 / 撤销 / 查询标记（验证清单第 9–12 步），今晚没法替你做；(5) 报告里没在真机上验证的：悬停高亮只在模拟主机里看到过（会话面板隐藏时 N 阶段的 rAF 不触发）、真实触屏的长按删除、widget iframe 内的 Ctrl+Z、折叠文案之后 Google Sites 里的 iframe 高度。

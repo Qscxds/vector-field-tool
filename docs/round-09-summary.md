@@ -1,8 +1,10 @@
 # TUVW 轮总结（2026-09-18）：参数与滑块 · 相平面自解释 · 讲课模式
 
+> 第 9 轮的交付物（原代号 TUVW；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 **做到哪**：T、U、V、W 四段全部做完，每段都在浏览器里实测过，三道门禁全绿，没有触发停止条件。
 **最后一个良好 tag**：`w-lecture-done`（依次是 `t-params-done` → `u-slider-done` → `v-phaseplane-done` → `w-lecture-done`，每个 tag 处 tsc / test / build 都是绿的）。
-**你需要手动做的**：① widget 版本从 `p-2` 升到了 `t-1`（摘要现在写明参数取值），所以 Claude 里的连接器要**删除后重新添加** `https://tools.studycase.net/mcp`（只断开重连不够）；② 照第 7 节的清单验证，第 3 步（亲手拖滑块）是我替不了你的；③ 看一眼 `docs/TUVW-open-questions.md` 的第 1、8、9 条，那三条需要教授的意见。
+**你需要手动做的**：① widget 版本从 `p-2` 升到了 `t-1`（摘要现在写明参数取值），所以 Claude 里的连接器要**删除后重新添加** `https://tools.studycase.net/mcp`（只断开重连不够）；② 照第 7 节的清单验证，第 3 步（亲手拖滑块）是我替不了你的；③ 看一眼 `docs/round-09-open-questions.md` 的第 1、8、9 条，那三条需要教授的意见。
 
 ---
 
@@ -179,7 +181,7 @@ $ git tag        （本轮新增的四个在最后）
 
 ## 6. 本轮新增 / 改动的文件
 
-新增：`lib/params.ts`、`lib/feature-schedule.ts`、`lib/phase-aids.ts`、`lib/lecture.ts`、`lib/slider-bifurcation.test.ts` 及各自的测试；`docs/TUVW-*.md`。
+新增：`lib/params.ts`、`lib/feature-schedule.ts`、`lib/phase-aids.ts`、`lib/lecture.ts`、`lib/slider-bifurcation.test.ts` 及各自的测试；`docs/round-09-*.md`。
 改动：`lib/core/parse.ts`、`lib/core/second-order.ts`（仅静态辅助）；`lib/url-state.ts`、`lib/labels.ts`、`lib/scene.ts`、`lib/interactive.ts`、`lib/time-series.ts`、`lib/export-footer.ts`、`lib/site-text.ts`、`lib/changelog.ts`；`components/VectorFieldApp.tsx`、`useInteractiveScene.ts`、`drawScene.ts`、`drawTimeSeries.ts`、`VectorFieldCanvas.tsx`、`TimeSeriesCanvas.tsx`、`exportScenePng.ts`、`HelpContent.tsx`；`app/mcp/tools.ts`（摘要带参数）、`app/mcp/server.ts`（t-1）、`app/widget/page.tsx`（摘要带参数）、`app/vector-field/presets.ts`；`scripts/smoke.mjs`；`README.md`、`CLAUDE.md`。
 **没动**：`app/layout.tsx`、`app/mcp/route.ts`、J 轮的全部启发式常数、`lib/core` 的所有数值模块、`lib/render`。
 

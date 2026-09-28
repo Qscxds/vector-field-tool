@@ -1,5 +1,7 @@
 # PQR 轮总结（2026-09-15）
 
+> 第 7 轮的交付物（原代号 PQR；tag 和提交前缀仍用代号）。轮次对照表：[ROUNDS.md](ROUNDS.md)。
+
 **做到哪**：P0 勘察、P1 教授两点、P2 同类漏洞普查、Q 时间序列视图、R 运维（上限 / widget Clear / 范围重追踪 / 命中精度 / 计算中 / CI / 报告问题）全部完成并实测；只有 Q.3 共振响应曲线未做（open-questions #7）。
 **最后一个良好 tag**：`r-ops-done`（之前的：`p1-secondorder-done`、`p2-audit-done`、`q-timeseries-done`）。
 **我需要你手动做的**：`git push origin main --tags`（Vercel 自动部署；GitHub Actions 的 CI 第一次跑）→ `npm run smoke -- https://tools.studycase.net/mcp`（24/24，URI `?v=p-2`）→ 在 Claude 里**删除连接器再重新添加**（只断开重连不够；widget `o-1` → `p-2`）→ 按第 6 节清单逐步验证。
@@ -17,7 +19,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 3. `query_solution` 一阶场景带 `Scene.firstOrderSpec`，widget 显示 `dy/dt = …` 而不是内部 `x' = 1, y' = g`（恰好是 P2.2 要查的那类漏，Codex 已修 widget 一半）。
 4. widget `o-1 → o-2`（未部署）；2054 行的 `docs/ENGINEERING-RECORD.md` 合并记录；新的 hook 真实渲染测试。
 
-门禁：tsc 0；906 测试 = 904 通过 + 2 既有预期失败；build 单独运行通过（与 vitest 并行时曾 `spawn EBUSY`，Windows 瞬时错误）。处理：原样固化为 `[P0]` 提交 `59365b7`。逐项判定表在 `docs/PQR-decisions.md` §1。
+门禁：tsc 0；906 测试 = 904 通过 + 2 既有预期失败；build 单独运行通过（与 vitest 并行时曾 `spawn EBUSY`，Windows 瞬时错误）。处理：原样固化为 `[P0]` 提交 `59365b7`。逐项判定表在 `docs/round-07-decisions.md` §1。
 
 ## 2. P1：教授的两点
 
@@ -29,7 +31,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 | MCP 工具 | `analyze_second_order`：参数 `xpMin/xpMax`，描述明写自变量 t、F(t, x, x')、第二坐标是速度 x'、不许对学生说 y、非自治时的说法、教授的例子；摘要第二行「相平面：横轴 x ∈ …，纵轴 x' ∈ …」，受迫方程的采样场写 `(v, F)`。`query_solution` mode second：`x0 = x(t0)`、`xp0 = x'(t0)`（`y0` 仍作兜底读取，两者不一致则拒绝）、`xpMin/xpMax`、表头「方程 …，初值 x(t₀) = …、x'(t₀) = …」、命中 `(x, x')`、目标 kind y 显示为 x'；system/second 的 `t0` 现在是**起始时刻**（默认 0，受迫方程用得上），不再是 x0 的别名（R.1 的一条提前做了） |
 | widget | `WIDGET_VERSION` `o-2 → p-1`；mock-host 加 `second_order_forced`、`query_second` 场景 |
 
-提交：`9cf6839`（内核）、`f20cd08`（外壳）、`8465001`（工具 + widget）、`5ad4c69`（文案）。决策细节在 `docs/PQR-decisions.md` §3。
+提交：`9cf6839`（内核）、`f20cd08`（外壳）、`8465001`（工具 + widget）、`5ad4c69`（文案）。决策细节在 `docs/round-07-decisions.md` §3。
 
 ### P1 验证
 
@@ -47,7 +49,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 
 原则已写进 `CLAUDE.md` 架构规则第 9 条：**学生看到的每一个符号、坐标、数值、术语，都必须是他自己写下的那个问题里存在的东西。归约是实现细节，不是词汇表。**
 
-做法：我先自己核查 P2.1（微分形式的内部参数），同时派 6 个只读扫描 agent（一阶 / 微分形式 / 平面系统 / 二阶 / 内部枚举名 / structuredContent 六个视角）找清单之外的同类问题，76 条报告由我逐条读代码取舍（采纳 60，拒绝 3，其余重复/已修）；没有跑对抗式复核。完整的逐条表（有漏 / 无漏 / 已修）在 `docs/PQR-decisions.md` §2，这里是摘要：
+做法：我先自己核查 P2.1（微分形式的内部参数），同时派 6 个只读扫描 agent（一阶 / 微分形式 / 平面系统 / 二阶 / 内部枚举名 / structuredContent 六个视角）找清单之外的同类问题，76 条报告由我逐条读代码取舍（采纳 60，拒绝 3，其余重复/已修）；没有跑对抗式复核。完整的逐条表（有漏 / 无漏 / 已修）在 `docs/round-07-decisions.md` §2，这里是摘要：
 
 | 条目 | 结论 |
 |---|---|
@@ -85,7 +87,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 | 帮助/README/CLAUDE.md | 控件一节加「视图」条目，记号一节加「时间序列视图」段落；README 加一条；CLAUDE.md 模块图加 `lib/time-series.ts` 与 url-state 的 view/timeRange |
 | 不做 | widget 无时间序列（工具结果不带 times）→ open-questions #8；「同时画 x'(t)」不进 URL → #9；曲线跨度固定 t₀ ± 50，超出常驻说明 → #10 |
 
-提交：`f766bba`（代码）、`6e1741e`（帮助/README/CLAUDE.md）、`e613abd`（docs）。决策细节在 `docs/PQR-decisions.md` §4。
+提交：`f766bba`（代码）、`6e1741e`（帮助/README/CLAUDE.md）、`e613abd`（docs）。决策细节在 `docs/round-07-decisions.md` §4。
 
 ### Q 验证
 
@@ -112,7 +114,7 @@ Codex 在 2026-09-10 的改动全部是**未提交的工作树修改**（没有�
 | R.2 CI | `.github/workflows/ci.yml`（Node 24：npm ci → typecheck → test → build，不部署）+ README 徽章 |
 | R.3 报告问题 | `lib/report-issue.ts`（GitHub 新 issue，预填链接、浏览器、三行提示；只有 title/body 两个参数）+ 页面底部与 `/embed` 的链接 + 帮助页一条 |
 
-提交：`11798ec`（store + hook + widget p-2）、`6bc9a23`（query 内核）、`d50c4df`（report-issue）、`341c473`（网页壳 + 帮助）、`c830845`（CI + README）+ docs 提交。决策细节在 `docs/PQR-decisions.md` §5。
+提交：`11798ec`（store + hook + widget p-2）、`6bc9a23`（query 内核）、`d50c4df`（report-issue）、`341c473`（网页壳 + 帮助）、`c830845`（CI + README）+ docs 提交。决策细节在 `docs/round-07-decisions.md` §5。
 
 ### R 验证
 
