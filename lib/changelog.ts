@@ -131,6 +131,7 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
         "每张图上方一行小字写明横轴、纵轴：二阶方程的相平面是「横轴 x，纵轴 x'（速度）」，解的图像是「横轴 t，纵轴 x」。讲课模式下也保留。",
         "两张图联动：同一条曲线在两张图里是同一个颜色（初值点画成同色的小圆点）；鼠标放到任一张图的曲线上，两张图里它都加粗；相平面上的预览曲线也出现在解的图像里；固定、删除、撤销、清除两张图同步；查询到的点两张图都标。解的图像上点击不添加曲线（(t, x) 上的一个点定不了初值），页面上写明了怎么添加。",
         "「时间序列」改称「解的图像」；两张一起时「下载 PNG」把两张图导成一张；嵌入页支持 view=both；帮助页里嵌入高度按新布局重新量过。",
+        "Claude 里的小部件也有了解的图像：同样的三选一、同样的联动和颜色，工具返回的曲线现在带每个点的时刻，所以 trace_trajectory 和 query_solution 画出的解也能对 t 看。",
       ],
       en: [
         "The professor's \"it is unclear what is y here\": the four presets that write a second-order equation as a system (harmonic, damped, Van der Pol, forced oscillator) now carry the original equation and \"y = x'\" in their names, and their notes open with the reduction \"let y = x' (the velocity)\"; each has a clickable hint to the same equation written as a second-order equation, and back. Second-order mode itself always used (x, x') and is unchanged.",
@@ -138,7 +139,12 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
         "A line above each picture names its coordinates: for a second-order equation the phase plane is \"horizontal x, vertical x' (velocity)\" and the solution graph \"horizontal t, vertical x\". Kept in lecture mode.",
         "The two pictures are linked: one kept curve has one color in both (its initial point is a dot of that color); put the pointer on a curve in either picture and it is emphasized in both; the phase plane's preview curve appears in the solution graph too; keep, remove, undo and clear act on both; a query's points are marked in both. A click on the solution graph adds no curve (a point (t, x) cannot fix an initial value), and the page says how to add one.",
         "\"Time series\" is now called \"Solution graph\"; with both pictures shown, Download PNG exports them as one file; the embedded page takes view=both; the embed heights on the help page were measured again for the new layout.",
+        "The widget inside Claude has the solution graph too: the same three-way switch, the same linkage and colors; the curves the tools return now carry the time of every point, so a solution drawn by trace_trajectory or query_solution can be seen against t as well.",
       ],
+    },
+    action: {
+      zh: "MCP 用户必须删除连接器后重新添加。widget 有了解的图像，资源地址变了；Claude 会缓存添加连接器时的地址，已有的连接会静默地无法渲染。请删除连接器，再重新添加 https://tools.studycase.net/mcp。",
+      en: "MCP users must remove and re-add the connector. The widget gained the solution graph, so the widget resource address changed; Claude caches the address from when the connector was added, so an existing connection will silently fail to render. Remove the connector and add https://tools.studycase.net/mcp again.",
     },
   },
 ];

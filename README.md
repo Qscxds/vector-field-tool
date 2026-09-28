@@ -189,11 +189,14 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
   every user must **remove and re-add the connector** in Claude (it caches the widget resource address from when the connector was added; disconnecting and reconnecting is not enough; it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `y-1` (round Y: the English canvas tags of a domain-edge constant solution). Widget changes are batched: one bump per round at most, none unless the widget really changed. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
+  the old resource URI; the widget silently goes blank otherwise). The current version is `z-1` (round Z4: the widget's solution graph, the three-way view switch and one color per kept curve in both pictures). Widget changes are batched: one bump per round at most, none unless the widget really changed. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
   y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "use ping
   with hello" tests the transport alone. Inside the widget a kept trajectory can be removed by
-  clicking it and restored with `Undo` / Ctrl+Z, as on the web page.
+  clicking it and restored with `Undo` / Ctrl+Z, as on the web page; for a planar system or a
+  second-order equation the widget has the same Phase plane / Solution graph / Both switch, the
+  curves the tools return carry the time of every point (`times`, thinned like the points), and
+  the two pictures are linked as on the web page.
 
 ### The three sandbox pitfalls
 

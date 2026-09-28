@@ -29,7 +29,7 @@ Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
 2026-09-10 fixes and validation, and all 16 original docs in full. Historical entries retain their
-then-current status; use the current section for superseding decisions. Widget version is now y-1 (round Y).
+then-current status; use the current section for superseding decisions. Widget version is now z-1 (round Z4).
 
 ## Module map
 
@@ -134,7 +134,9 @@ then-current status; use the current section for superseding decisions. Widget v
   `exportTimeSeriesFooterText` (`exportDualFooterText` for the "both" PNG). The curves are the SAME
   kept curves as the phase plane (one store, one Clear / Undo / link) computed by the same rule
   (t₀ ± CLICK_TSPAN, or the t range through `traceSpans`): a wider t range shows blank and a note
-  says so. The widget has no solution graph (tool results carry no `times`).
+  says so. Round Z4: the widget has the solution graph too (trace_trajectory and query_solution
+  legs carry `times`, thinned by the same index rule as `points`; `widgetTimeRange` = the extent
+  of the tool's own curves' clock, else the default span from the snapshot time).
 - `lib/linked-views.ts` (round Z2.4, pure) what links the two pictures: ONE hovered index (the
   kept curve under the pointer in either picture; pair i of the phase plane = entry i of the graph
   = `curveColor(i)`), `nearestSeriesCurve` (8 screen px, lib/trajectory-hit's threshold) and
@@ -259,7 +261,7 @@ then-current status; use the current section for superseding decisions. Widget v
 - `base-url.ts` public origin: explicit `BASE_URL` beats every Vercel variable (tested); Vercel
   production without it warns at startup (custom domains need it or the widget is blank).
 - `app/mcp/route.ts` the /mcp endpoint (do not touch casually); `app/mcp/server.ts` widget
-  resource + ping + `WIDGET_VERSION` (y-1 since round Y: the English domain-edge canvas tags; t-1 in round T: the summary names the parameter values); `app/mcp/tools.ts` the six analysis tools
+  resource + ping + `WIDGET_VERSION` (z-1 since round Z4: the solution graph, the view switch and the per-curve colors in the widget; y-1 in round Y: the English domain-edge canvas tags; t-1 in round T: the summary names the parameter values); `app/mcp/tools.ts` the six analysis tools
   (`locale` is optional and defaults to en since round M; analyze_first_order's t range is
   tMin/tMax since round P2 (xMin/xMax still read as the same), and its expressions use t and y
   only; analyze_second_order's x' range is xpMin/xpMax; `query_solution`
@@ -271,7 +273,11 @@ then-current status; use the current section for superseding decisions. Widget v
   says value-at-time / time-of-value questions must call it, never a closed form); `app/mcp/budget.ts` (2 s wall-clock budget per call via kernel checkpoints) and
   `app/mcp/rate-limit.ts` (per-process sliding window, best effort only on serverless).
 - `app/widget/page.tsx` MCP Apps widget (compiles the Scene's equation locally, falls back to the
-  static picture if compiling is blocked); `app/page.tsx` home.
+  static picture if compiling is blocked; round Z4: on a planar or second-order scene the same
+  three-way view switch as the web shell, the solution graph STACKED under the phase plane (the
+  widget is narrow), one color per kept curve in both pictures (the tool's own curve is group 0),
+  the linked hover / preview / query hits; its "no click" and "no curve yet" sentences are the
+  widget variants, since it has no Initial value inputs); `app/page.tsx` home.
 - `lib/url-state.ts` the web shell's URL state (pure): `AppState` (mode first / diff / system /
   second, g f M N eq, the ENTERED box, `locale | null` = no loc in the link (English), equalScale, density,
   arrowMode, snapshotT, trajectoryStarts, and since round Q `view` (phase / time / null = the
@@ -546,9 +552,9 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
   graph as `preview`; the store (add / delete / undo / clear) and the query hits are shared already.
   The solution graph takes NO click (a point (t, x) fixes no initial value): its pointer machine
   (lib/linked-views) has no add or delete action, the cursor stays the arrow, and its caption says
-  where to add a curve. Per-curve colors and start dots are web-shell options of drawScene
-  (`trajectoryColors`, `starts`): the widget passes none and keeps blue forward / orange
-  backward until its next batched bump.
+  where to add a curve. Per-curve colors and start dots are options of drawScene
+  (`trajectoryColors`, `starts`); both shells pass them since round Z4 (widget z-1), a Scene drawn
+  without them keeps blue forward / orange backward.
 - Adversarial reviews run on a frozen tag, never on a moving main. The H round's review (6 lenses,
   3 refuters per finding) confirmed 14/14 verified findings; all are fixed in `[H2-fix]` commits
   with derived tests. Every relative tolerance in the kernel is relative to magnitudes actually
