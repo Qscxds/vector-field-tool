@@ -115,9 +115,17 @@ tag：`z1-presets-done`（509d042）→ `z2-dualview-done`（3bbaef1）→ `z3-d
 
 内核 `lib/core` 一个字没动；`app/layout.tsx`、`app/mcp/route.ts` 没动；`lib/core`、`lib/render` 纯度守卫照常通过（`lib/render/color.ts` 只加了一个常量数组和一个纯函数）。
 
-## 5. 线上状态
+## 5. 线上状态（2026-09-28）
 
-（推送后补：CI、Vercel、线上 smoke。）
+推送（`git push origin main --tags`，由我执行：`1fe1b4e..bd21e26`，四个 tag 一并推上）之后：
+
+| 检查 | 结果 |
+|---|---|
+| GitHub Actions run 36398768060（typecheck / test / build） | ✓ success |
+| Vercel 部署（commit bd21e26） | ✓ success（commit status） |
+| `npm run smoke -- https://tools.studycase.net/mcp` | **24/24**，widget uri `?v=z-1`，`trace_trajectory` 的 leg 带 `times` |
+| 线上 `/vector-field` 预设「Harmonic oscillator x'' = −x (as a system, y = x')」 | 名字定义 y；说明第一句「x'' = −x written as a system: let y = x' (the velocity), so x' = y, y' = −x」；孪生链接「The same equation written as a second-order equation: x'' = −x」；默认 `both`（URL `view=both`）；两张图 + 两行说明 |
+| 线上首页 | 「What's new」第一条 2026-09-28，琥珀色 action「MCP users must remove and re-add the connector…」 |
 
 ## 6. 验证清单（按「最快发现问题」排序）
 
