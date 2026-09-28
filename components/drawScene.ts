@@ -22,7 +22,18 @@ import type { Scene } from "@/lib/scene";
  * its value, to 3 significant digits (round Y: positions stay); every MARKER stays, the "!" of a point or line where uniqueness fails included, and so
  * do the axes and their ticks.
  */
-export type DrawSceneOptions = { arrowMode: ArrowMode; lecture?: boolean };
+export type DrawSceneOptions = {
+  arrowMode: ArrowMode;
+  lecture?: boolean;
+  /**
+   * Round Z2.4 (the web shell; the widget passes nothing and keeps forward blue / backward orange):
+   * the color of each leg of scene.trajectories by index, so one kept curve is one color, the same
+   * as in the solution graph.
+   */
+  trajectoryColors?: readonly string[];
+  /** Round Z2.4 (the web shell): the initial point of each kept curve as a small dot in the curve's color (the two legs no longer tell it apart). */
+  starts?: readonly { at: Vec2; color: string }[];
+};
 
 /** Canvas fonts: the normal sizes, or the lecture-mode ones. */
 type Fonts = { tick: string; tickSize: number; axisName: string; small: string; badge: string };
@@ -92,7 +103,7 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewpo
   if (scene.firstOrder?.implicit) drawImplicit(ctx, v, scene.firstOrder.implicit.levels);
   if (scene.firstOrder) drawFirstOrderLines(ctx, v, scene, lecture, fonts);
   if (scene.aids?.separatrices) drawSeparatrices(ctx, v, scene.aids.separatrices);
-  if (scene.trajectories) drawTrajectories(ctx, v, scene, lecture, fonts);
+  if (scene.trajectories) drawTrajectories(ctx, v, scene, lecture, fonts, options);
   if (scene.aids?.eigenDirections) drawEigenDirections(ctx, v, scene.aids.eigenDirections);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
   if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
@@ -333,15 +344,16 @@ function drawArrows(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, mo
   }
 }
 
-function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, lecture: boolean, fonts: Fonts): void {
+function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, lecture: boolean, fonts: Fonts, options: DrawSceneOptions): void {
   ctx.lineWidth = 1.8;
   ctx.lineJoin = "round";
   // A differential form M dt + N dy = 0 (undirected segments) has no forward or backward: its kept
   // curve is one color on both sides of the start (round P2.1), never a directed two-color curve.
   const undirected = scene.fieldStyle === "segments";
-  for (const t of scene.trajectories ?? []) {
-    if (t.points.length < 2) continue;
-    ctx.strokeStyle = !undirected && t.direction === "backward" ? COLORS.backward : COLORS.forward;
+  (scene.trajectories ?? []).forEach((t, i) => {
+    if (t.points.length < 2) return;
+    // Round Z2.4: the web shell gives every kept curve its own color; without it, the directed two-color rule.
+    ctx.strokeStyle = options.trajectoryColors?.[i] ?? (!undirected && t.direction === "backward" ? COLORS.backward : COLORS.forward);
     ctx.setLineDash(t.nonUnique ? NON_UNIQUE_DASH : []);
     ctx.beginPath();
     t.points.forEach((p, i) => {
@@ -350,8 +362,19 @@ function drawTrajectories(ctx: CanvasRenderingContext2D, v: Viewport, scene: Sce
       else ctx.lineTo(s.x, s.y);
     });
     ctx.stroke();
-  }
+  });
   ctx.setLineDash([]);
+  // Round Z2.4: the initial point of every kept curve, in the curve's color with a white halo.
+  for (const start of options.starts ?? []) {
+    const s = worldToScreen(v, start.at);
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, 3.5, 0, 2 * Math.PI);
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = COLORS.background;
+    ctx.stroke();
+    ctx.fillStyle = start.color;
+    ctx.fill();
+  }
   if (scene.start) {
     const s = worldToScreen(v, scene.start);
     ctx.fillStyle = COLORS.start;

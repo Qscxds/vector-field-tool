@@ -158,6 +158,14 @@ export type InteractiveScene = {
   highlight: TrajectoryView[];
   /** Cursor for the canvas while a removable curve is under the pointer. */
   cursor: "pointer" | undefined;
+  /** Round Z2.4: the kept curve under the pointer (its start's index), whichever picture the pointer is in; null when none. */
+  hoveredIndex: number | null;
+  /**
+   * Round Z2.4: the solution graph reports the curve under ITS pointer here (null when it leaves), so
+   * the phase plane emphasizes the same curve; the phase plane's own preview and hint are dropped
+   * meanwhile (the pointer is not on it).
+   */
+  hoverTrajectory: (index: number | null) => void;
   /** Keeps the solution through `p` exactly as a click on empty canvas does (same trace, same undo entry). */
   addTrajectory: (p: Vec2) => void;
   /** Removes the kept pair at `index` (the start's index); undoable. */
@@ -396,6 +404,15 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const hoverRef = useRef<{ world: Vec2; screen: Vec2; touch: boolean } | null>(null);
   const rafRef = useRef<number | null>(null);
 
+  // Round Z2.4: a hover reported by the other picture (the solution graph).
+  const hoverTrajectory = useCallback((index: number | null) => {
+    hoverRef.current = null;
+    lastHoverScreen.current = null;
+    setOverlay([]);
+    setHint(null);
+    setHoverTarget(index);
+  }, []);
+
   // Viewport updates are FUNCTIONAL: two updates dispatched in the same event (a pinch used to be
   // a pan then a zoom) each build on the other's result, not on the stale viewportRef. The
   // previous state is trusted only when it belongs to the current canvas size; otherwise the
@@ -571,6 +588,8 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     trajectoryStarts,
     highlight,
     cursor: highlight.length ? "pointer" : undefined,
+    hoveredIndex: hoverTarget,
+    hoverTrajectory,
     addTrajectory,
     deleteTrajectory,
     clearTrajectories,

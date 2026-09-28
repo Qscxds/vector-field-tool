@@ -11,7 +11,7 @@ import type { Vec2 } from "@/lib/core/types";
 import type { ArrowMode } from "@/lib/render/arrows";
 import { fitViewport, screenToWorld, worldToScreen, type Viewport } from "@/lib/render/viewport";
 import type { Scene, TrajectoryView } from "@/lib/scene";
-import { COLORS, drawScene, NON_UNIQUE_DASH } from "./drawScene";
+import { COLORS, drawScene, NON_UNIQUE_DASH, type DrawSceneOptions } from "./drawScene";
 import { IDLE_GESTURE, longPressDueAt, reduceGesture, type GestureAction, type GestureEvent, type GestureState } from "@/lib/gestures";
 
 export type VectorFieldCanvasProps = {
@@ -29,6 +29,11 @@ export type VectorFieldCanvasProps = {
   overlayHint?: { at: Vec2; text: string } | null;
   /** Kept curves under the pointer (a click removes them): redrawn on the overlay with a thicker stroke. */
   highlight?: TrajectoryView[];
+  /** Round Z2.4 (web shell): the highlighted curve's own color, under a white halo; without it the forward / backward colors. */
+  highlightColor?: string;
+  /** Round Z2.4 (web shell): one color per leg of scene.trajectories and the start markers (drawScene options). */
+  trajectoryColors?: DrawSceneOptions["trajectoryColors"];
+  starts?: DrawSceneOptions["starts"];
   /** Cursor over the canvas while interactive (default crosshair; the parent passes "pointer" over a removable curve). */
   cursor?: string;
   /** A click, or a touch long press (lib/gestures): the parent decides whether it keeps or removes a curve. */
@@ -64,6 +69,9 @@ export function VectorFieldCanvas({
   overlay,
   overlayHint,
   highlight,
+  highlightColor,
+  trajectoryColors,
+  starts,
   cursor,
   onClickWorld,
   onHoverWorld,
@@ -88,8 +96,8 @@ export function VectorFieldCanvas({
     if (!canvas) return;
     const ctx = prepareCanvas(canvas, width, height);
     if (!ctx) return;
-    drawScene(ctx, scene, v, { width, height }, { arrowMode, lecture });
-  }, [scene, v, width, height, arrowMode, lecture]);
+    drawScene(ctx, scene, v, { width, height }, { arrowMode, lecture, trajectoryColors, starts });
+  }, [scene, v, width, height, arrowMode, lecture, trajectoryColors, starts]);
 
   // Overlay: hover curve(s) and hint; cheap to redraw on every pointer frame.
   useEffect(() => {
@@ -100,20 +108,24 @@ export function VectorFieldCanvas({
     ctx.clearRect(0, 0, width, height);
     if (!v) return;
     if (highlight?.length) {
-      // The pair a click would remove, over its base-layer stroke (1.8 px), in its own colors.
-      ctx.lineWidth = 4;
+      // The pair a click would remove, over its base-layer stroke (1.8 px): in its own colors, or
+      // (round Z2.4, the web shell) in the curve's one color under a white halo.
       ctx.lineJoin = "round";
-      for (const t of highlight) {
-        if (t.points.length < 2) continue;
-        ctx.strokeStyle = t.direction === "forward" ? COLORS.forward : COLORS.backward;
-        ctx.setLineDash(t.nonUnique ? NON_UNIQUE_DASH : []);
-        ctx.beginPath();
-        t.points.forEach((p, i) => {
-          const s = worldToScreen(v, p);
-          if (i === 0) ctx.moveTo(s.x, s.y);
-          else ctx.lineTo(s.x, s.y);
-        });
-        ctx.stroke();
+      const passes: { color: string; width: number; dash: boolean }[] = highlightColor ? [{ color: COLORS.background, width: 7, dash: false }, { color: highlightColor, width: 4, dash: true }] : [{ color: "", width: 4, dash: true }];
+      for (const pass of passes) {
+        ctx.lineWidth = pass.width;
+        for (const t of highlight) {
+          if (t.points.length < 2) continue;
+          ctx.strokeStyle = pass.color || (t.direction === "forward" ? COLORS.forward : COLORS.backward);
+          ctx.setLineDash(pass.dash && t.nonUnique ? NON_UNIQUE_DASH : []);
+          ctx.beginPath();
+          t.points.forEach((p, i) => {
+            const s = worldToScreen(v, p);
+            if (i === 0) ctx.moveTo(s.x, s.y);
+            else ctx.lineTo(s.x, s.y);
+          });
+          ctx.stroke();
+        }
       }
       ctx.setLineDash([]);
     }
@@ -143,7 +155,7 @@ export function VectorFieldCanvas({
       ctx.textBaseline = "bottom";
       ctx.fillText(overlayHint.text, Math.min(s.x + 10, width - 160), Math.max(s.y - 8, 12));
     }
-  }, [overlay, overlayHint, highlight, v, width, height]);
+  }, [overlay, overlayHint, highlight, highlightColor, v, width, height]);
 
   // Wheel must be non-passive to prevent the page from scrolling; React's onWheel is passive.
   useEffect(() => {
