@@ -84,6 +84,7 @@ describe("label tables", () => {
       L.ui.typeSecond, L.ui.secondOrderLabel, L.ui.secondOrderReduced, L.ui.secondOrderUnknownSymbol,
       L.ui.secondOrderOtherPrime, L.ui.secondOrderNotAffine, L.ui.secondOrderZeroCoefficient, L.ui.secondOrderNoEquation,
       L.ui.xpMin, L.ui.xpMax, L.ui.snapshotTSecond, L.ui.queryHitSecond, L.ui.timeDependentNoteSecond, L.ui.timeDependentShortSecond,
+      L.ui.paramsEmptyHintSecond,
       L.tool.secondOrderReduced, L.tool.secondOrderHeader, L.tool.timeDependentSecond, L.tool.pointSecond, L.tool.queryHeaderSecond,
       L.tool.queryTargetXp, L.tool.queryHitSecond,
     ];

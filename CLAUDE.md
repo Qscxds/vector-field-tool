@@ -368,6 +368,15 @@ then-current status; use the current section for superseding decisions. Widget v
    `equalScaleTexts` / `featuresBoxDetail` in `lib/labels.ts` and `statusPictureOf` /
    `statusSentence` in `lib/labels-trajectory.ts`; a new surface must use them, and
    `lib/labels.test.ts` keeps a no-lone-y test over every second-order key.
+   **Symbols the tool writes itself, the tool explains itself (round Z, Z1.1; the professor's "it is
+   unclear what is y here").** Whatever the tool fills into the equation box BY ITSELF (a preset, an
+   example, an autocompletion) must say what every symbol it introduced stands for. When a student
+   writes x' = y, the y is the student's choice; when a preset writes x' = y, the y is ours and is
+   defined on the spot: a preset that is a second-order equation written as a system carries the
+   original equation and "y = x'" in its NAME and opens its note with the reduction (let y = x', the
+   velocity); such a preset and its second-order twin point at each other (`twin`). Planar presets
+   whose x and y really are two unknown functions (Lotka-Volterra, saddle, star node) say nothing.
+   `app/vector-field/presets.test.ts` enforces it for every system preset whose x' is exactly y.
 
 ## Kernel freeze (decided 2026-09-09, round M)
 

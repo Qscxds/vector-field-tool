@@ -132,7 +132,7 @@ export type LabelTable = {
     // Round T: a link's parameter entry ("p=k:0.8") that was dropped, and why.
     | "urlReasonBadParamName" | "urlReasonReservedParamName" | "urlReasonDuplicateParam"
     // Round T: the parameter area of the form.
-    | "params" | "paramsEmptyHint" | "paramAdd" | "paramRemove" | "paramName" | "paramValue" | "paramPending"
+    | "params" | "paramsEmptyHint" | "paramsEmptyHintSecond" | "paramAdd" | "paramRemove" | "paramName" | "paramValue" | "paramPending"
     | "paramLooksLikeProduct" | "paramStillUsed" | "paramNameEmpty" | "paramNameInvalid" | "paramNameReserved"
     | "paramNameReservedV" | "paramNameTooLong" | "paramNameDuplicate" | "paramValueEmpty" | "paramValueNotANumber"
     | "paramValueOutOfRange" | "paramsCap"
@@ -505,6 +505,8 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonDuplicateParam: "同一个参数给了两次，只用了第一次的值",
       params: "参数",
       paramsEmptyHint: "在方程里直接写一个字母（例如 k*y 里的 k），它就会出现在这里，值可以随时改。",
+      // Round Z0: a second-order problem has no y, so its example is k*x.
+      paramsEmptyHintSecond: "在方程里直接写一个字母（例如 k*x 里的 k），它就会出现在这里，值可以随时改。",
       paramAdd: "添加参数",
       paramRemove: "删除 {name}",
       paramName: "参数名",
@@ -938,6 +940,7 @@ export const LABELS: Record<Locale, LabelTable> = {
       urlReasonDuplicateParam: "the same parameter was given twice; the first value is used",
       params: "Parameters",
       paramsEmptyHint: "Write a letter in the equation (the k in k*y) and it appears here with a value you can change.",
+      paramsEmptyHintSecond: "Write a letter in the equation (the k in k*x) and it appears here with a value you can change.",
       paramAdd: "Add a parameter",
       paramRemove: "Remove {name}",
       paramName: "Parameter name",
