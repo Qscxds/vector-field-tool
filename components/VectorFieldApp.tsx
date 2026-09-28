@@ -13,8 +13,8 @@ import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { TimeSeriesCanvas } from "@/components/TimeSeriesCanvas";
 import type { TimeSeriesDrawing } from "@/components/drawTimeSeries";
 import { useDocumentLang } from "@/components/useDocumentLang";
-import { exportScenePng, exportTimeSeriesPng } from "@/components/exportScenePng";
-import { exportFileName, exportFooterText, exportTimeSeriesFooterText } from "@/lib/export-footer";
+import { exportDualPng, exportScenePng, exportTimeSeriesPng } from "@/components/exportScenePng";
+import { exportDualFooterText, exportFileName, exportFooterText, exportTimeSeriesFooterText } from "@/lib/export-footer";
 import { coordinateNamesForMode, type CoordinateNames } from "@/lib/coordinate-names";
 import { reportedForms } from "@/lib/core/detect-form";
 import { compileSystem, ParseError, X_IN_FIRST_ORDER_MESSAGE, type CompiledSystem } from "@/lib/core/parse";
@@ -22,7 +22,7 @@ import { querySolution, type QueryResult } from "@/lib/core/query";
 import { reduceSecondOrder, type ReducedSecondOrder } from "@/lib/core/second-order";
 import { compileDifferential, toSystem, type FirstOrderSpec } from "@/lib/core/slope-field";
 import type { Box, Range, SystemSpec, Vec2 } from "@/lib/core/types";
-import { constantSolutionNotices, curveWords, eigenDirectionLines, equalScaleTexts, equilibriaNotices, featuresBoxDetail, fill, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
+import { constantSolutionNotices, curveWords, eigenDirectionLines, equalScaleTexts, equilibriaNotices, featuresBoxDetail, fill, formFolded, formatNumber, formatPoint, labels, noConstantSentence, pictureCaptions, pointText, timeDependentFolded, withParams, type LabelTable, type Locale, type PictureMode } from "@/lib/labels";
 import { constantSolutionLine, equilibriumLine, lectureCurveNote, lectureNotices, lectureQueryShort } from "@/lib/lecture";
 import { addParamRow, discoverParams, formatParamValue, freeParamNames, looksLikeFunctionCall, looksLikeProduct, MAX_PARAM_ABS_VALUE, MAX_PARAMS, MAX_SLIDER_STEPS, paramsFromEntries, paramsText, parseSliderRange, removeParamRow, resolveParams, setParamName, setParamText, setSliderField, slideParam, sliderEntries, syncParams, toggleSlider, withSliders, type ParamEntry, type ParamRowProblem, type ParamState } from "@/lib/params";
 import { queryNoteText, queryTargetText } from "@/lib/labels-query";
@@ -31,10 +31,11 @@ import { CLICK_TSPAN, fixedStopBox } from "@/lib/interactive";
 import { kernelQueryKind, parseQueryValue, queryHitText, queryKindName, queryKindsFor, selectedTrajectoryIndex, trajectoryOptionText, type PanelVariables, type UiQueryKind } from "@/lib/query-panel";
 import type { AidFlags } from "@/lib/phase-aids";
 import type { ArrowMode } from "@/lib/render/arrows";
+import { curveColor } from "@/lib/render/color";
 import { fitViewport } from "@/lib/render/viewport";
 import type { QueryView, Scene, TrajectoryView } from "@/lib/scene";
 import { siteText } from "@/lib/site-text";
-import { defaultView, hasTimeSeries, MAX_TRACE_TSPAN, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, timeSeriesBox, traceSpans, type ViewKind } from "@/lib/time-series";
+import { defaultView, hasTimeSeries, MAX_TRACE_TSPAN, parseTimeRange, seriesCurves, seriesHits, seriesName, seriesOf, showsPhase, showsTime, timeSeriesBox, traceSpans, VIEW_KINDS, type ViewKind } from "@/lib/time-series";
 import { initialValueNames, parseInitialValue, type InitialValueReason } from "@/lib/initial-value";
 import { isUndoKey } from "@/lib/undo-key";
 import { MAX_TRAJECTORIES } from "@/lib/trajectory-store";
@@ -184,6 +185,9 @@ const CANVAS_ASPECT = 0.72;
 /**
  * Layout, prefixed vf- so a later pass can extend it: two columns (form | picture) when wide,
  * one column below 800 px (form above, picture below). Embed mode drops the page chrome padding.
+ * Round Z2.1: the picture column holds up to two pictures (.vf-pictures): side by side when two
+ * of at least 340 px fit, stacked otherwise and always below the 800 px breakpoint; each picture
+ * measures its own slot and sizes its canvas from it (neither is squeezed for the other).
  */
 const VF_STYLE = `
 .vf-app { max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px; font-size: 14px; line-height: 1.5; }
@@ -209,12 +213,24 @@ const VF_STYLE = `
 .vf-lecture .vf-results p, .vf-lecture .vf-results li { font-size: inherit !important; }
 .vf-canvas { flex: 1 1 0; min-width: 0; position: relative; }
 .vf-computing { position: absolute; top: 8px; right: 8px; z-index: 1; margin: 0; padding: 2px 8px; border-radius: 4px; background: rgba(255, 255, 255, 0.92); border: 1px solid #e5e7eb; font-size: 12px; color: #52606d; }
+/* Round Z2: the view switch above the pictures, the pictures side by side or stacked, a caption above each. */
+.vf-view-switch { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin: 0 0 8px; color: #52606d; }
+.vf-segments { display: inline-flex; }
+.vf-segments button { padding: 5px 12px; border: 1px solid #d1d5db; background: #f9fafb; color: #1f2933; cursor: pointer; font: inherit; margin-left: -1px; }
+.vf-segments button:first-child { border-radius: 6px 0 0 6px; margin-left: 0; }
+.vf-segments button:last-child { border-radius: 0 6px 6px 0; }
+.vf-segments button[aria-pressed="true"] { background: #1f2933; color: #ffffff; border-color: #1f2933; position: relative; }
+.vf-pictures { display: flex; flex-wrap: wrap; gap: 12px 16px; align-items: flex-start; position: relative; }
+.vf-picture { flex: 1 1 340px; min-width: 0; }
+.vf-caption { margin: 0 0 4px; color: #52606d; font-size: 12px; }
+.vf-lecture .vf-caption { font-size: 16px; }
 .vf-report { margin: 18px 0 0; font-size: 12px; color: #52606d; }
 .vf-embed .vf-report { margin: 8px 0 0; }
 @media (max-width: 800px) {
   .vf-columns { flex-direction: column; gap: 14px; }
   .vf-form { flex: none; min-width: 0; width: 100%; }
   .vf-canvas { width: 100%; }
+  .vf-picture { flex-basis: 100%; }
   .vf-app [data-preset-select], .vf-app [data-copy-link], .vf-app [data-download-png] { width: 100%; }
 }
 /* Touch screens: 44 px targets, and 16 px text so iOS does not zoom into a focused field. */
@@ -225,18 +241,28 @@ const VF_STYLE = `
 `;
 
 
-/** Width of the picture column, measured with a ResizeObserver; null until mounted (server render). */
-function useMeasuredWidth(): [React.RefObject<HTMLDivElement | null>, number | null] {
-  const ref = useRef<HTMLDivElement | null>(null);
+/**
+ * Width of a picture slot, measured with a ResizeObserver; null until mounted (server render). A
+ * callback ref (round Z2.1): the slot may mount later or unmount (the view switch), and the observer
+ * follows the element that is there now. An unmounted slot keeps its last width, which nothing reads.
+ */
+function useMeasuredWidth(): [(el: HTMLDivElement | null) => void, number | null] {
   const [width, setWidth] = useState<number | null>(null);
-  useEffect(() => {
-    const el = ref.current;
-    if (!el || typeof ResizeObserver === "undefined") return;
+  const observerRef = useRef<ResizeObserver | null>(null);
+  const ref = useCallback((el: HTMLDivElement | null) => {
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (!el) return;
+    // Measured at once (the ref runs in the commit phase, so the box is laid out): the canvas has its
+    // size on the first paint, and in a tab the browser does not paint (a hidden pane) the observer's
+    // first notification may not arrive at all; the observer then follows later changes.
+    setWidth(el.getBoundingClientRect().width);
+    if (typeof ResizeObserver === "undefined") return;
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) setWidth(entry.contentRect.width);
     });
     observer.observe(el);
-    return () => observer.disconnect();
+    observerRef.current = observer;
   }, []);
   return [ref, width];
 }
@@ -453,9 +479,11 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     [queryRun, queryKey],
   );
 
-  // The picture fills its column: measured after mount, clamped, height from the width.
-  const [canvasWrapRef, wrapWidth] = useMeasuredWidth();
-  const { width: canvasW, height: canvasH } = canvasSize(wrapWidth);
+  // Each picture fills its own slot (round Z2.1: two slots in the "both" view): measured after mount, clamped, height from the width.
+  const [phaseSlotRef, phaseSlotWidth] = useMeasuredWidth();
+  const [graphSlotRef, graphSlotWidth] = useMeasuredWidth();
+  const phaseSize = canvasSize(phaseSlotWidth);
+  const graphSize = canvasSize(graphSlotWidth);
 
   // Round W: lecture mode. A pure display choice: it is in no dependency list of anything computed,
   // so switching it recomputes nothing and switching back shows every number at once.
@@ -484,8 +512,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     spec: compiled.spec,
     firstOrder: compiled.firstOrder,
     homeBox: compiled.box,
-    width: canvasW,
-    height: canvasH,
+    width: phaseSize.width,
+    height: phaseSize.height,
     density: shown.density,
     locale,
     kind: shown.mode === "system" || shown.mode === "second" ? "analyze_system" : "analyze_first_order",
@@ -509,7 +537,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     queryStart: queryRun?.start,
     secondOrder: secondOrderView,
   });
-  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers, featuresPending } = interactive;
+  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers, featuresPending, hoveredIndex, hoverTrajectory } = interactive;
 
   // "Initial value" row: two typed numbers kept exactly like a click (same addTrajectory, same
   // undo entry, same traj encoding). Text state so "-" or "1." can be typed; validated on Add.
@@ -576,27 +604,39 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const groups = useMemo(() => groupTrajectories(trajectories), [trajectories]);
   const lastGroup = groups.length ? groups[groups.length - 1] : null;
 
-  // Round Q: the time-series view (lib/time-series). Offered on planar pictures only; opens on the
-  // phase plane for an autonomous equation and on the time series for a non-autonomous one unless
-  // the link or the student chose. Its box: the chosen t range across, the entered range of the
-  // drawn components up; never equal-scale. The curves are the kept ones (same store, same
-  // Clear / Undo / link), drawn against the kernel's clock; a query's hits are marked at (t, value).
+  // Round Q / Z2: the solution graph (lib/time-series). Offered on planar pictures only; which
+  // picture(s) open is the link's or the student's choice, else defaultView (both for a second-order
+  // equation, the phase plane for an autonomous planar system, the graph for a non-autonomous one).
+  // Its box: the chosen t range across, the entered range of the drawn components up; never
+  // equal-scale. The curves are the kept ones (same store, same Clear / Undo / link), drawn against
+  // the kernel's clock; a query's hits are marked at (t, value).
   const timeSeriesAvailable = hasTimeSeries(picture);
   const view: ViewKind = timeSeriesAvailable ? (viewChoice ?? defaultView(picture, Boolean(scene?.timeDependent))) : "phase";
   const series = useMemo(() => seriesOf(picture, showVelocity), [picture, showVelocity]);
   const timeSeriesViewport = useMemo(
-    () => (compiled.box ? fitViewport(timeSeriesBox(compiled.box, series, timeRange), canvasW, canvasH, { equalScale: false }) : null),
-    [compiled.box, series, timeRange, canvasW, canvasH],
+    () => (compiled.box ? fitViewport(timeSeriesBox(compiled.box, series, timeRange), graphSize.width, graphSize.height, { equalScale: false }) : null),
+    [compiled.box, series, timeRange, graphSize.width, graphSize.height],
   );
+  // Round Z2.4: the two pictures are linked by data. Kept curve i (pair i of the phase plane, entry
+  // i of the graph) is curveColor(i) in both; ONE hovered index (from either picture) emphasizes
+  // it in both; the phase plane's hover preview is drawn on the graph too; the start of every kept
+  // curve is marked on the phase plane in its color.
+  const legColors = useMemo(() => groups.flatMap((g, i) => g.map(() => curveColor(i))), [groups]);
+  const startMarkers = useMemo(() => trajectoryStarts.map((p, i) => ({ at: p, color: curveColor(i) })), [trajectoryStarts]);
+  const hoverColor = hoveredIndex === null ? undefined : curveColor(hoveredIndex);
   const timeSeriesDrawing = useMemo<TimeSeriesDrawing>(
     () => ({
       curves: groups.map((g) => seriesCurves(g, series)),
       legend: series.map((key) => ({ key, name: seriesName(picture, key) })),
       ...(queryShown ? { hits: seriesHits(queryShown.result.hits, series) } : {}),
       t0: snapshotT,
+      highlightIndex: hoveredIndex,
+      ...(overlay.length ? { preview: seriesCurves(overlay, series) } : {}),
     }),
-    [groups, series, picture, queryShown, snapshotT],
+    [groups, series, picture, queryShown, snapshotT, hoveredIndex, overlay],
   );
+  // Round Z2.3: what each picture's coordinates are, in the student's notation.
+  const captions = pictureCaptions(L, picture, series);
   // "x, x'" / "x" / "x, y": the drawn components, for the shown-range line and the PNG footer.
   const seriesNames = series.map((key) => (key === "x" ? "x" : vv)).join(", ");
 
@@ -651,6 +691,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     // Round U: a preset may bring the time-series view's t range (the beats need one whole envelope).
     const range = presetState(p).timeRange;
     setTimeRangeText({ min: String(range.min), max: String(range.max) });
+    // Round Z2.1: a preset may bring its view (the four mechanical presets open with both pictures); otherwise the choice stays.
+    if (p.view) setViewChoice(p.view);
     setTrajectorySeeds((p.starts ?? []).map((q) => ({ x: q.x, y: q.y })));
     setPresetId(p.id);
   };
@@ -715,8 +757,21 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       // The entered box as the 5th argument: after a zoom or pan the footer prints both the
       // entered range and the shown one (lib/export-footer). The time-series view exports its own
       // picture (the same drawTimeSeries as the screen) with the t range and the drawn components.
+      // Round Z2.5: the "both" view exports the two pictures side by side with one footer.
       const blob =
-        view === "time" && timeSeriesViewport
+        view === "both" && timeSeriesViewport
+          ? await exportDualPng({
+              scene,
+              viewport,
+              arrowMode: form.arrowMode,
+              trajectoryColors: legColors,
+              starts: startMarkers,
+              graph: { viewport: timeSeriesViewport, drawing: timeSeriesDrawing },
+              footer: exportDualFooterText(scene, viewport, timeSeriesViewport.box, seriesNames, locale, window.location.origin, compiled.box ?? undefined),
+              scale: 2,
+              lecture,
+            })
+          : view === "time" && timeSeriesViewport
           ? await exportTimeSeriesPng({
               viewport: timeSeriesViewport,
               drawing: timeSeriesDrawing,
@@ -724,7 +779,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               scale: 2,
               lecture,
             })
-          : await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer: exportFooterText(scene, viewport, locale, window.location.origin, compiled.box ?? undefined), scale: 2, lecture });
+          : await exportScenePng({ scene, viewport, arrowMode: form.arrowMode, footer: exportFooterText(scene, viewport, locale, window.location.origin, compiled.box ?? undefined), scale: 2, lecture, trajectoryColors: legColors, starts: startMarkers });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -736,7 +791,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     } catch {
       setDownloadFailed(true);
     }
-  }, [scene, viewport, locale, form.arrowMode, form.mode, presetId, compiled.box, view, timeSeriesViewport, timeSeriesDrawing, seriesNames, lecture]);
+  }, [scene, viewport, locale, form.arrowMode, form.mode, presetId, compiled.box, view, timeSeriesViewport, timeSeriesDrawing, seriesNames, lecture, legColors, startMarkers]);
   const fallbackInputRef = useRef<HTMLInputElement | null>(null);
   const copyLink = useCallback(async () => {
     const url = buildShareUrl(window.location.origin, "/vector-field", appState);
@@ -969,45 +1024,30 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               <input value={form.yMax} onChange={(e) => update({ yMax: e.target.value })} style={inputStyle} name="yMax" />
             </label>
           </div>
-          {/* Round Q: which picture (planar modes only). The time-series view has its own t range and,
-              on a second-order equation, the x'(t) overlay; curves are added under Initial value. */}
-          {timeSeriesAvailable ? (
-            <div style={{ display: "grid", gap: 6, color: "#1f2933" }} data-view-toggle>
-              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }} role="radiogroup" aria-label={L.ui.view}>
-                <span style={{ color: "#52606d" }}>{L.ui.view}</span>
-                <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                  <input type="radio" name="view" value="phase" checked={view === "phase"} onChange={() => setViewChoice("phase")} />
-                  <span>{L.ui.viewPhase}</span>
+          {/* Round Z2.2: the view switch lives above the pictures now. The solution graph's own options stay here:
+              its t range and, on a second-order equation, the x'(t) overlay; curves are added under Initial value. */}
+          {timeSeriesAvailable && showsTime(view) ? (
+            <div style={{ display: "grid", gap: 6, color: "#1f2933" }} data-graph-options>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <label style={labelStyle}>
+                  <span>{L.ui.timeFrom}</span>
+                  <input value={timeRangeText.min} onChange={(e) => setTimeRangeText((prev) => ({ ...prev, min: e.target.value }))} style={inputStyle} name="tMin" inputMode="decimal" />
                 </label>
-                <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                  <input type="radio" name="view" value="time" checked={view === "time"} onChange={() => setViewChoice("time")} />
-                  <span>{L.ui.viewTime}</span>
+                <label style={labelStyle}>
+                  <span>{L.ui.timeTo}</span>
+                  <input value={timeRangeText.max} onChange={(e) => setTimeRangeText((prev) => ({ ...prev, max: e.target.value }))} style={inputStyle} name="tMax" inputMode="decimal" />
                 </label>
               </div>
-              {view === "time" ? (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                    <label style={labelStyle}>
-                      <span>{L.ui.timeFrom}</span>
-                      <input value={timeRangeText.min} onChange={(e) => setTimeRangeText((prev) => ({ ...prev, min: e.target.value }))} style={inputStyle} name="tMin" inputMode="decimal" />
-                    </label>
-                    <label style={labelStyle}>
-                      <span>{L.ui.timeTo}</span>
-                      <input value={timeRangeText.max} onChange={(e) => setTimeRangeText((prev) => ({ ...prev, max: e.target.value }))} style={inputStyle} name="tMax" inputMode="decimal" />
-                    </label>
-                  </div>
-                  {!timeRangeParsed ? (
-                    <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-time-range-error>
-                      {L.ui.timeRangeError}
-                    </p>
-                  ) : null}
-                  {second ? (
-                    <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-                      <input type="checkbox" checked={showVelocity} onChange={(e) => setShowVelocity(e.target.checked)} name="showVelocity" />
-                      <span>{L.ui.showVelocity}</span>
-                    </label>
-                  ) : null}
-                </>
+              {!timeRangeParsed ? (
+                <p role="alert" style={{ margin: 0, color: "#991b1b", fontSize: 13 }} data-time-range-error>
+                  {L.ui.timeRangeError}
+                </p>
+              ) : null}
+              {second ? (
+                <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                  <input type="checkbox" checked={showVelocity} onChange={(e) => setShowVelocity(e.target.checked)} name="showVelocity" />
+                  <span>{L.ui.showVelocity}</span>
+                </label>
               ) : null}
             </div>
           ) : null}
@@ -1019,8 +1059,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             </label>
           ) : null}
           {/* Round S: the field's own controls exist only where a field is drawn. Hidden (not disabled) in the
-              time-series view; the values stay in the form and in the link, so the phase plane gets them back. */}
-          {view === "phase" ? (
+              solution-graph view; the values stay in the form and in the link, so the phase plane gets them back. */}
+          {showsPhase(view) ? (
             <>
               <label style={labelStyle}>
                 <span>
@@ -1037,8 +1077,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </label>
             </>
           ) : null}
-          {/* Round V: the overlays of the phase plane / slope field (not of the time-series view). All off by default: the picture is full enough. */}
-          {view === "phase" ? (
+          {/* Round V: the overlays of the phase plane / slope field (not of the solution graph). All off by default: the picture is full enough. */}
+          {showsPhase(view) ? (
             <fieldset style={{ display: "grid", gap: 4, margin: 0, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 6, color: "#1f2933" }} data-aids>
               <legend style={{ padding: "0 4px" }}>
                 {L.ui.aidsHeading}{" "}
@@ -1066,7 +1106,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           ) : null}
           <div style={{ color: "#1f2933" }}>
             <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
-              {/* Off and disabled in the time-series view (t and a value have different units); the phase plane keeps its setting. */}
+              {/* Off and disabled in the solution-graph view (t and a value have different units); the phase plane keeps its setting (round Z2.5: in the "both" view it acts on the phase plane alone). */}
               <input type="checkbox" checked={view === "time" ? false : equalScale} disabled={view === "time"} onChange={(e) => setEqualScale(e.target.checked)} name="equalScale" />
               <span>{L.ui.equalScale}</span>
             </label>{" "}
@@ -1184,13 +1224,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
         </form>
         )}
 
-        <div className="vf-canvas" ref={canvasWrapRef}>
-          {/* R.1: while the deferred picture is behind the form (a slow equilibria search), say so over the old picture. */}
-          {computing || featuresPending ? (
-            <p role="status" className="vf-computing" data-computing>
-              {L.ui.computing}
-            </p>
-          ) : null}
+        <div className="vf-canvas">
           {compiled.error ? (
             <div role="alert" style={{ padding: "10px 12px", marginBottom: 10, background: "#fef2f2", color: "#991b1b", border: "1px solid #fecaca", borderRadius: 6 }}>
               {compiled.error}
@@ -1200,64 +1234,66 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </p>
             </div>
           ) : null}
+          {/* Round Z2.2: the view switch sits right above the pictures, where it cannot be missed (planar pictures only). */}
+          {timeSeriesAvailable ? (
+            <div className="vf-view-switch" role="group" aria-label={L.ui.view} data-view-switch>
+              <span>{L.ui.view}</span>
+              <span className="vf-segments">
+                {VIEW_KINDS.map((k) => (
+                  <button key={k} type="button" aria-pressed={view === k} onClick={() => setViewChoice(k)} data-view={k}>
+                    {k === "phase" ? L.ui.viewPhase : k === "time" ? L.ui.viewTime : L.ui.viewBoth}
+                  </button>
+                ))}
+              </span>
+            </div>
+          ) : null}
           {scene && viewport ? (
-            <>
-              {view === "time" && timeSeriesViewport ? (
-                <TimeSeriesCanvas viewport={timeSeriesViewport} drawing={timeSeriesDrawing} lecture={lecture} />
-              ) : (
-                <VectorFieldCanvas
-                  scene={scene}
-                  viewport={viewport}
-                  width={canvasW}
-                  height={canvasH}
-                  arrowMode={form.arrowMode}
-                  lecture={lecture}
-                  overlay={overlay}
-                  overlayHint={hint}
-                  highlight={highlight}
-                  cursor={cursor}
-                  {...handlers}
-                />
-              )}
-              {/* Persistent notes (never timed toasts): in the time-series view equal scale has no meaning
-                  and is off; on a phase plane drawn without it the picture's angles are not slopes. */}
-              {view === "time" ? (
-                <p role="status" data-time-series-note style={{ margin: "6px 0 0", color: "#52606d" }}>
-                  {L.ui.timeSeriesScaleNote}
-                </p>
-              ) : !equalScale ? (
-                <p role="status" data-scale-warning style={{ margin: "6px 0 0", color: "#92400e" }}>
-                  {scale.warning}
+            <div className="vf-pictures" data-view={view} data-hovered-curve={hoveredIndex ?? undefined}>
+              {/* R.1: while the deferred picture is behind the form (a slow equilibria search), say so over the old picture. */}
+              {computing || featuresPending ? (
+                <p role="status" className="vf-computing" data-computing>
+                  {L.ui.computing}
                 </p>
               ) : null}
-              {view === "time" && trajectories.length === 0 ? (
-                <p role="status" data-time-series-empty style={{ margin: "6px 0 0", color: "#92400e" }}>
-                  {L.ui.timeSeriesEmpty}
-                </p>
-              ) : null}
-              {/* Round U: the curves follow the t range (lib/time-series traceSpans) up to MAX_TRACE_TSPAN from t₀; a range beyond that shows blank, said so. */}
-              {view === "time" && (timeRange.min < snapshotT - MAX_TRACE_TSPAN || timeRange.max > snapshotT + MAX_TRACE_TSPAN) ? (
-                <p role="status" data-time-series-span style={{ margin: "6px 0 0", color: "#92400e" }}>
-                  {fill(L.ui.timeSeriesSpanNote, { from: formatNumber(snapshotT - MAX_TRACE_TSPAN, 4), to: formatNumber(snapshotT + MAX_TRACE_TSPAN, 4), span: MAX_TRACE_TSPAN })}
-                </p>
-              ) : null}
-              {/* The hover preview passes through a point where uniqueness fails (kept curves say it in the last-trajectory line). */}
-              {view === "phase" && overlay.some((t) => t.nonUnique) ? (
-                <p role="status" data-non-unique-preview style={{ margin: "6px 0 0", color: "#92400e" }}>
-                  {L.ui.nonUniqueTrajectory}
-                </p>
-              ) : null}
-              {/* Round W: the displayed range in digits is hidden in lecture mode (the axes carry it). */}
-              <p hidden={lecture} style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range>
-                {view === "time" && timeSeriesViewport
-                  ? fill(L.ui.shownTimeRange, {
-                      tMin: formatNumber(timeSeriesViewport.box.x.min, 3),
-                      tMax: formatNumber(timeSeriesViewport.box.x.max, 3),
-                      names: seriesNames,
-                      vMin: formatNumber(timeSeriesViewport.box.y.min, 3),
-                      vMax: formatNumber(timeSeriesViewport.box.y.max, 3),
-                    })
-                  : fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
+              {showsPhase(view) ? (
+                <div className="vf-picture" ref={phaseSlotRef} data-picture="phase">
+                  {/* Round Z2.3: each picture says what its coordinates are, in the student's notation (kept in lecture mode: notation, not evidence). */}
+                  {timeSeriesAvailable ? (
+                    <p className="vf-caption" data-caption="phase">
+                      {captions.phase}
+                    </p>
+                  ) : null}
+                  <VectorFieldCanvas
+                    scene={scene}
+                    viewport={viewport}
+                    width={phaseSize.width}
+                    height={phaseSize.height}
+                    arrowMode={form.arrowMode}
+                    lecture={lecture}
+                    overlay={overlay}
+                    overlayHint={hint}
+                    highlight={highlight}
+                    highlightColor={hoverColor}
+                    trajectoryColors={legColors}
+                    starts={startMarkers}
+                    cursor={cursor}
+                    {...handlers}
+                  />
+                  {/* Persistent notes (never timed toasts): on a phase plane drawn without equal scale the picture's angles are not slopes. */}
+                  {!equalScale ? (
+                    <p role="status" data-scale-warning style={{ margin: "6px 0 0", color: "#92400e" }}>
+                      {scale.warning}
+                    </p>
+                  ) : null}
+                  {/* The hover preview passes through a point where uniqueness fails (kept curves say it in the last-trajectory line). */}
+                  {overlay.some((t) => t.nonUnique) ? (
+                    <p role="status" data-non-unique-preview style={{ margin: "6px 0 0", color: "#92400e" }}>
+                      {L.ui.nonUniqueTrajectory}
+                    </p>
+                  ) : null}
+                  {/* Round W: the displayed range in digits is hidden in lecture mode (the axes carry it). */}
+                  <p hidden={lecture} style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range="phase">
+                    {fill(equalScale ? L.ui.shownRangeEqual : L.ui.shownRangeFilled, {
                       hv,
                       vv,
                       xMin: formatNumber(viewport.box.x.min, 3),
@@ -1265,11 +1301,48 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                       yMin: formatNumber(viewport.box.y.min, 3),
                       yMax: formatNumber(viewport.box.y.max, 3),
                     })}
-              </p>
-            </>
+                  </p>
+                </div>
+              ) : null}
+              {showsTime(view) && timeSeriesViewport ? (
+                <div className="vf-picture" ref={graphSlotRef} data-picture="graph">
+                  {/* Round Z2.4: no click adds a curve here (a point (t, x) fixes no initial value); the caption says where to add one. */}
+                  <p className="vf-caption" data-caption="graph">
+                    {captions.graph} {fill(L.ui.graphNoClick, { vv })}
+                  </p>
+                  <TimeSeriesCanvas viewport={timeSeriesViewport} drawing={timeSeriesDrawing} lecture={lecture} onHoverCurve={hoverTrajectory} />
+                  {/* Round Z2.5: the solution graph is never to scale; the persistent note hangs under it alone. */}
+                  <p role="status" data-time-series-note style={{ margin: "6px 0 0", color: "#52606d" }}>
+                    {L.ui.timeSeriesScaleNote}
+                  </p>
+                  {trajectories.length === 0 ? (
+                    <p role="status" data-time-series-empty style={{ margin: "6px 0 0", color: "#92400e" }}>
+                      {L.ui.timeSeriesEmpty}
+                    </p>
+                  ) : null}
+                  {/* Round U: the curves follow the t range (lib/time-series traceSpans) up to MAX_TRACE_TSPAN from t₀; a range beyond that shows blank, said so. */}
+                  {timeRange.min < snapshotT - MAX_TRACE_TSPAN || timeRange.max > snapshotT + MAX_TRACE_TSPAN ? (
+                    <p role="status" data-time-series-span style={{ margin: "6px 0 0", color: "#92400e" }}>
+                      {fill(L.ui.timeSeriesSpanNote, { from: formatNumber(snapshotT - MAX_TRACE_TSPAN, 4), to: formatNumber(snapshotT + MAX_TRACE_TSPAN, 4), span: MAX_TRACE_TSPAN })}
+                    </p>
+                  ) : null}
+                  <p hidden={lecture} style={{ margin: "6px 0 0", color: "#52606d", fontSize: 12 }} data-shown-range="graph">
+                    {fill(L.ui.shownTimeRange, {
+                      tMin: formatNumber(timeSeriesViewport.box.x.min, 3),
+                      tMax: formatNumber(timeSeriesViewport.box.x.max, 3),
+                      names: seriesNames,
+                      vMin: formatNumber(timeSeriesViewport.box.y.min, 3),
+                      vMax: formatNumber(timeSeriesViewport.box.y.max, 3),
+                    })}
+                  </p>
+                </div>
+              ) : null}
+            </div>
           ) : (
-            <div style={{ width: canvasW, height: canvasH, border: "1px dashed #d1d5db", borderRadius: 6, display: "grid", placeItems: "center", color: "#6b7280" }}>
-              {L.ui.fixErrorHint}
+            <div className="vf-picture" ref={phaseSlotRef}>
+              <div style={{ width: phaseSize.width, height: phaseSize.height, border: "1px dashed #d1d5db", borderRadius: 6, display: "grid", placeItems: "center", color: "#6b7280" }}>
+                {L.ui.fixErrorHint}
+              </div>
             </div>
           )}
           {/* Round W: everything below the picture is the results block, enlarged in lecture mode. */}
@@ -1308,7 +1381,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           ) : null}
           {/* Round U: while a drag's debounce holds the last results, they are dimmed (and "Computing…" floats over the picture). */}
           <div className={featuresPending ? "vf-stale" : undefined} data-features-pending={featuresPending ? "true" : undefined}>
-            {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} eigen={aids.eigenDirections && view === "phase"} lecture={lecture} /> : null}
+            {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} eigen={aids.eigenDirections && showsPhase(view)} lecture={lecture} /> : null}
             {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} lecture={lecture} /> : null}
           </div>
           {/* Round W: the last-trajectory line is numbers and is hidden in lecture mode, but never the fact that a kept curve runs through a point where uniqueness fails. */}
