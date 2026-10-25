@@ -25,7 +25,14 @@ recomputation, nullclines / eigen-directions / separatrices, lecture mode; widge
 the 50 ms budget; widget y-1). Round 11 (Z, 2026-09-28): the four planar presets that write a second-order
 equation as a system renamed to carry the equation and y = x' (twins linked); the Both view (phase
 plane + solution graph side by side, linked, the switch above the pictures); the widget gains the
-solution graph (z-1); docs numbered by round.
+solution graph (z-1); docs numbered by round. Round 12 (AA, 2026-10-25): power series and solution
+formulas, the class's power-series unit: a new EXACT module lib/series (BigInt rationals; the power
+series about an ordinary point of a linear equation with polynomial coefficients, step by step, with
+the split u = a0 u1 + a1 u2 + up, proven termination, the radius lower bound, the Frobenius series at a
+regular singular point; the constant-coefficient split u = u_h + u_p with undetermined coefficients
+and resonance), the web shell's "Series and solution formula" panel with sliders and its chart, the
+preset chapter "Power series and solution formulas", and two text-only MCP tools (power_series,
+solution_formula; no widget change, still z-1).
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
@@ -84,9 +91,165 @@ then-current status; use the current section for superseding decisions. Widget v
   `timeUncertainty(hit)` = max(bracket, position error / speed) is what the shells display; the
   note is always a key: ok / not_reached_in_span / stopped_before_target /
   possibly_more_beyond_span (>= 3 hits in a COMPLETED direction) / target_is_start).
+- `lib/series/` (round 12, pure like lib/core and in lib/architecture.test.ts's PURE_DIRS, but OUTSIDE
+  the frozen kernel: new EXACT machinery the user asked for, nothing of lib/core changed) the
+  power-series and solution-formula mathematics. `rational` (Q and Gaussian rationals on BigInt;
+  `fromNumber` reads a double as its SHORTEST decimal, so 0.1 is 1/10 and a slider's 0.37 is 37/100;
+  no BigInt literals: tsconfig targets ES2017; `mul` cancels CROSSWISE (gcd(a.n, b.d), gcd(b.n, a.d))
+  and skips a factor 1, so no gcd of a full product of thousand-digit numbers; also `hexSize`, `lnAbs`
+  (logs beyond the double range) and `SeriesTooExpensive`), `poly` (dense polynomials over Q: Taylor shift, falling factorials, `pgcd`:
+  a MODULAR coprimality test first (three primes below 2^31; degree 0 mod p proves coprimality by
+  Gauss's lemma; a prime dividing a denominator or a leading coefficient is skipped), then the exact
+  monic remainder sequence: (t + pi)^16 against (t^2 + 1)^8 took 1.3 s), `quasi` (quasi-polynomials sum e^(lambda t) P(t) with Gaussian-rational lambda:
+  what undetermined coefficients handle; `asPolynomial` is the series path's view), `linear-form`
+  (the validated mathjs AST read EXACTLY as (u0 U + u1 U' + u2 U'' + free) / den: products, quotients
+  by a polynomial or one exponential, integer powers, exp/sin/cos/sinh/cosh of a LINEAR argument;
+  refusals with a reason key and the fragment: nonlinear, unsupportedFunction, nonIntegerPower,
+  piecewise, divisionByNonPolynomial, divisionByZero, notFinite, tooComplex (degree / exponentials),
+  tooManyDigits (`MAX_RATIONAL_HEX_DIGITS`, estimated BEFORE an integer power; a constant base by the
+  logarithms of its numerator and denominator), invalidArgument (an n mathjs refuses in round(a, n)),
+  noSecondDerivative (k x'' at k = 0: not "nonlinear"), each naming the STUDENT'S fragment, never a
+  computed value; pi, e and function values enter as the rational of their double and set
+  `approximate`; round(a) and round(a, n) are mathjs's own (mathjs.round below 2^53, so the series
+  solves the equation the picture integrates); a constant base takes any whole power exactly (0 and
+  ±1 by the exponent's exact parity); any whole exponent beyond 2^53 is refused as exponentTooLarge
+  (the picture computes it as a double: (−1)^(10^21 + 1) is +1 there); the caller's checkpoint runs
+  through the whole walk; `structurallyLinear` = the same linearity rules by the shape alone, no
+  arithmetic), `equation` (`linearEquation(mode, text, params, checkpoint?, reduction?)`: first order through the "ty" whitelist as D y' - A y = B, second order through
+  lib/core/second-order's normalization AFTER reduceSecondOrder's checks, whose NUMERICAL refusals
+  (`NUMERICAL_REDUCTION_CODES`: zero_coefficient, i.e. t x'' + ... the Frobenius case, internal,
+  not_affine, undefined_at_samples: (t^2 - 2) x'' + x = 0 is refused by the picture's sampled check
+  and is an ordinary point here) are tolerated and decided exactly; a non-constant denominator is
+  cleared; a polynomial factor common to every coefficient and the right-hand side (the gcd of ALL the
+  polynomial parts of their quasi-polynomial terms: t x'' + t x = t sin(t) is x'' + x = sin(t)) is
+  cancelled (`commonFactor`, announced in the derivation, with "its zeros are not singular" only when
+  that holds for the reduced equation); a leading coefficient c e^(lambda t) (never zero) is divided
+  out (`dividedExponential`: e^t x'' + e^t x = 0 is x'' + x = 0); `approximate` =
+  `approximateConstant` (pi, e, a function value) or `approximateLiteral` (a literal's TEXT says more
+  than its double, `inexactLiteral`: 0.5000000000000000001 and 1e-400 yes, 1e18 no), each with its own
+  note; `reduction` = an outcome of reduceSecondOrder on the same text with the reduced system
+  (`ReductionOutcome`), so its sampling is paid once (the page's own; computeSeriesPanel runs it once
+  otherwise and hands the reduced system to the reference integration too);
+  `readableAsLinearSecondOrder` = parse + x'' present + structurallyLinear, no arithmetic (what a
+  link may afford); `secondOrderSyntaxPasses` = reduceSecondOrder's SYNTAX checks without its
+  sampling (no budget, seconds on (t − 1)…(t − 20) x''), a pre-filter: when it passes,
+  computeSeriesPanel skips the kernel's sampling and a reference integration reduces lazily; when it
+  fails, reduceSecondOrder itself gives the verdict and the picture's sentence; only a NEGATIVE
+  CONSTANT leading coefficient is negated, so (1 - t^2) x''
+  stays as written), `power-series` (`polynomialOde`, `powerSeries(ode, center)`: terms c s^m u^(j)
+  with offset delta = j - m, low equations n < from, the recurrence a_{n+r} = sum N_delta(n)
+  a_{n+delta} / Q_r(n), coefficients as vectors over (a0, a1, 1), `provenDegree` = a window of
+  r - delta_min zero coefficients in the homogeneous region, singular points = zeros of
+  P_r / gcd(P_r, P_0, .., G), the radius = distance to the nearest (a guaranteed LOWER bound; kinds
+  infinite / finite / lowerBound, the last when a root could not be located: `rootFreeRadius`, a
+  Cauchy-type root-free disc, still a guaranteed bound); `SeriesTooExpensive` is thrown BEFORE a
+  Taylor shift whose size (hex digits of t0 x degree) is out of reach (t0 = 1e-300); at a
+  singular center the classification regular / irregular, the indicial equation and, for a
+  HOMOGENEOUS equation with RATIONAL indicial roots, the Frobenius series (the larger root always;
+  the smaller when the gap is not an integer or the recurrence leaves a_N free, decided AT n = N
+  whatever the number of terms shown; else "logEqual" / "logInteger", never expanded; "undecided"
+  when N > `FROBENIUS_GAP_CAP` 200 or the digit cap comes first) converging up to the nearest OTHER
+  singular point; a numeric distance is the radius only when its PROVEN bound is positive and within
+  `CERTIFIED_FRACTION` 1e-9 of it (a numeric root whose double IS t0 proves nothing), else
+  lowerBound = max(proven, root-free); conjugate numeric roots
+  within that fraction are one pair), `roots` (Yun's square-free split, exact linear and quadratic
+  roots, rational candidates filtered by the rational root theorem and verified exactly, Durand-Kerner
+  on the Fujiwara-scaled polynomial for what is left with every root accepted by a backward-stability
+  residual test, else kind "unlocated"; a numeric root carries a PROVEN inclusion radius `error`
+  (`inclusionRadii`: Weierstrass / Braess-Hadeler n|W_i|, W_i exact in Gaussian integers from the
+  doubles' binary values), every `Distance` a proven `lower` and its logarithm `ln` (distances are
+  computed from logarithms of exact rationals and compared by ln, so a singular point at 10^400 is
+  never mistaken for none); the nearer root of a real pair off its center is at |o² − w²| / (|o| + w)
+  with an exact numerator (t0 = 1.4142135623730951 is 5.1e-17 from √2, not 0), and only that branch
+  is named (`branch`); `rootFreeRadius` / `rootFreeRadiusLn` work on the exact coefficients'
+  logarithms; checkpoints), `decompose` (`constantCoefficientOde`, `solutionFormula`: the
+  characteristic polynomial and its discriminant decide the case exactly; undetermined
+  coefficients solved exactly per exponent mu with multiplicity s = resonance, one part per mu,
+  under the checkpoint and the digit cap (SeriesTooExpensive: 16-digit frequencies against t^40 ran
+  21 s); `nearResonance` = the exponent mu with |chi(mu)| <= `NEAR_RESONANCE_FRACTION` 1e-12 of
+  sum |P_j| |mu|^j, which makes the panel REFUSE an approximate equation (x'' + 2 x = cos(sqrt(2) t):
+  a 16-digit frequency, the exact formula's coefficients near 1e15) with an explanation ("frequency"
+  for an oscillation, "exponent" otherwise), never an exact one; `growthRate` (max |Re r|) and
+  `termScale` (the size of the formula's separate terms) for the check; the homogeneous
+  basis is ANCHORED at t0 (e^(r (t - t0)), ...: the constants stay of the size of the initial values
+  at t0 = 800); `constantsFor(sol, t0, initial)`: exact constants when t0 = 0 or the right-hand side
+  is a polynomial and the roots allow it, floating point otherwise (6 digits shown);
+  `particularResidualIsZero` substitutes u_p EXACTLY, exponent by exponent from the P_j; the first
+  conversion of u_p to doubles (`numericParts`, cached) and the exact u_p(t0) run on the checkpoint;
+  a complex pair with an irrational beta still has exact constants when C2's numerator is 0; the damping words only for P2 > 0, P1 >= 0,
+  P0 > 0, without introducing letters), `notation` (language-free FORMULAS: text / sub / sup / frac /
+  sum runs, `plain` Unicode, `fillFormula` fills a label template with formulas; a rational of more
+  than 16 digits prints rounded and sets ctx.rounded, beyond the double range through
+  `rationalDecimal` (1·10¹⁶⁰⁰, never Infinity or 0; half away from zero with the carry), except a
+  terminating decimal of at most 12 significant digits, which prints exactly (1.0000000001), and a
+  rounded value that would read as an exact integer keeps its zeros (1.00000, 1.00000·10⁶, a rounded
+  constant −1.00000·10⁷: 1 + 10⁻¹⁷ is not 1; `keepZeros` / `roundedNumber`); an expansion point
+  prints EXACTLY when it is a terminating decimal of at most 17 digits (`exactNum`: t0 =
+  0.3333333333333333, never 0.333333, whose statements would be about another point; printed from the
+  exact BigInt digits, never through a double); an exact rational radius that does not print exactly
+  is rounded DOWN in the guaranteed interval; a
+  coefficient that PRINTS as 1 is left out; a negative single term of an exponential stands in front
+  (−(1/2)e⁻³ᵗ); `tMultiple` prints a terminating decimal of at most `EXACT_DECIMAL_DIGITS` 12
+  significant digits exactly (1.00000001t), else rounds to ctx.digits, which `distinctDigits` raises
+  until different exponents, frequencies and coefficients print differently; `decimalDirected` /
+  `decimalDown` for guarantees (a proven bound prints rounded DOWN, a compared range rounded inward;
+  BigInt mantissa digits, no floating loop near 10^308) and `decimalLn` for a value given by its
+  logarithm (beyond the double range); surds round through logarithms; `pointsFormula` "t ≈ a ± bi",
+  a part below the inclusion radius printed as 0, a unit imaginary part as i; plain() brackets a
+  fraction before cos / sin),
+  `chart` (`numericalSolution`: the kernel's integrateAdaptive at rtol 1e-10 / atol 1e-12 as the
+  reference (options `atol`, the caller's `reduced` system; without one a second-order reference
+  evaluates the student's E(t, x, x', x'') DIRECTLY, x'' = −E0 / a with E0 and the coefficient a of x''
+  split structurally by dual numbers on the expression tree (`affineInXdd`: no E(1) − E(0)
+  cancellation, one evaluation per call), and never calls the kernel's reduceSecondOrder, which takes
+  no budget and spends minutes simplifying (t − 1)…(t − 24)(x'' + x) = 0); `holdAtEquilibrium` holds a leg that
+  stopped where the field is EXACTLY zero (drawing only, never the check; a slow start is not held); `sampleCurve` / `clipPolyline` cut a curve 20 chart heights off the chart;
+  `checkFormula`: deviation <= 1e-6 of the solution's size, with the range actually `covered`, ends
+  within 16 eps snapped to the range, null for a single point).
+- `lib/labels-series.ts` (round 12) the derivations as steps of formulas, word for word the same in
+  the panel and the tools: `seriesDerivation` (equation, ordinary point, ansatz, substitute and
+  shift with k the index before the shift, collect, recurrence, coefficients, split, radius, the
+  chosen initial values; singular: the point and the Frobenius step), `formulaDerivation`
+  (equation, split, characteristic equation and discriminant, roots, homogeneous solution and its
+  behavior, damping words, particular solution with the trial and resonance (several forcing terms:
+  their own unknowns, x_p1, x_p2 and a superposition line), constants, solution in the anchored
+  (t - t0) form, steady state only when u_h decays and every forcing exponent has real part 0, the
+  check: u_p substituted EXACTLY, then the formula against the numerical solution near t0 naming the
+  range actually compared, homogeneous variants that never name an x_p, the cancellation variant
+  that claims no comparison), `derivationText` (plain text),
+  `seriesLetters` (a, n, k, C, r,
+  A, B skip the student's parameter names: a parameter a makes the coefficients c_n). All sentences
+  are lib/labels' `series` section (both languages, placeholders take formulas).
+- `lib/series-panel.ts` (round 12) the panel's state and ONE computation shared by the web shell and
+  the MCP tools: `SeriesSettings` {kind series / formula / null, terms 1..30, center, initial},
+  `computeSeriesPanel(L, input)` -> off / unavailable (an explanation, never an error) / ok
+  {derivation, chart, check}; offered in modes first and second only (`seriesModeOf`); it parses
+  ONCE under the caller's checkpoint (a parse failure is `parseMessage`, which the tools turn into
+  isError); `SeriesTooExpensive` becomes the tooExpensive explanation; the formula path refuses near
+  resonance (only when the near-resonant exponent itself looks like a rounded double, `looksRounded`:
+  an unrelated pi elsewhere never refuses an exactly typed frequency), a u_p(t0) beyond floating point
+  (`formulaOverflow` with the t0 advice only where moving t0 helps, else `formulaOverflowFixed`) and a
+  formula past the digit cap (tooExpensiveFormula); the check window is |t - t0| <= min(1,
+  `CHECK_GROWTH` 8 / max |Re r|), its reference's atol scaled to the solution (a solution of size
+  1e-7 is checked to 1e-17), and no comparison is made when the terms exceed `CANCELLATION_LIMIT`
+  1e9 times the solution's size taken from the reference; a cancelling formula's chart shows the
+  numerical solution instead (chartCancellation); `chart: false` (the tools) skips the chart and its
+  reference integration; the check's floating-point work and the chart run on `afterBudget`
+  (checkpoint / quiet / spent: a budget spent there keeps the derivation, with the exact part of its
+  check, and drops only what was cut); a series chart reaches 2.5 radii around t0 when the radius is
+  finite and is left out below `MIN_CHART_ULPS` 1024 ulps of t0 or when nothing shows inside the
+  value range, else the picture's t range; captions and legends name only what shows inside the
+  chart. The panel's controls and results never use the symbol t₀ (the form has its own): "Expand
+  about t =", "x(2) =", "Power series about t = 2", "from the expansion point".
+  `components/SeriesPanel.tsx` (controls in the form column with sliders for t0, the highest power
+  and the initial values; the result under the pictures), `components/SeriesChart.tsx`
+  (drawTimeSeries with no kept curves and the new optional `extras` / `bands`, absent everywhere
+  else so the widget is pixel-identical), `components/MathText.tsx` (formulas as HTML).
 - `lib/render/` pure geometry: `viewport` (`fitViewport` equal-scale by default, `equalScale: false`
   returns the entered box unchanged so it fills the canvas; cursor-anchored `zoomAt`, `panBy`,
-  `resetViewport`), `arrows`, `ticks`, `axis-names` (where the axis names go without covering the
+  `resetViewport`), `arrows`, `ticks` (round 12: `chooseTicks` counts with an integer index, at most
+  1000 ticks and 100 decimals; a range a few ulps wide used to loop forever), `axis-names` (where
+  the axis names go without covering the
   tick numbers), `color` (the magnitude ramp; round Z2.4 `CURVE_PALETTE` / `curveColor`: one color
   per kept curve of the WEB SHELL, the same in both pictures, no marker or overlay color, the first
   two the old forward / backward colors), `contours` (marching squares).
@@ -292,7 +455,13 @@ then-current status; use the current section for superseding decisions. Widget v
   first-order link); `decodeState(query, fallback)` never throws: 4096-char query cap, 200-char expressions
   validated through the SAME parser whitelist as the page (compileScalar "ty" / "xy",
   reduceSecondOrder), finite bounded numbers, per-field fallback with reason keys rendered by the
-  shell; `buildShareUrl`, `queryFromSearchParams`. A link is a public attack surface: no relaxation.
+  shell; `buildShareUrl`, `queryFromSearchParams`. A link is a public attack surface: no relaxation,
+  with ONE exception (round 12): an eq that reduceSecondOrder refuses only for a
+  `NUMERICAL_REDUCTION_CODES` reason passes when lib/series' `readableAsLinearSecondOrder` accepts
+  it (static checks only, NEVER the exact reading: decoding runs on the server for every request and
+  exact arithmetic on a hostile 40-character link took minutes; a Frobenius equation travels in a
+  link; the page shows the picture's message and the series panel). Round 12
+  also added `ser` (ps / sol), `sn`, `sc`, `si` (modes first and second only, else unusedInMode).
 - `components/VectorFieldApp.tsx` the shared application body of `app/vector-field/page.tsx` and
   `app/embed/page.tsx` (both thin async server components that decode `searchParams`, so the
   first render shows the linked state). Props `{ initial, embed?, controls?, urlProblems? }`.
@@ -492,6 +661,23 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
   classroom failure drives it, with a derived test. Its siblings are display choices, not
   thresholds: `NULLCLINE_GRID` 80, `SEPARATRIX_OFFSET_FRACTION` 1e-3 of the box diagonal,
   `SEPARATRIX_TSPAN` 100.
+- `lib/series/` (round 12, OUTSIDE lib/core; the exact module adds no threshold to any kernel
+  decision): caps and display choices only. `MAX_SHOWN_TERMS` 30, `COMPUTED_TERMS` 60 coefficients
+  (a polynomial of degree up to ~55 can be proven), `MAX_DEGREE` 40 / `MAX_EXPONENTS` 24 /
+  `MAX_INTEGER_POWER` 40 / `MAX_RATIONAL_HEX_DIGITS` 1000 (the linear-form reader refuses bigger
+  input as tooComplex), `TERMINATION_MARGIN` 20 coefficients past the shown ones (the proof window),
+  `MAX_COEFFICIENT_HEX_DIGITS` 1000 (the expansion stops there, exact, and says so),
+  `FROBENIUS_GAP_CAP` 200, `MAX_EXACT_DIGITS` 16 / `ROUNDED_DIGITS` 6 / `EXACT_DECIMAL_DIGITS` 12
+  (display), `CHART_SAMPLES` 400, `OFF_CHART_HEIGHTS` 20, `SERIES_CHART_RADII` 2.5, `MIN_CHART_ULPS`
+  1024, `CHECK_HALF_WIDTH` 1 and `CHECK_GROWTH` 8 (the formula check's window around t0),
+  `CANCELLATION_LIMIT` 1e9 (no comparison claimed beyond it; measured: 1e9 still compares to a tenth
+  of the tolerance), `CERTIFIED_FRACTION` 1e-9 (how a proven
+  radius is worded), `GCD_TEST_PRIMES` (a proof, not a tolerance); the only tolerances are those of
+  the formula CHECK against the numerical
+  solution (`REFERENCE_RTOL` 1e-10, `REFERENCE_ATOL` 1e-12, `CHECK_RELATIVE_TOL` 1e-6 of the
+  solution's own size), which decide no mathematics: a failed check is reported in the derivation,
+  and `NEAR_RESONANCE_FRACTION` 1e-12, which only decides whether an APPROXIMATE equation's formula
+  is withheld with an explanation (an exact equation is never refused by it).
 
 ## Stack decisions
 

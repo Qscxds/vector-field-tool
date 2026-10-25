@@ -71,6 +71,22 @@ parameters and results to explanations. The site is English by default; Chinese 
   stay in short form ("center or weak spiral" is never shortened to
   "center"; the "!" of a uniqueness failure stays in every mode); each line's ⓘ opens its full text.
   Display only: nothing is recomputed, and what the MCP tools return is untouched.
+- **Power series and solution formulas** (round 12; first-order `dy/dt = g(t, y)` and second-order
+  pictures, `ser=ps|sol&sn=&sc=&si=` in the link): the equation written out step by step under the
+  pictures. *Power series*: about an ordinary point t₀ of a linear equation with polynomial
+  coefficients, the substitution, the index shift, the coefficient of each power, the recurrence
+  relation, the coefficients as exact fractions, the split `u = a₀u₁ + a₁u₂ (+ u_p)` with a basis
+  series called a polynomial only when the recurrence proves it, and the guaranteed radius of
+  convergence (a lower bound); at a regular singular point the indicial equation and the Frobenius
+  series (rational exponents, homogeneous equations; a second solution with a logarithm is named,
+  not expanded). *Solution formula*: for constant coefficients, `u = u_h + u_p` with the
+  characteristic equation and its discriminant, the roots, the trial solution of undetermined
+  coefficients (the factor t at resonance), the constants from the initial values, and a check
+  against the numerical solution. A chart draws the partial sum next to the numerical solution (with
+  the interval where convergence is guaranteed) or the curves u, u_h, u_p; t₀, the highest power,
+  the initial values and every parameter slider recompute it live (drag l in the Legendre preset to
+  see which basis series becomes a polynomial). All arithmetic is exact (BigInt rationals, in
+  `lib/series/`); the preset chapter "Power series and solution formulas" opens with the panel on.
 - **Equilibria with honest classification**: Jacobian, eigenvalues, trace/determinant class, and a
   caveat wherever the linearization cannot decide (purely imaginary eigenvalues are "center or weak
   spiral", never "center"; a near-zero determinant is "non-hyperbolic"; a repeated root decided within
@@ -178,9 +194,17 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   (`equation`; the x' range is `xpMin` / `xpMax`), `query_solution` (an initial point plus a target
   `{ kind: "t" | "x" | "y", value }`: the numerical solution's value at a time, or every time it
   reaches a coordinate value, with error estimates and the stop status of both directions; in mode
-  `second` the kind `y` means the velocity x' and the result names it x'), plus `ping` for the
-  transport. Every description starts with the call-first rule ("call this tool before
-  answering"); `query_solution`'s says that "value at a time" and "when does it reach" questions
+  `second` the kind `y` means the velocity x' and the result names it x'), `power_series` (`mode`
+  `first` with `expr` or `second` with `equation`, the center `t0`, `terms` 1..30, the initial
+  values `y0` or `x0` / `xp0`: the power series of a linear equation with polynomial coefficients,
+  step by step in exact fractions, the split into basis series, a guaranteed lower bound for the
+  interval of convergence, or at a singular point its type and indicial equation),
+  `solution_formula` (the same inputs without `terms`: the split u = u_h + u_p of a
+  constant-coefficient equation, characteristic roots, undetermined coefficients with resonance,
+  the constants from the initial values and a check against the numerical solution), plus `ping`
+  for the transport. `power_series` and `solution_formula` are text tools: no widget, and their
+  `structuredContent` is the same derivation as plain strings, not a Scene. Every description
+  starts with the call-first rule ("call this tool before answering"); `query_solution`'s says that "value at a time" and "when does it reach" questions
   must call it and are never answered from a closed form. Every Scene in `structuredContent`
   carries `axes` (what the kernel's `.x` / `.y` / `t` fields mean on that picture) and every
   description tells the model to relay the text summary, never the kernel names.
@@ -191,9 +215,12 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   every user must **remove and re-add the connector** in Claude (it caches the widget resource address from when the connector was added; disconnecting and reconnecting is not enough; it caches the tool list with
   the old resource URI; the widget silently goes blank otherwise). The current version is `z-1` (round Z4: the widget's solution graph, the three-way view switch and one color per kept curve in both pictures). Widget changes are batched: one bump per round at most, none unless the widget really changed. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
-  y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "use ping
-  with hello" tests the transport alone. Inside the widget a kept trajectory can be removed by
-  clicking it and restored with `Undo` / Ctrl+Z, as on the web page; for a planar system or a
+  y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "find the
+  power-series solution of x'' - t x = 0 about t = 0" should call `power_series` and relay its
+  steps (a₃ = (1/6)a₀, convergence for every t); "solve x'' + 3x' + 2x = 0 with x(0) = 1,
+  x'(0) = 0 and split it into its homogeneous and particular parts" should call
+  `solution_formula` (x(t) = 2e⁻ᵗ − e⁻²ᵗ); "use ping with hello" tests the transport alone.
+  Inside the widget a kept trajectory can be removed by clicking it and restored with `Undo` / Ctrl+Z, as on the web page; for a planar system or a
   second-order equation the widget has the same Phase plane / Solution graph / Both switch, the
   curves the tools return carry the time of every point (`times`, thinned like the points), and
   the two pictures are linked as on the web page.
