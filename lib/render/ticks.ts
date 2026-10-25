@@ -26,12 +26,15 @@ export function chooseTicks(range: Range, targetCount: number): number[] {
   if (!(span > 0) || !Number.isFinite(span)) return [];
   const count = Math.max(1, targetCount);
   const step = niceStep(span / count);
-  const decimals = Math.max(0, -Math.floor(Math.log10(step)) + 1);
+  const decimals = Math.min(100, Math.max(0, -Math.floor(Math.log10(step)) + 1));
   const first = Math.ceil(range.min / step - 1e-9);
   const last = Math.floor(range.max / step + 1e-9);
   const ticks: number[] = [];
-  for (let k = first; k <= last; k++) {
-    const value = Number((k * step).toFixed(decimals));
+  // Counted by an integer index (round 12): with first beyond 2^53 a double k++ would not advance and
+  // never pass last (a range a few ulps wide around 1); the cap is far above any targetCount.
+  const steps = Math.min(last - first, 1000);
+  for (let i = 0; i <= steps; i++) {
+    const value = Number(((first + i) * step).toFixed(decimals));
     ticks.push(value === 0 ? 0 : value); // normalise -0
   }
   return ticks;
