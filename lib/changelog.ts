@@ -147,6 +147,31 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
       en: "MCP users must remove and re-add the connector. The widget gained the solution graph, so the widget resource address changed; Claude caches the address from when the connector was added, so an existing connection will silently fail to render. Remove the connector and add https://tools.studycase.net/mcp again.",
     },
   },
+  {
+    date: "2026-10-25",
+    title: {
+      zh: "新增「级数与解的公式」面板：幂级数解一步步写出来，常系数方程拆成齐次解 + 特解，拖动滑块看每一步怎么变",
+      en: "New Series and solution formula panel: power-series solutions step by step, constant-coefficient equations split into homogeneous + particular, sliders to watch every step change",
+    },
+    points: {
+      zh: [
+        "一阶方程和二阶方程的左栏新增「级数与解的公式」：选「幂级数」，工具在展开点 t₀ 处设解为 Σ aₙ (t − t₀)ⁿ，写出代入、平移指标、合并同次幂、递推公式、精确分数的系数、把级数拆成两个基本解（以及右端带来的部分）、保证收敛的范围，并把部分和与数值解画在同一张图上。要求方程线性、系数和右端是 t 的多项式。",
+        "二阶方程的展开点若是奇点（例如 Bessel 方程 t x'' + x' + t x = 0 的 t = 0），会说明是正则还是非正则奇点、写出指标方程；正则奇点且指标根为有理数时展开 Frobenius 级数，第二个解需要对数项时如实说明而不展开。",
+        "选「解的公式」：常系数线性方程拆成 x = xₕ + xₚ（一阶方程同理）：特征方程与判别式、特征根、齐次解及其走向、待定系数法的试探解（共振时乘 t）、由初值定出的常数、最终的解，并与数值解核对；图上画出解和它的两部分。",
+        "展开点、最高次数、初值都有滑块，参数滑块同样驱动面板：例如 Legendre 预设里把 l 拖到 3，多项式解从 x₁ 换成 x₂；受迫振子预设里把 b 拖过 4，特征根从复根变成实根。面板设置写进链接（ser、sn、sc、si）。",
+        "预设新增一章「幂级数与解的公式」，共 7 个：Airy、Legendre（l 带滑块）、Hermite（m 带滑块）、受迫阻尼振子、共振 x'' + w²·x = cos t，以及两个一阶方程（幂级数为 e^(t²) 的那个，和带常数输入的线性方程，k 带滑块）。",
+        "Claude 连接器新增两个只返回文字的工具 power_series 和 solution_formula（与网页面板同一套计算和措辞）；widget 没有变化，仍是 z-1，不需要重新添加连接器。",
+      ],
+      en: [
+        "First-order and second-order equations get a new \"Series and solution formula\" panel in the form: with Power series, the tool writes the solution about t₀ as Σ aₙ (t − t₀)ⁿ and shows the substitution, the index shift, the collected powers, the recurrence relation, the coefficients as exact fractions, the split into two basic solutions (plus the part from the right-hand side) and where convergence is guaranteed, and draws the partial sum next to the numerical solution. It needs a linear equation whose coefficients and right-hand side are polynomials in t.",
+        "When the expansion point of a second-order equation is a singular point (t = 0 for Bessel's equation t x'' + x' + t x = 0), the panel says whether it is regular or irregular singular and gives the indicial equation; at a regular singular point with rational indicial roots it expands the Frobenius series, and when the second solution needs a logarithm it says so instead of expanding it.",
+        "With Solution formula, a linear equation with constant coefficients is split into x = xₕ + xₚ (likewise for a first-order equation): the characteristic equation and its discriminant, the roots, the homogeneous solution and how it behaves, the trial solution of undetermined coefficients (multiplied by t at resonance), the constants from the initial values, the solution, and a check against the numerical solution; the chart draws the solution and its two parts.",
+        "The expansion point, the highest power and the initial values have sliders, and the parameter sliders drive the panel too: in the Legendre preset drag l to 3 and the polynomial solution moves from x₁ to x₂; in the forced oscillator preset drag b past 4 and the characteristic roots turn from complex to real. The panel's settings are part of the link (ser, sn, sc, si).",
+        "A new preset chapter \"Power series and solution formulas\" with seven presets: Airy, Legendre (with a slider on l), Hermite (a slider on m), a forced damped oscillator, the resonance x'' + w²·x = cos t, and two first-order equations (the one whose power series is e^(t²), and a linear one with a constant input and a slider on k).",
+        "The Claude connector gains two text-only tools, power_series and solution_formula (the same computation and wording as the panel); the widget did not change (still z-1), so the connector does not need to be re-added.",
+      ],
+    },
+  },
 ];
 
 /** The newest `count` entries, newest first (same date: the later entry in the array first). */

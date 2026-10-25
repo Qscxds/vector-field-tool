@@ -13,6 +13,7 @@ import { VectorFieldCanvas } from "@/components/VectorFieldCanvas";
 import { TimeSeriesCanvas } from "@/components/TimeSeriesCanvas";
 import type { TimeSeriesDrawing } from "@/components/drawTimeSeries";
 import { useDocumentLang } from "@/components/useDocumentLang";
+import { SeriesControls, SeriesResult } from "@/components/SeriesPanel";
 import { exportDualPng, exportScenePng, exportTimeSeriesPng } from "@/components/exportScenePng";
 import { exportDualFooterText, exportFileName, exportFooterText, exportTimeSeriesFooterText } from "@/lib/export-footer";
 import { coordinateNamesForMode, type CoordinateNames } from "@/lib/coordinate-names";
@@ -42,6 +43,9 @@ import { MAX_TRAJECTORIES } from "@/lib/trajectory-store";
 import { ISSUES_NEW_URL, reportIssueUrl } from "@/lib/report-issue";
 import { buildShareUrl, encodeState, MAX_ABS_VALUE, type AppBox, type AppMode, type AppState, type UrlProblem, type UrlProblemReason, type ViewChoice } from "@/lib/url-state";
 import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } from "@/app/vector-field/presets";
+import { computeSeriesPanel, seriesModeOf, type SeriesPanelResult, type SeriesSettings } from "@/lib/series-panel";
+import { f } from "@/lib/series/notation";
+import { NUMERICAL_REDUCTION_CODES, type ReductionOutcome } from "@/lib/series/equation";
 
 export type VectorFieldAppProps = {
   /** Decoded page state (lib/url-state); the first render already shows it, no flash of a default. */
@@ -60,6 +64,8 @@ const URL_SYNC_MS = 500;
 const COPIED_MS = 2000;
 /** Wall-clock budget of one solution query (the kernel is checkpointed, never given a clock of its own). */
 const QUERY_BUDGET_MS = 2000;
+/** Round 12: budget of the series panel's reference integration; past it the chart simply lacks the numerical curve. */
+const SERIES_BUDGET_MS = 1500;
 
 class QueryBudgetError extends Error {}
 
@@ -172,9 +178,11 @@ function paramsInForce(form: Form): ParamEntry[] {
   return Object.entries(resolvedParams(form).values ?? {}).map(([name, value]) => ({ name, value }));
 }
 
+// `reduction`: the outcome of reduceSecondOrder when compile ran it (mode second), handed to the series
+// panel so its exact reader does not sample the same equation a second time.
 type Compiled =
-  | { sys: CompiledSystem; spec: SystemSpec; firstOrder: FirstOrderSpec | null; secondOrder: ReducedSecondOrder | null; box: Box; error: null }
-  | { sys: null; spec: null; firstOrder: null; secondOrder: null; box: null; error: string };
+  | { sys: CompiledSystem; spec: SystemSpec; firstOrder: FirstOrderSpec | null; secondOrder: ReducedSecondOrder | null; box: Box; error: null; reduction?: ReductionOutcome }
+  | { sys: null; spec: null; firstOrder: null; secondOrder: null; box: null; error: string; errorCode?: string; reduction?: ReductionOutcome };
 
 /** Canvas width before the container is measured (server render) and its clamp; height follows the width. */
 const CANVAS_DEFAULT_W = 720;
@@ -366,6 +374,7 @@ const SECOND_ORDER_SENTENCES: Partial<Record<NonNullable<ParseError["code"]>, ke
 };
 
 function compile(form: Form, L: LabelTable): Compiled {
+  let reduction: ReductionOutcome | undefined;
   try {
     const box = parseBox(form, L);
     let spec: SystemSpec;
@@ -379,7 +388,13 @@ function compile(form: Form, L: LabelTable): Compiled {
       spec = { f: form.f, g: form.g, ...withValues };
     } else if (form.mode === "second") {
       // The entered box joins the sample points of the reduction's numerical checks.
-      secondOrder = reduceSecondOrder(form.second, params, { box });
+      try {
+        secondOrder = reduceSecondOrder(form.second, params, { box });
+      } catch (error) {
+        reduction = { error };
+        throw error;
+      }
+      reduction = { error: null, reduced: secondOrder };
       spec = secondOrder.spec;
     } else {
       firstOrder = form.mode === "explicit" ? { kind: "explicit", g: form.g, ...withValues } : { kind: "differential", M: form.M, N: form.N, ...withValues };
@@ -390,9 +405,9 @@ function compile(form: Form, L: LabelTable): Compiled {
       if (firstOrder.kind === "differential") compileDifferential(firstOrder);
     }
     const sys = compileSystem(spec);
-    return { sys, spec, firstOrder, secondOrder, box, error: null };
+    return { sys, spec, firstOrder, secondOrder, box, error: null, reduction };
   } catch (error) {
-    return { sys: null, spec: null, firstOrder: null, secondOrder: null, box: null, error: explain(error, L, form.mode) };
+    return { sys: null, spec: null, firstOrder: null, secondOrder: null, box: null, error: explain(error, L, form.mode), errorCode: error instanceof ParseError ? error.code : undefined, reduction };
   }
 }
 
@@ -490,6 +505,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const [lecture, setLecture] = useState(initial.lecture);
   // Round V: the overlays (nullclines, eigen-directions, separatrices): view options like equal scale, kept in the link.
   const [aids, setAids] = useState<AidFlags>(initial.aids);
+  // Round 12: the series / solution-formula panel (lib/series-panel); its numbers travel in the link.
+  const [seriesSettings, setSeriesSettings] = useState<SeriesSettings>(initial.series);
+  // Bumped when a preset replaces the settings, so the panel's number fields start from them afresh.
+  const [seriesRevision, setSeriesRevision] = useState(0);
   // Round U: a slider is being dragged (pointer down on it until the pointer is released anywhere).
   const [dragging, setDragging] = useState(false);
   useEffect(() => {
@@ -694,6 +713,9 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     // Round Z2.1: a preset may bring its view (the four mechanical presets open with both pictures); otherwise the choice stays.
     if (p.view) setViewChoice(p.view);
     setTrajectorySeeds((p.starts ?? []).map((q) => ({ x: q.x, y: q.y })));
+    // Round 12: a preset of the series chapter opens the panel with its settings; any other closes it.
+    setSeriesSettings(presetState(p).series);
+    setSeriesRevision((r) => r + 1);
     setPresetId(p.id);
   };
 
@@ -723,14 +745,46 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
       sliders: sliderEntries(form.params, formParams.entries),
       aids,
       lecture,
+      series: seriesSettings,
     }),
-    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams, aids, lecture],
+    [form, boxNow, chosenLocale, equalScale, snapshotT, trajectoryStarts, viewChoice, timeRange, formParams, aids, lecture, seriesSettings],
   );
+
+  // Round 12: the derivation and chart of the series panel, from what the picture shows (`shown`)
+  // and the ranges the student entered; a wall-clock budget guards the reference integration.
+  const seriesMode = seriesModeOf(FORM_TO_APP_MODE[shown.mode]);
+  const seriesResult = useMemo<SeriesPanelResult>(() => {
+    if (!seriesMode || seriesSettings.kind === null) return { status: "off" };
+    const box = boxNumbers(shown) ?? lastBoxRef.current;
+    const deadline = performance.now() + SERIES_BUDGET_MS;
+    try {
+      return computeSeriesPanel(L, {
+      mode: seriesMode,
+      text: seriesMode === "first" ? shown.g : shown.second,
+      params: resolvedParams(shown).values,
+      settings: seriesSettings,
+      tRange: seriesMode === "first" ? { min: box.xMin, max: box.xMax } : timeRange,
+      vRange: seriesMode === "first" ? { min: box.yMin, max: box.yMax } : { min: box.xMin, max: box.xMax },
+      checkpoint: () => {
+        if (performance.now() > deadline) throw new RangeError("series budget");
+      },
+      reduction: seriesMode === "second" ? compiled.reduction : undefined,
+      });
+    } catch {
+      // The budget ran out in the exact arithmetic (or anything else went wrong): say so, never break the page.
+      return { status: "unavailable", message: f(L.series.budgetExceeded) };
+    }
+  }, [seriesMode, seriesSettings, shown, timeRange, L, compiled]);
+  const formSeriesMode = seriesModeOf(FORM_TO_APP_MODE[form.mode]);
 
   // Keep the address bar in sync (full page only; an embed's URL belongs to the embedding page):
   // debounced, only for a state that compiles (the link must always open to a valid picture), and
   // not on mount, so a hand-written link is not rewritten under the visitor before they change anything.
-  const query = compiled.error ? null : encodeState(appState);
+  // Round 12: an equation the picture refuses only for a numerical check of its reduction (t x'' + ...:
+  // the Frobenius case) is still shareable while the series panel shows a result for it.
+  const seriesShareable =
+    compiled.error !== null && compiled.errorCode !== undefined && NUMERICAL_REDUCTION_CODES.has(compiled.errorCode as never) && seriesResult.status === "ok";
+  const query = compiled.error && !seriesShareable ? null : encodeState(appState);
   const mountedQueryRef = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     if (mountedQueryRef.current === undefined) {
@@ -1191,6 +1245,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </p>
             ) : null}
           </fieldset>
+          {formSeriesMode ? <SeriesControls L={L} mode={formSeriesMode} settings={seriesSettings} onChange={setSeriesSettings} revision={seriesRevision} /> : null}
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button type="button" onClick={clearTrajectories} style={{ ...buttonStyle, flex: "1 1 auto" }} disabled={trajectories.length === 0}>
               {fill(words.clear, { count: trajectories.length / 2 })}
@@ -1199,7 +1254,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               {L.ui.undo}
             </button>
           </div>
-          <button type="button" onClick={copyLink} style={buttonStyle} disabled={compiled.error !== null} data-copy-link aria-live="polite">
+          <button type="button" onClick={copyLink} style={buttonStyle} disabled={compiled.error !== null && !seriesShareable} data-copy-link aria-live="polite">
             {copied ? L.ui.copied : L.ui.copyLink}
           </button>
           <button type="button" onClick={downloadPng} style={buttonStyle} disabled={!scene || !viewport} data-download-png>
@@ -1396,6 +1451,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
             </p>
           ) : null}
           {scene && queryShown && queryView ? <QueryResultView scene={scene} run={queryShown} view={queryView} variables={variables} L={L} lecture={lecture} /> : null}
+          {seriesMode ? <SeriesResult result={seriesResult} lecture={lecture} /> : null}
           </div>
         </div>
       </div>

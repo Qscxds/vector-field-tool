@@ -3,7 +3,8 @@
  * HTTP smoke test for a running MCP server (default http://localhost:3000/mcp).
  * Usage: node scripts/smoke.mjs [url]
  * Exit code 0 when every check passes. Checks the transport layer end to end: initialize,
- * tools/list, one call per tool, resources/list, resources/read of the widget, GET -> 405.
+ * tools/list (the 7 widget tools carry the widget URI, the 2 text tools of round 12 carry none),
+ * one call per tool, resources/list, resources/read of the widget, GET -> 405. 27 checks.
  * A local build without BASE_URL serves relative /_next URLs by design; the absolute-URL check is
  * then reported as SKIP (and counted as passed) when the widget's <base href> is localhost.
  */
@@ -49,12 +50,21 @@ check("initialize", init.status === 200 && init.msg?.result?.serverInfo?.name ==
 
 const list = await rpc("tools/list");
 const names = (list.msg?.result?.tools ?? []).map((t) => t.name).sort();
-check("tools/list has 7 tools", JSON.stringify(names) === JSON.stringify(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "query_solution", "sample_field", "trace_trajectory"]), names.join(","));
+check("tools/list has 9 tools", JSON.stringify(names) === JSON.stringify(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "power_series", "query_solution", "sample_field", "solution_formula", "trace_trajectory"]), names.join(","));
 const toolsList = list.msg?.result?.tools ?? [];
+// Round 12: power_series and solution_formula answer in text only (no Scene, no widget).
+const TEXT_TOOLS = ["power_series", "solution_formula"];
+const widgetTools = toolsList.filter((t) => !TEXT_TOOLS.includes(t.name));
 check(
-  "every tool carries _meta.ui.resourceUri",
-  toolsList.length > 0 && toolsList.every((t) => typeof t._meta?.ui?.resourceUri === "string" && t._meta.ui.resourceUri.startsWith("ui://")),
-  JSON.stringify(toolsList.map((t) => [t.name, t._meta?.ui?.resourceUri])),
+  "every widget tool (7) carries _meta.ui.resourceUri",
+  widgetTools.length === 7 && widgetTools.every((t) => typeof t._meta?.ui?.resourceUri === "string" && t._meta.ui.resourceUri.startsWith("ui://")),
+  JSON.stringify(widgetTools.map((t) => [t.name, t._meta?.ui?.resourceUri])),
+);
+const textTools = toolsList.filter((t) => TEXT_TOOLS.includes(t.name));
+check(
+  "the text tools (power_series, solution_formula) carry no UI resource",
+  textTools.length === 2 && textTools.every((t) => t._meta?.ui?.resourceUri === undefined),
+  JSON.stringify(textTools.map((t) => [t.name, t._meta])),
 );
 
 const calls = [
@@ -119,6 +129,26 @@ const calls = [
     "query_solution",
     { mode: "system", f: "0", g: "t", x0: 0, y0: 0, tSpan: 2, target: { kind: "t", value: 1 } },
     (r) => r.structuredContent?.query?.hits?.length === 1 && Math.abs(r.structuredContent.query.hits[0].y - 0.5) < 1e-6 && r.structuredContent.trajectories?.every((t) => t.status === "completed" && t.steps > 0),
+  ],
+  // Airy x'' - t x = 0: a_{n+2} = a_{n-1} / ((n+2)(n+1)), so a3 = a0 / 6; no singular point.
+  [
+    "power_series",
+    { mode: "second", equation: "x'' - t*x = 0" },
+    (r) =>
+      r.structuredContent?.kind === "power_series" &&
+      r.structuredContent.status === "ok" &&
+      /a₃ = \(1\/6\)a₀/.test(r.content?.[0]?.text ?? "") &&
+      /converges for every t/.test(r.content?.[0]?.text ?? ""),
+  ],
+  // x'' + 3x' + 2x = 0, x(0) = 1, x'(0) = 0: r = -1, -2, C1 = 2, C2 = -1 (overdamped).
+  [
+    "solution_formula",
+    { mode: "second", equation: "x'' + 3*x' + 2*x = 0", x0: 1, xp0: 0 },
+    (r) =>
+      r.structuredContent?.kind === "solution_formula" &&
+      r.structuredContent.status === "ok" &&
+      /x\(t\) = 2e⁻ᵗ − e⁻²ᵗ/.test(r.content?.[0]?.text ?? "") &&
+      /Check: /.test(r.content?.[0]?.text ?? ""),
   ],
 ];
 for (const [name, args, verify] of calls) {

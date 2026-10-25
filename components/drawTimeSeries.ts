@@ -32,7 +32,18 @@ export type TimeSeriesDrawing = {
   highlightIndex?: number | null;
   /** Round Z2.4: the phase plane's hover preview (the solution through the cursor), drawn in the preview color. */
   preview?: SeriesCurve[];
+  /**
+   * Round 12: extra labeled curves (a power series' partial sum next to the numerical solution, the
+   * parts u, u_h, u_p of a solution formula), each in finite pieces, with its own color, line style
+   * and a legend entry. Display only (the hover machine never sees them). Absent: nothing changes.
+   */
+  extras?: readonly ChartExtra[];
+  /** Round 12: shaded t intervals (where a power series is guaranteed to converge), with a legend entry. */
+  bands?: readonly ChartBandDrawing[];
 };
+
+export type ChartExtra = { segments: readonly (readonly Vec2[])[]; color: string; dash: readonly number[]; width: number; label: string };
+export type ChartBandDrawing = { min: number; max: number; color: string; label: string };
 
 const TICK_FONT = "11px system-ui, sans-serif";
 const AXIS_NAME_FONT = "italic 13px 'Times New Roman', Times, serif";
@@ -54,6 +65,7 @@ export function drawTimeSeries(ctx: CanvasRenderingContext2D, v: Viewport, d: Ti
   ctx.fillStyle = COLORS.background;
   ctx.fillRect(0, 0, width, height);
   drawGrid(ctx, v, lecture);
+  for (const band of d.bands ?? []) drawBand(ctx, v, band);
   if (d.t0 !== undefined && d.t0 >= v.box.x.min && d.t0 <= v.box.x.max) {
     const s = worldToScreen(v, { x: d.t0, y: 0 });
     ctx.strokeStyle = COLORS.axis;
@@ -73,10 +85,83 @@ export function drawTimeSeries(ctx: CanvasRenderingContext2D, v: Viewport, d: Ti
     strokeCurve(ctx, v, highlighted, COLORS.background, HIGHLIGHT_HALO_WIDTH, true);
     strokeCurve(ctx, v, highlighted, curveColor(d.highlightIndex!), HIGHLIGHT_WIDTH);
   }
+  for (const extra of d.extras ?? []) strokeExtra(ctx, v, extra);
   ctx.setLineDash([]);
   for (const hit of d.hits ?? []) drawHit(ctx, v, hit.at);
   drawAxisName(ctx, v, lecture);
   drawLegend(ctx, v, d.legend, lecture);
+  if ((d.extras?.length ?? 0) + (d.bands?.length ?? 0) > 0) drawExtrasLegend(ctx, v, d.extras ?? [], d.bands ?? [], lecture);
+}
+
+/** A shaded t interval across the whole height, clamped to the picture. */
+function drawBand(ctx: CanvasRenderingContext2D, v: Viewport, band: ChartBandDrawing): void {
+  const lo = Math.max(band.min, v.box.x.min);
+  const hi = Math.min(band.max, v.box.x.max);
+  if (!(hi > lo)) return;
+  const a = worldToScreen(v, { x: lo, y: 0 }).x;
+  const b = worldToScreen(v, { x: hi, y: 0 }).x;
+  ctx.fillStyle = band.color;
+  ctx.fillRect(Math.min(a, b), 0, Math.abs(b - a), v.height);
+}
+
+/** One extra curve, piece by piece (a piece is a run of finite samples near the picture). */
+function strokeExtra(ctx: CanvasRenderingContext2D, v: Viewport, extra: ChartExtra): void {
+  ctx.strokeStyle = extra.color;
+  ctx.lineWidth = extra.width;
+  ctx.setLineDash([...extra.dash]);
+  for (const piece of extra.segments) {
+    if (piece.length < 2) continue;
+    ctx.beginPath();
+    piece.forEach((p, i) => {
+      const s = worldToScreen(v, p);
+      if (i === 0) ctx.moveTo(s.x, s.y);
+      else ctx.lineTo(s.x, s.y);
+    });
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+/** The legend of the extras and bands: a boxed list at the top right, each with its sample (line style and color). */
+function drawExtrasLegend(ctx: CanvasRenderingContext2D, v: Viewport, extras: readonly ChartExtra[], bands: readonly ChartBandDrawing[], lecture: boolean): void {
+  ctx.font = lecture ? LECTURE_LEGEND_FONT : LEGEND_FONT;
+  const size = lecture ? 16 : 12;
+  const row = size + 6;
+  const sample = 26;
+  const entries = [...extras.map((e) => ({ text: e.label, extra: e as ChartExtra | null, band: null as ChartBandDrawing | null })), ...bands.map((b) => ({ text: b.label, extra: null, band: b }))];
+  const textWidth = entries.reduce((w, e) => Math.max(w, ctx.measureText(e.text).width), 0);
+  const boxW = Math.min(v.width - 12, sample + 8 + textWidth + 12);
+  const boxH = entries.length * row + 8;
+  const x0 = v.width - boxW - 6;
+  const y0 = 6;
+  ctx.setLineDash([]);
+  ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+  ctx.strokeStyle = COLORS.grid;
+  ctx.lineWidth = 1;
+  ctx.fillRect(x0, y0, boxW, boxH);
+  ctx.strokeRect(x0 + 0.5, y0 + 0.5, boxW - 1, boxH - 1);
+  ctx.textAlign = "left";
+  ctx.textBaseline = "middle";
+  entries.forEach((e, i) => {
+    const y = y0 + 4 + row * i + row / 2;
+    if (e.extra) {
+      ctx.strokeStyle = e.extra.color;
+      ctx.lineWidth = e.extra.width;
+      ctx.setLineDash([...e.extra.dash]);
+      ctx.beginPath();
+      ctx.moveTo(x0 + 6, y);
+      ctx.lineTo(x0 + 6 + sample, y);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    } else if (e.band) {
+      ctx.fillStyle = e.band.color;
+      ctx.fillRect(x0 + 6, y - size / 2, sample, size);
+      ctx.strokeStyle = COLORS.grid;
+      ctx.strokeRect(x0 + 6.5, y - size / 2 + 0.5, sample - 1, size - 1);
+    }
+    ctx.fillStyle = COLORS.label;
+    ctx.fillText(e.text, x0 + 6 + sample + 8, y);
+  });
 }
 
 /** One kept curve's series: the x(t) series solid (dashed through a point where uniqueness fails), the second series dotted. */

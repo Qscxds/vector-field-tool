@@ -15,5 +15,6 @@
 | 9 | T–W | 2026-09-18 | `w-lecture-done` | [summary](round-09-summary.md) · [decisions](round-09-decisions.md) · [open-questions](round-09-open-questions.md) | 符号参数与链接、参数滑块与实时重算、零斜线 / 特征方向 / 分界线、讲课模式；widget t-1 |
 | 10 | Y | 2026-09-18 | `y-polish-done` | [summary](round-10-summary.md) | T–W 遗留小修：siny 护栏、ln、讲课模式保留位置、拍频纵轴、50 ms 预算；widget y-1 |
 | 11 | Z | 2026-09-28 | 见 round-11-summary | [summary](round-11-summary.md) · [decisions](round-11-decisions.md) · [open-questions](round-11-open-questions.md) | 四个「写成系统」的预设改名并写明 y = x'（孪生互链）；新增「两张一起」视图并联动，视图切换移到图的正上方；widget 新增解的图像（z-1）；交付物按轮次改名 |
+| 12 | AA | 2026-10-25 | 见 round-12-summary | [summary](round-12-summary.md) · [decisions](round-12-decisions.md) · [open-questions](round-12-open-questions.md) | 幂级数与解的公式：新的精确模块 lib/series（常点的幂级数推导、拆成基本解、收敛半径下界、正则奇点的 Frobenius 级数；常系数方程拆成齐次解 + 特解，含共振）；网页「级数与解的公式」面板（滑块、图）；预设新增一章；两个只返回文字的 MCP 工具（widget 不变，仍 z-1） |
 
 另有 [ENGINEERING-RECORD.md](ENGINEERING-RECORD.md)（2026-09-10 的集中工程记录，不属于任何一轮；它收录了第 1–6 轮 16 份记录的全文，改名说明见其「历史记录索引」一节）。

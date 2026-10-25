@@ -75,6 +75,12 @@ describe("chooseTicks", () => {
     expect(chooseTicks({ min: -3, max: 3 }, 6)).toEqual([-3, -2, -1, 0, 1, 2, 3]);
   });
 
+  it("terminates for a range a few ulps wide far from 0 (round 12: it used to loop for ever)", () => {
+    // span 1e-15, step 1e-16: first and last near 1e16, beyond 2^53, where k++ on a double stalls.
+    const ticks = chooseTicks({ min: 0.9999999999999994, max: 1.0000000000000004 }, 8);
+    expect(ticks.length).toBeLessThanOrEqual(1001);
+  });
+
   it("never produces 0.333...-style values", () => {
     const ticks = chooseTicks({ min: 0, max: 1 }, 3);
     for (const t of ticks) expect(String(t).length).toBeLessThan(6);

@@ -22,6 +22,11 @@ import { CLICK_TSPAN, computeFeatures, traceFixed } from "@/lib/interactive";
 import { traceSpans } from "@/lib/time-series";
 import { LOCALES } from "@/lib/labels";
 import { discoverParams, paramsRecord, sliderRangeProblem, snapToSlider } from "@/lib/params";
+import { DEFAULT_SERIES_SETTINGS } from "@/lib/series-panel";
+import { constantCoefficientOde, constantsFor, hasResonance, particularRealForm, solutionFormula, type SolutionFormula } from "@/lib/series/decompose";
+import { linearEquation } from "@/lib/series/equation";
+import { coefficientValues, partialSum, polynomialOde, powerSeries, type SeriesSolution } from "@/lib/series/power-series";
+import { q } from "@/lib/series/rational";
 import { decodeState, DEFAULT_STATE, expressionKeysOf } from "@/lib/url-state";
 import { PRESET_GROUPS, PRESET_PATH, PRESETS, presetsByGroup, presetState, presetUrl, type Preset } from "./presets";
 
@@ -356,6 +361,229 @@ describe("[Z2.1] the four mechanical presets written as systems open with both p
       expect(p.view, p.id).toBeUndefined();
       expect(presetState(p).view, p.id).toBeNull();
       expect(presetUrl(p), p.id).not.toContain("view=");
+    }
+  });
+});
+
+describe("[12] the series chapter: presets that open the power series or the solution formula", () => {
+  const SERIES_IDS = ["airy", "legendre", "hermite", "gauss", "forced2", "cooling", "resonance-formula"];
+  const chapter = PRESETS.filter((p) => p.group === "series");
+  const textOf = (p: Preset) => (p.mode === "first" ? presetState(p).g : presetState(p).eq);
+  const equationOf = (p: Preset, params: Record<string, number> | undefined) => {
+    const r = linearEquation(p.mode === "first" ? "first" : "second", textOf(p), params);
+    if (!r.ok) throw new Error(`${p.id}: ${JSON.stringify(r.failure)}`);
+    return r.equation;
+  };
+  const seriesOf = (id: string, params?: Record<string, number>): SeriesSolution => {
+    const ode = polynomialOde(equationOf(byId(id), params));
+    if (!ode.ok) throw new Error(`${id}: not polynomial`);
+    const r = powerSeries(ode.ode, q(0));
+    if (r.status !== "ok") throw new Error(`${id}: singular at 0`);
+    return r;
+  };
+  const formulaOf = (id: string, params?: Record<string, number>): SolutionFormula => {
+    const ode = constantCoefficientOde(equationOf(byId(id), params));
+    if (!ode.ok) throw new Error(`${id}: not constant`);
+    return solutionFormula(ode.ode);
+  };
+  const ownParams = (id: string) => paramsRecord(presetState(byId(id)).params);
+
+  it("the chapter is the last group, with these seven presets, each in a mode that has the panel", () => {
+    expect(PRESET_GROUPS.at(-1)).toEqual({ id: "series", name: { zh: "幂级数与解的公式", en: "Power series and solution formulas" } });
+    expect(chapter.map((p) => p.id)).toEqual(SERIES_IDS);
+    for (const p of chapter) expect(["first", "second"], p.id).toContain(p.mode);
+  });
+
+  it("every preset of the chapter opens the panel, its link carries the settings, and the link decodes back to them", () => {
+    for (const p of chapter) {
+      expect(p.series?.kind, p.id).not.toBeNull();
+      expect(presetState(p).series, p.id).toEqual(p.series);
+      const url = presetUrl(p);
+      expect(url, p.id).toContain(p.series!.kind === "series" ? "ser=ps" : "ser=sol");
+      const { state, problems } = decodeState(url.slice(PRESET_PATH.length), DEFAULT_STATE);
+      expect(problems, p.id).toEqual([]);
+      expect(state.series, p.id).toEqual(p.series);
+    }
+    // Every other preset leaves the panel off and its link says nothing about it.
+    for (const p of PRESETS.filter((x) => x.group !== "series")) {
+      expect(p.series, p.id).toBeUndefined();
+      expect(presetState(p).series, p.id).toEqual(DEFAULT_SERIES_SETTINGS);
+      expect(presetUrl(p), p.id).not.toMatch(/[?&](ser|sn|sc|si)=/);
+    }
+  });
+
+  it("the cooling preset is the link a teacher hands out (derived from the encoding rules)", () => {
+    // box 0..8 x -1..3: tmin, tmax, ymin written, ymax = 3 is the default; the start (0, 0); p, sl, then the
+    // series: sol, the default 8 powers and t0 = 0 omitted, y(0) = 0 written as si=0.
+    expect(presetUrl(byId("cooling"))).toBe("/vector-field?m=first&g=-k*y+%2B+1&tmin=0&tmax=8&ymin=-1&traj=0,0&p=k:1&sl=k:0:3:0.1&ser=sol&si=0");
+  });
+
+  it("a power-series preset has polynomial coefficients, a formula preset constant ones; each start is the panel's initial value at t0 = 0", () => {
+    for (const p of chapter) {
+      const eq = equationOf(p, ownParams(p.id));
+      if (p.series!.kind === "series") expect(polynomialOde(eq).ok, p.id).toBe(true);
+      else expect(constantCoefficientOde(eq).ok, p.id).toBe(true);
+      expect(p.series!.center, p.id).toBe(0);
+      expect(presetState(p).snapshotT, p.id).toBe(0);
+      // first order: the start is the point (t0, y(t0)); second order: the phase-plane point (x(t0), x'(t0)) at t0
+      const start = p.starts![0];
+      expect(start, p.id).toEqual(p.mode === "first" ? { x: p.series!.center, y: p.series!.initial[0] } : { x: p.series!.initial[0], y: p.series!.initial[1] });
+    }
+  });
+
+  it("the notes use the student's vocabulary: no lone y in a second-order note, no x and no dy/dx in a first-order one", () => {
+    for (const p of chapter) {
+      if (p.mode === "second") {
+        expect(p.note.en, p.id).not.toMatch(/(^|[^A-Za-z'])y(?![A-Za-z])/);
+        expect(p.note.zh, p.id).not.toMatch(/(^|[^A-Za-z'一-鿿])y(?![A-Za-z])/);
+      } else {
+        for (const locale of LOCALES) {
+          expect(p.note[locale], p.id).not.toMatch(/dy\/dx/);
+          expect(p.note[locale], `${p.id} ${locale}`).not.toMatch(/(^|[^A-Za-z'])x(?![A-Za-z])/);
+        }
+      }
+    }
+  });
+
+  it("airy: (n + 2)(n + 1) a(n+2) = a(n-1) and 2 a2 = 0, so a2 = 0, a3 = a0/6, a4 = a1/12, a6 = a3/30 = a0/180; no basis series stops, no singular point", () => {
+    const s = seriesOf("airy");
+    // components over (a0, a1, 1)
+    expect(s.coefficients[2]).toEqual([q(0), q(0), q(0)]);
+    expect(s.coefficients[3]).toEqual([q(1, 6), q(0), q(0)]);
+    expect(s.coefficients[4]).toEqual([q(0), q(1, 12), q(0)]);
+    expect(s.coefficients[6]).toEqual([q(1, 180), q(0), q(0)]);
+    expect(s.basis.map((b) => b.degree)).toEqual([null, null]);
+    expect(s.radius.kind).toBe("infinite");
+    for (const locale of LOCALES) expect(byId("airy").note[locale], locale).toContain("t⁶/180");
+  });
+
+  it("legendre: a(n+2) = (n - l)(n + l + 1) a(n)/((n + 2)(n + 1)); at l = 2 x1 = 1 - 3t², for every whole l one basis series is the polynomial of degree l; radius 1", () => {
+    const at2 = seriesOf("legendre", ownParams("legendre"));
+    expect(ownParams("legendre")).toEqual({ l: 2 });
+    // n = 0: a2 = (0 - 2)(3)/2 a0 = -3 a0; n = 2: a4 = (0)(5)/12 a2 = 0, so x1 = 1 - 3t²
+    expect(at2.basis[0].degree).toBe(2);
+    expect(at2.basis[0].coefficients.slice(0, 3)).toEqual([q(1), q(0), q(-3)]);
+    expect(at2.basis[1].degree).toBeNull();
+    expect(at2.radius.kind === "finite" && at2.radius.distance.value).toBe(1);
+    // l = 5/2 (on the slider's grid): l(l + 1) = 35/4, a2 = (-5/2)(7/2)/2 a0 = -35/8 a0 and a3 = (1 - 5/2)(1 + 7/2)/6 a1 = -9/8 a1
+    const half = seriesOf("legendre", { l: 2.5 });
+    expect(half.coefficients[2]).toEqual([q(-35, 8), q(0), q(0)]);
+    expect(half.coefficients[3]).toEqual([q(0), q(-9, 8), q(0)]);
+    expect(half.basis.map((b) => b.degree)).toEqual([null, null]);
+    // A whole l: the factor (n - l) vanishes at n = l in the series of l's parity and nowhere in the other.
+    const slider = byId("legendre").sliders![0];
+    for (let l = 0; l <= 5; l++) {
+      expect(snapToSlider(l, slider), `l = ${l}`).toBe(l);
+      const s = seriesOf("legendre", { l });
+      expect(s.basis[l % 2].degree, `l = ${l}`).toBe(l);
+      expect(s.basis[1 - (l % 2)].degree, `l = ${l}`).toBeNull();
+    }
+    for (const locale of LOCALES) expect(byId("legendre").note[locale], locale).toContain("x₁ = 1 − 3t²");
+  });
+
+  it("hermite: a(n+2) = 2(n - m) a(n)/((n + 2)(n + 1)); at m = 2 x1 = 1 - 2t², for every whole m one basis series is the polynomial of degree m; no singular point", () => {
+    const at2 = seriesOf("hermite", ownParams("hermite"));
+    expect(ownParams("hermite")).toEqual({ m: 2 });
+    // n = 0: a2 = 2(0 - 2)/2 a0 = -2 a0; n = 2: a4 = 2(0)/12 a2 = 0
+    expect(at2.basis[0].degree).toBe(2);
+    expect(at2.basis[0].coefficients.slice(0, 3)).toEqual([q(1), q(0), q(-2)]);
+    // n = 1: a3 = 2(1 - 2)/6 a1 = -a1/3: the odd series goes on
+    expect(at2.coefficients[3]).toEqual([q(0), q(-1, 3), q(0)]);
+    expect(at2.basis[1].degree).toBeNull();
+    expect(at2.radius.kind).toBe("infinite");
+    const slider = byId("hermite").sliders![0];
+    for (let m = slider.min; m <= slider.max; m += slider.step) {
+      const s = seriesOf("hermite", { m });
+      expect(s.basis[m % 2].degree, `m = ${m}`).toBe(m);
+      expect(s.basis[1 - (m % 2)].degree, `m = ${m}`).toBeNull();
+    }
+    for (const locale of LOCALES) expect(byId("hermite").note[locale], locale).toContain("x₁ = 1 − 2t²");
+  });
+
+  it("gauss: (n + 1) a(n+1) = 2 a(n-1) and a1 = 0, so a(2k) = a0/k!: from y(0) = 1, a2 = 1, a4 = 1/2, a6 = 1/6, a8 = 1/24, a10 = 1/120", () => {
+    const s = seriesOf("gauss");
+    const values = coefficientValues(s, [q(1)]);
+    expect(values.slice(0, 11)).toEqual([q(1), q(0), q(1), q(0), q(1, 2), q(0), q(1, 6), q(0), q(1, 24), q(0), q(1, 120)]);
+    expect(s.radius.kind).toBe("infinite");
+    // the partial sum through t^10 at t = 1 is 1 + 1 + 1/2 + 1/6 + 1/24 + 1/120 = 163/60, the start of the series of e
+    expect(partialSum(values, 10, q(0), 1)).toBeCloseTo(163 / 60, 14);
+    for (const locale of LOCALES) expect(byId("gauss").note[locale], locale).toContain("e^(t²)");
+  });
+
+  it("forced2: r² + b r + k = 0 with k = 4 is underdamped at b = 0.5, critical at b = 4, overdamped at b = 5; x_p is the steady state; b = 0, w = 2 resonates", () => {
+    const own = ownParams("forced2");
+    expect(own).toEqual({ b: 0.5, k: 4, F: 1, w: 1 });
+    expect(byId("forced2").params!.map((e) => e.name)).toEqual(discoverParams("second", presetState(byId("forced2"))));
+    // b = 0.5: Δ = 0.25 - 16 < 0, r = -1/4 ± i√(63)/4
+    const under = formulaOf("forced2", own);
+    expect(under.roots.kind).toBe("complex");
+    expect(under.roots.kind === "complex" && under.roots.alpha).toEqual(q(-1, 4));
+    expect(under.damping).toBe("underdamped");
+    // x_p = Re(e^(it)/χ(i)), χ(i) = -1 + 0.5i + 4 = 3 + i/2, |χ|² = 37/4: x_p = (12/37) cos t + (2/37) sin t, no resonance
+    expect(hasResonance(under)).toBe(false);
+    expect(particularRealForm(under)).toEqual([{ alpha: q(0), beta: q(1), cos: [q(12, 37)], sin: [q(2, 37)] }]);
+    // b = 4: Δ = 16 - 16 = 0, the repeated root -b/2 = -2
+    const critical = formulaOf("forced2", { ...own, b: 4 });
+    expect(critical.roots).toEqual({ kind: "repeated", root: q(-2) });
+    expect(critical.damping).toBe("critical");
+    // b = 5: Δ = 25 - 16 = 9, r = (-5 ± 3)/2 = -1, -4
+    const over = formulaOf("forced2", { ...own, b: 5 });
+    expect(over.roots).toEqual({ kind: "distinct", r1: q(-1), r2: q(-4) });
+    expect(over.damping).toBe("overdamped");
+    // b = 0, w = 2: χ(2i) = -4 + 4 = 0, χ'(2i) = 4i, x_p = Re(t e^(2it)/(4i)) = (t/4) sin 2t
+    const resonant = formulaOf("forced2", { ...own, b: 0, w: 2 });
+    expect(hasResonance(resonant)).toBe(true);
+    expect(resonant.parts.every((p) => p.multiplicity === 1)).toBe(true);
+    expect(particularRealForm(resonant)).toEqual([{ alpha: q(0), beta: q(2), cos: [], sin: [q(0), q(1, 4)] }]);
+    // the sliders reach both lessons: b past 2√k = 4, w past √k = 2, both on the grid
+    const [b, w] = byId("forced2").sliders!;
+    expect(b.name).toBe("b");
+    expect(b.min).toBeLessThan(4);
+    expect(b.max).toBeGreaterThan(4);
+    expect(snapToSlider(4, b)).toBe(4);
+    expect(snapToSlider(0, b)).toBe(0);
+    expect(w.name).toBe("w");
+    expect(snapToSlider(2, w)).toBe(2);
+    for (const locale of LOCALES) expect(byId("forced2").note[locale], locale).toContain("(t/4)·sin(2t)");
+  });
+
+  it("cooling: dy/dt + k y = 1, the root -k and y_p = 1/k; from y(0) = 0, C = -1 at k = 1; at k = 0 the trial gets the factor t", () => {
+    const one = formulaOf("cooling", ownParams("cooling"));
+    expect(ownParams("cooling")).toEqual({ k: 1 });
+    expect(one.roots).toEqual({ kind: "single", root: q(-1) });
+    expect(particularRealForm(one)).toEqual([{ alpha: q(0), beta: q(0), cos: [q(1)], sin: [] }]);
+    // y = C e^(-t) + 1 with y(0) = 0: C = -1, y = 1 - e^(-t)
+    expect(constantsFor(one, q(0), [q(0)]).exact).toEqual([q(-1)]);
+    // k = 1/2: y_p = 1/k = 2
+    expect(particularRealForm(formulaOf("cooling", { k: 0.5 }))).toEqual([{ alpha: q(0), beta: q(0), cos: [q(2)], sin: [] }]);
+    // k = 0: dy/dt = 1, the root 0 is the exponent of the right-hand side 1 = e^(0 t): y_p = t
+    const zero = formulaOf("cooling", { k: 0 });
+    expect(zero.roots).toEqual({ kind: "single", root: q(0) });
+    expect(hasResonance(zero)).toBe(true);
+    expect(particularRealForm(zero)).toEqual([{ alpha: q(0), beta: q(0), cos: [q(0), q(1)], sin: [] }]);
+    expect(snapToSlider(0, byId("cooling").sliders![0])).toBe(0);
+    for (const locale of LOCALES) expect(byId("cooling").note[locale], locale).toContain("1 − e^(−t)");
+  });
+
+  it("resonance-formula: x_p = cos t/(w² - 1) = (4/5) cos t at w = 1.5, from rest C1 = -4/5, C2 = 0; at w = 1 x_p = (t/2) sin t with multiplicity 1", () => {
+    const own = ownParams("resonance-formula");
+    expect(own).toEqual({ w: 1.5 });
+    const f = formulaOf("resonance-formula", own);
+    // r² + 9/4 = 0: r = ±(3/2) i
+    expect(f.roots).toEqual({ kind: "complex", alpha: q(0), beta: { exact: q(3, 2) } });
+    expect(hasResonance(f)).toBe(false);
+    expect(particularRealForm(f)).toEqual([{ alpha: q(0), beta: q(1), cos: [q(4, 5)], sin: [] }]);
+    // x(0) = C1 + 4/5 = 0, x'(0) = (3/2) C2 = 0
+    expect(constantsFor(f, q(0), [q(0), q(0)]).exact).toEqual([q(-4, 5), q(0)]);
+    // w = 1: χ(i) = 0, χ'(i) = 2i, x_p = Re(t e^(it)/(2i)) = (t/2) sin t
+    const resonant = formulaOf("resonance-formula", { w: 1 });
+    expect(hasResonance(resonant)).toBe(true);
+    expect(resonant.parts.every((p) => p.multiplicity === 1)).toBe(true);
+    expect(particularRealForm(resonant)).toEqual([{ alpha: q(0), beta: q(1), cos: [], sin: [q(0), q(1, 2)] }]);
+    expect(snapToSlider(1, byId("resonance-formula").sliders![0])).toBe(1);
+    for (const locale of LOCALES) {
+      expect(byId("resonance-formula").note[locale], locale).toContain("(cos t − cos(1.5t))/1.25");
+      expect(byId("resonance-formula").note[locale], locale).toContain("(t/2)·sin t");
     }
   });
 });

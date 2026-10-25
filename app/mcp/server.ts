@@ -15,6 +15,7 @@ import {
   registerAppTool,
 } from "@modelcontextprotocol/ext-apps/server";
 import { z } from "zod";
+import { registerSeriesTools } from "./series-tools";
 import { registerTools, type ToolDeps } from "./tools";
 
 export const SERVER_INFO = { name: "vector-field-tool", version: "0.2.0" };
@@ -132,6 +133,8 @@ export function createMcpServer(baseUrl: string, deps: ToolDeps = {}): McpServer
   );
 
   registerTools(server, WIDGET_URI, deps);
+  // Round 12: power_series and solution_formula are text tools with no UI resource (no widget change).
+  registerSeriesTools(server, deps);
 
   return server;
 }

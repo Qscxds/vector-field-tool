@@ -44,7 +44,7 @@ import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
  * analysis tool's description STARTS with this rule, tailored to the tool, and the shared tail
  * below says the derivation is to be checked against the tool, never used instead of it.
  */
-const CALL_FIRST_PREFIX = "CALL THIS TOOL FIRST";
+export const CALL_FIRST_PREFIX = "CALL THIS TOOL FIRST";
 const CALL_FIRST_TAIL =
   "call the tool, check your derivation against its numerical results, and show the student the picture. " +
   "Never answer from symbolic derivation alone.";
@@ -143,7 +143,7 @@ const QUERY_BOX_RULES =
   "yMin / yMax; for second, xMin / xMax are the x range (position) and xpMin / xpMax the x' range (velocity). " +
   "The solution is followed up to 20 times beyond the box.";
 
-const LOCALE_RULE =
+export const LOCALE_RULE =
   "`locale` defaults to en: set it from the language the student writes in, 'zh' when the question is in Chinese, 'en' for every other language.";
 
 /** analyze_system and sample_field: what happens when f or g mentions t. */
@@ -156,8 +156,8 @@ const NON_AUTONOMOUS_RULE =
 
 // ---------- schemas ----------
 
-const expression = z.string().trim().min(1).max(200).describe("A mathjs expression in x and y.");
-const paramsSchema = z
+export const expression = z.string().trim().min(1).max(200).describe("A mathjs expression in x and y.");
+export const paramsSchema = z
   .record(z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/), z.number().finite())
   .optional()
   .describe('Named constants used in the expressions, e.g. {"a": 1.5, "b": 0.2}.');
@@ -203,7 +203,7 @@ const density = z
 // Optional, default en (round M, reversing H2.9): a model that forgets it now costs the student an
 // English summary, whereas the earlier isError reached the student as a failed answer. The rule in
 // the description still asks for zh when the question is in Chinese.
-const localeSchema = z
+export const localeSchema = z
   .enum(LOCALES as [Locale, ...Locale[]])
   .default("en")
   .describe("Language of the text summary: 'zh' if the student writes in Chinese, otherwise 'en'. Defaults to en.");
@@ -217,7 +217,7 @@ type BoxInput = { xMin: number; xMax: number; yMin: number; yMax: number };
 
 // ---------- helpers ----------
 
-class ToolInputError extends Error {}
+export class ToolInputError extends Error {}
 
 /** Cost controls for the public endpoint; injectable so tests can use a tiny budget or limiter. */
 export type ToolDeps = {
@@ -228,8 +228,17 @@ export type ToolDeps = {
   /** Clock in milliseconds, injectable for tests. */
   now?: () => number;
 };
-type ResolvedDeps = Required<ToolDeps>;
+export type ResolvedDeps = Required<ToolDeps>;
 export const DEFAULT_BUDGET_MS = 2000;
+
+/** The deps with their defaults: the shared limiter, the 2 s budget, performance.now. */
+export function resolveDeps(deps: ToolDeps = {}): ResolvedDeps {
+  return {
+    limiter: deps.limiter ?? defaultLimiter,
+    budgetMs: deps.budgetMs ?? DEFAULT_BUDGET_MS,
+    now: deps.now ?? (() => performance.now()),
+  };
+}
 
 /**
  * `vertical` / `horizontal` name the pairs in the messages: yMin / yMax, or xpMin / xpMax on a
@@ -372,7 +381,7 @@ function fail(message: string): CallToolResult {
  * (never HTTP 500): the limiter answers first, then the handler runs with a checkpoint that throws
  * once the wall-clock budget is spent.
  */
-function guarded(deps: ResolvedDeps, run: (checkpoint: () => void) => CallToolResult): CallToolResult {
+export function guarded(deps: ResolvedDeps, run: (checkpoint: () => void) => CallToolResult): CallToolResult {
   const gate = deps.limiter.tryAcquire(deps.now());
   if (!gate.ok) {
     return fail(
@@ -467,11 +476,7 @@ export function analyzePlanar(
  */
 export function registerTools(server: McpServer, widgetUri: string, deps: ToolDeps = {}): void {
   const ui = { ui: { resourceUri: widgetUri } };
-  const d: ResolvedDeps = {
-    limiter: deps.limiter ?? defaultLimiter,
-    budgetMs: deps.budgetMs ?? DEFAULT_BUDGET_MS,
-    now: deps.now ?? (() => performance.now()),
-  };
+  const d = resolveDeps(deps);
 
   registerAppTool(
     server,
