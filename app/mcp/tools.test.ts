@@ -15,6 +15,9 @@ import type { ToolDeps } from "./tools";
 
 let client: Client;
 
+/** The text tools of round 12 (app/mcp/series-tools.ts): no widget, no Scene. */
+const TEXT_TOOLS: readonly string[] = ["power_series", "solution_formula"];
+
 async function connect(deps?: ToolDeps): Promise<Client> {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer("http://localhost:3000", deps);
@@ -44,10 +47,10 @@ beforeAll(async () => {
 });
 
 describe("tools/list", () => {
-  it("exposes ping plus the six analysis tools with valid schemas", async () => {
+  it("exposes ping, the six visual analysis tools and the two text tools (round 12) with valid schemas", async () => {
     const { tools } = await client.listTools();
     const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "query_solution", "sample_field", "trace_trajectory"]);
+    expect(names).toEqual(["analyze_first_order", "analyze_second_order", "analyze_system", "ping", "power_series", "query_solution", "sample_field", "solution_formula", "trace_trajectory"]);
     for (const t of tools) {
       expect(t.inputSchema.type).toBe("object");
       expect(t.description && t.description.length).toBeGreaterThan(40);
@@ -60,8 +63,13 @@ describe("tools/list", () => {
       expect(t.description).toMatch(/USE THIS/);
       expect(t.description).toMatch(/Do NOT compute/);
       // the planar tools write x*y; the first-order tool has no x at all and writes t*y; the
-      // second-order tool's variables are x and x'
-      expect(t.description).toMatch(t.name === "analyze_first_order" ? /t\*y/ : t.name === "analyze_second_order" ? /x\*x'/ : /x\*y/);
+      // second-order tool's variables are x and x'; the two text tools (round 12) take both modes
+      if (TEXT_TOOLS.includes(t.name)) {
+        expect(t.description, t.name).toMatch(/t\*y/);
+        expect(t.description, t.name).toMatch(/x\*x'/);
+      } else {
+        expect(t.description).toMatch(t.name === "analyze_first_order" ? /t\*y/ : t.name === "analyze_second_order" ? /x\*x'/ : /x\*y/);
+      }
       expect(t.description).toMatch(/caveat/);
       expect(t.description).toMatch(/'zh' when the question is in Chinese/);
       expect(t.description).toMatch(/defaults to en/);
@@ -77,7 +85,8 @@ describe("tools/list", () => {
     // Observed: asked about 2xy dx + (x² + y²) dy = 0 the model listed the tools and answered by
     // symbolic derivation without calling any. The rule is the first thing the model reads.
     const { tools } = await client.listTools();
-    const analysis = tools.filter((t) => t.name !== "ping");
+    // The visual tools; the two text tools have their own tail (no picture), checked below and in series-tools.test.ts.
+    const analysis = tools.filter((t) => t.name !== "ping" && !TEXT_TOOLS.includes(t.name));
     expect(analysis).toHaveLength(6);
     for (const t of analysis) {
       expect(t.description, t.name).toMatch(/^CALL THIS TOOL FIRST /);
@@ -103,6 +112,18 @@ describe("tools/list", () => {
     expect(by.analyze_second_order).toMatch(/x''\^2, sin\(x''\)/);
     // ping keeps its own text
     expect(tools.find((t) => t.name === "ping")!.description).not.toMatch(/CALL THIS TOOL FIRST/);
+    // the text tools: the same rule and order, with the text-tool tail instead of the picture
+    const text = tools.filter((t) => TEXT_TOOLS.includes(t.name));
+    expect(text.map((t) => t.name).sort()).toEqual([...TEXT_TOOLS].sort());
+    for (const t of text) {
+      expect(t.description, t.name).toMatch(/^CALL THIS TOOL FIRST /);
+      expect(t.description, t.name).toMatch(/Even when /);
+      expect(t.description, t.name).toMatch(/check your derivation against its exact results/);
+      expect(t.description, t.name).toMatch(/Never answer from symbolic derivation alone\./);
+      expect(t.description, t.name).not.toMatch(/show the student the picture/);
+      expect(t.description!.indexOf("Never answer from symbolic derivation alone."), t.name).toBeLessThan(t.description!.indexOf("WHAT IT COMPUTES"));
+      expect(t.description!.indexOf("WHAT IT COMPUTES"), t.name).toBeLessThan(t.description!.indexOf("USE THIS"));
+    }
   });
 
   it("analyze_first_order speaks the student's notation dy/dt = g(t, y) and never dy/dx", async () => {
@@ -139,14 +160,21 @@ describe("tools/list", () => {
     expect(Object.keys(trace.inputSchema.properties as object)).not.toContain("t");
   });
 
-  it("keeps the widget resource registered and links every tool to it", async () => {
+  it("keeps the widget resource registered and links every visual tool to it; the text tools have none", async () => {
     const { resources } = await client.listResources();
     const widget = resources.find((r) => r.uri.startsWith("ui://vector-field-tool/") && r.mimeType === "text/html;profile=mcp-app");
     expect(widget).toBeTruthy();
     const { tools } = await client.listTools();
-    for (const t of tools) {
+    const visual = tools.filter((t) => !TEXT_TOOLS.includes(t.name));
+    expect(visual).toHaveLength(7);
+    for (const t of visual) {
       const meta = t._meta as { ui?: { resourceUri?: string } } | undefined;
       expect(meta?.ui?.resourceUri, `${t.name} must reference the widget`).toBe(widget!.uri);
+    }
+    // Round 12: power_series and solution_formula return text only (no Scene), so no resource link.
+    for (const t of tools.filter((t) => TEXT_TOOLS.includes(t.name))) {
+      const meta = t._meta as { ui?: { resourceUri?: string } } | undefined;
+      expect(meta?.ui?.resourceUri, `${t.name} must not reference the widget`).toBeUndefined();
     }
   });
 });
@@ -161,6 +189,8 @@ describe("cost controls", () => {
       ["trace_trajectory", { f: "y", g: "-x", x0: 1, y0: 0 }],
       ["analyze_first_order", { M: "2*t*y", N: "t^2 + y^2" }],
       ["analyze_second_order", { equation: "x'' + x = 0" }],
+      // round 12: the solution formula's check integrates numerically (power_series: series-tools.test.ts)
+      ["solution_formula", { mode: "second", equation: "x'' + x = 0" }],
     ] as const) {
       const r = await call(name, { ...args, locale: "en" }, c);
       expect(r.isError, name).toBe(true);
@@ -190,6 +220,8 @@ describe("cost controls", () => {
       ["analyze_first_order", { expr: long }, "expr"],
       ["analyze_system", { f: long, g: "y" }, "f"],
       ["analyze_system", { f: "x", g: long }, "g"],
+      ["power_series", { mode: "first", expr: long }, "expr"],
+      ["solution_formula", { mode: "second", equation: long }, "equation"],
     ] as const) {
       const r = await call(name, { ...args, locale: "en" });
       expect(r.isError, field).toBe(true);
@@ -246,6 +278,8 @@ describe("locale", () => {
       ["sample_field", { f: "x", g: "y" }],
       ["analyze_first_order", { expr: "y" }],
       ["analyze_second_order", { equation: "x'' + x = 0" }],
+      ["power_series", { mode: "second", equation: "x'' + x = 0" }],
+      ["solution_formula", { mode: "first", expr: "y" }],
     ] as const) {
       const r = (await client.callTool({ name, arguments: { ...args } })) as CallToolResult;
       expect(r.isError, name).toBeFalsy();
