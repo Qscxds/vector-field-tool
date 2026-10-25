@@ -91,7 +91,8 @@ describe("the text", () => {
 
   it("the overflow branch stays inside the budget (t0 = 800, a heavy forcing)", () => {
     const cosines = Array.from({ length: 11 }, (_, i) => `cos(${25000 + i}*t)`).join("+");
-    const deadline = performance.now() + 1500;
+    // A short deadline keeps the suite light; the property is that the work ends close to it.
+    const deadline = performance.now() + 400;
     const start = performance.now();
     try {
       panel("second", `x'' + 0.1*x' + x = exp(t)*t^24*(${cosines})`, formula({ center: 800, initial: [1, 0] }), {
@@ -102,6 +103,27 @@ describe("the text", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(RangeError);
     }
-    expect(performance.now() - start).toBeLessThan(3000);
+    expect(performance.now() - start).toBeLessThan(1800);
+  });
+});
+
+describe("sixth round: the direct reference and the refusal prefix", () => {
+  it("a small leading coefficient: 1e-8 x'' + x = 0 is cos(10^4 t), and its check does not fail", () => {
+    // The coefficient of x'' is taken structurally (no 1e-8 + x - x cancellation in the reference field).
+    const out = text(panel("second", "1e-8*x'' + x = 0", formula({ initial: [1, 0] }), { chart: false }));
+    expect(out).toContain("x(t) = cos(10000t)");
+    expect(out).not.toContain("Check failed");
+  });
+
+  it("a huge solution: x'' + x = 0 from x(0) = 1e300 keeps its reference (F = −x, never −Infinity)", () => {
+    const r = panel("second", "x'' + x = 0", formula({ initial: [1e300, 0] }), { chart: false });
+    if (r.status !== "ok" || !r.check) throw new Error();
+    expect(r.check.numeric?.ok).toBe(true);
+  });
+
+  it("the refusal prefix names every step it applied, in order", () => {
+    // Multiplied by t − 2 (the denominator), then the common factor t cancelled: (t − 2)x'' + (t − 2)x = eᵗ.
+    const m = message(panel("second", "t*x'' + t*x = t*exp(t)/(t-2)", series()));
+    expect(m).toContain("Multiplied by (−2 + t) to clear the denominator, with the common factor t of every term cancelled, the equation reads (t − 2)x'' + (t − 2)x = eᵗ.");
   });
 });

@@ -174,13 +174,18 @@ export function equationFailureText(L: LabelTable, mode: SeriesMode, failure: Eq
  * it shows the divided equation, so "the coefficient of x is e⁻ᵗ" refers to what is on the screen.
  */
 function dividedPrefix(L: LabelTable, eq: LinearEquation, ctx: NotationContext): Formula {
-  // A cleared denominator or a divided exponential changes the coefficients a refusal names: say so
-  // first and show the equation as it now reads.
-  if (eq.dividedExponential) {
-    return f(fillFormula(L.series.dividedEquation, { e: f("e", sup(tMultiple(eq.dividedExponential.re, ctx))), equation: equationFormula(eq, ctx) }), " ");
-  }
-  if (eq.cleared) return f(fillFormula(L.series.clearedEquation, { den: polyFactor(eq.cleared, f("t"), ctx), equation: equationFormula(eq, ctx) }), " ");
-  return f("");
+  // Every step that changed the coefficients a refusal names, in the order they were applied (a cleared
+  // denominator, a cancelled common factor, a divided exponential), then the equation as it now reads.
+  const steps: Formula[] = [];
+  if (eq.cleared) steps.push(fillFormula(L.series.prepCleared, { den: polyFactor(eq.cleared, f("t"), ctx) }));
+  if (eq.commonFactor) steps.push(fillFormula(L.series.prepCommon, { g: polyFactor(eq.commonFactor, f("t"), ctx) }));
+  if (eq.dividedExponential) steps.push(fillFormula(L.series.prepDivided, { e: f("e", sup(tMultiple(eq.dividedExponential.re, ctx))) }));
+  if (steps.length === 0) return f("");
+  const sentence = fillFormula(L.series.preparedEquation, { steps: join(steps, L.series.prepJoin), equation: equationFormula(eq, ctx) });
+  // The sentence starts with the first step: capitalized where the language has capitals.
+  const [first, ...rest] = sentence;
+  const opening = first && "t" in first ? [{ t: first.t.charAt(0).toUpperCase() + first.t.slice(1) }, ...rest] : sentence;
+  return f(opening, " ");
 }
 
 export function notPolynomialText(L: LabelTable, eq: LinearEquation, reason: NotPolynomial): Formula {

@@ -222,18 +222,21 @@ describe("solution_formula", () => {
   it("[12, third round] the floating-point check of a large formula also stays inside the budget", async () => {
     // Twelve forcing frequencies against t^20: the check evaluated the formula thousands of times,
     // each converting every exact coefficient anew (15 s, then a normal answer).
+    // A 500 ms budget (the property is the same; it keeps the suite light): it must end near it.
     const cosines = Array.from({ length: 12 }, (_, i) => `cos(${25000 + i}*t)`).join("+");
+    const small = await connect({ budgetMs: 500 });
     const start = performance.now();
-    const r = await call("solution_formula", { mode: "first", expr: `-y + t^20*(${cosines})` });
-    expect(performance.now() - start).toBeLessThan(4000);
+    const r = await call("solution_formula", { mode: "first", expr: `-y + t^20*(${cosines})` }, small);
+    expect(performance.now() - start).toBeLessThan(1800);
     expect(r.isError || r.text.length > 0).toBe(true);
   });
 
   it("[12, second round] exact arithmetic on 16-digit frequencies against t^40 ends at once, inside the budget", async () => {
     // It used to run 21 s (and 148 s with nine frequencies) outside the 2 s budget and then answer.
+    const small = await connect({ budgetMs: 500 });
     const start = performance.now();
-    const r = await call("solution_formula", { mode: "second", equation: "x'' + pi*x' + e*x = t^40*(cos(pi*t)+cos(e*t))" });
-    expect(performance.now() - start).toBeLessThan(4000);
+    const r = await call("solution_formula", { mode: "second", equation: "x'' + pi*x' + e*x = t^40*(cos(pi*t)+cos(e*t))" }, small);
+    expect(performance.now() - start).toBeLessThan(1800);
     expect(r.isError || r.text.includes(labels("en").series.tooExpensiveFormula), r.text).toBe(true);
   });
 

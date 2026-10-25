@@ -3,7 +3,7 @@
  * fixes found, each expectation derived by hand next to it.
  */
 import { describe, expect, it } from "vitest";
-import { fill, labels } from "../labels";
+import { labels } from "../labels";
 import { derivationText } from "../labels-series";
 import { computeSeriesPanel, DEFAULT_SERIES_SETTINGS, type SeriesPanelResult, type SeriesSettings } from "../series-panel";
 import { linearEquation, secondOrderSyntaxPasses, type SeriesMode } from "./equation";
@@ -147,13 +147,14 @@ describe("the solution formula", () => {
     // e^t x'' + x = 0 divided by e^t: x'' + e^-t x = 0, whose coefficient of x changes with t.
     const m = message(panel("second", "exp(t)*x'' + x = 0", formula()));
     // The equation printer brackets a coefficient that is not a polynomial: (e⁻ᵗ)x.
-    expect(m).toContain(fill(L.series.dividedEquation, { e: "eᵗ", equation: "x'' + (e⁻ᵗ)x = 0" }));
+    expect(m).toContain("Divided by eᵗ, which is never zero, the equation reads x'' + (e⁻ᵗ)x = 0.");
     expect(m).toContain("the coefficient of x is e⁻ᵗ");
   });
 
   it("the first conversion of a huge formula to doubles stays inside the budget", () => {
     const cosines = Array.from({ length: 12 }, (_, i) => `cos(${25000 + i}*t)`).join("+");
-    const deadline = performance.now() + 1500;
+    // A short deadline keeps the suite light; the property is that the work ends close to it.
+    const deadline = performance.now() + 400;
     const start = performance.now();
     try {
       panel("second", `x'' + 0.1*x' + x = t^22*(${cosines})`, formula(), {
@@ -164,6 +165,6 @@ describe("the solution formula", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(RangeError);
     }
-    expect(performance.now() - start).toBeLessThan(3000);
+    expect(performance.now() - start).toBeLessThan(1800);
   });
 });

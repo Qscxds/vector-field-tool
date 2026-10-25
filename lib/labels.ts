@@ -190,9 +190,12 @@ export type SeriesLabelKey =
   | "centerFormulaName"
   | "formulaOverflowFixed"
   | "chartCancellation"
-  | "dividedEquation"
   | "failExponentTooLarge"
-  | "clearedEquation";
+  | "preparedEquation"
+  | "prepCleared"
+  | "prepCommon"
+  | "prepDivided"
+  | "prepJoin";
 
 export type LabelTable = {
   classification: Record<Classification, string>;
@@ -925,8 +928,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       approximateLiteralNote: "某个输入的数位数超过了浮点数能保存的（或超出了它的范围），按最接近的浮点数读入，所以下面的分数对这个浮点数是精确的。",
       formulaRhsNotQuasiDivided: "解的公式要求右端由多项式、e^(a·t)、sin、cos 组成；把方程除以 {top} 的系数之后，右端是 {G}。",
       dividedExponential: "（每一项都除以了 {e}，它永远不为零）",
-      dividedEquation: "除以 {e}（它永远不为零）后，方程是 {equation}。",
-      clearedEquation: "两边乘以 {den} 去掉分母后，方程是 {equation}。",
+      preparedEquation: "{steps}后，方程是 {equation}。",
+      prepCleared: "两边乘以 {den} 去掉分母",
+      prepCommon: "约去每一项的公因式 {g}",
+      prepDivided: "每一项除以 {e}（它永远不为零）",
+      prepJoin: "、",
       failExponentTooLarge: "{fragment}：这里不支持超过 2⁵³（约 9·10¹⁵）的整数指数。",
       failInvalidArgument: "{fragment}：round 的小数位数必须是 0 到 15 的整数。",
       failNoSecondDerivative: "{fragment} 里 x'' 的系数恒为 0，所以这不是二阶方程。",
@@ -1537,8 +1543,11 @@ export const LABELS: Record<Locale, LabelTable> = {
       approximateLiteralNote: "A number was typed with more digits than floating point keeps (or beyond its range) and is read as the nearest floating-point number, so the fractions are exact for that number.",
       formulaRhsNotQuasiDivided: "The solution formula needs a right-hand side built from polynomials, e^(a·t), sin and cos; once the equation is divided by the coefficient of {top}, the right-hand side is {G}.",
       dividedExponential: "(every term is divided by {e}, which is never zero)",
-      dividedEquation: "Divided by {e}, which is never zero, the equation reads {equation}.",
-      clearedEquation: "Multiplied by {den} to clear the denominator, the equation reads {equation}.",
+      preparedEquation: "{steps}, the equation reads {equation}.",
+      prepCleared: "multiplied by {den} to clear the denominator",
+      prepCommon: "with the common factor {g} of every term cancelled",
+      prepDivided: "divided by {e}, which is never zero",
+      prepJoin: ", ",
       failExponentTooLarge: "{fragment}: a whole exponent above 2⁵³ (about 9·10¹⁵) is not supported here.",
       failInvalidArgument: "{fragment}: the number of decimals in round must be a whole number from 0 to 15.",
       failNoSecondDerivative: "The coefficient of x'' in {fragment} is identically 0, so this is not a second-order equation.",

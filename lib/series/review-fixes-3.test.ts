@@ -273,7 +273,8 @@ describe("the chart", () => {
   });
 
   it("the not-constant message of a heavy equation stays inside the budget", () => {
-    const deadline = performance.now() + 1500;
+    // A short deadline keeps the suite light; the property is that the work ends close to it.
+    const deadline = performance.now() + 400;
     const start = performance.now();
     try {
       panel("second", "(t+1)*(97*t^2+5*t+3)^19*x'' + x' + (t+1)*(89*t^2+29*t+13)^19*x = 0", formula(), {
@@ -284,6 +285,6 @@ describe("the chart", () => {
     } catch (error) {
       expect(error).toBeInstanceOf(RangeError);
     }
-    expect(performance.now() - start).toBeLessThan(4000);
+    expect(performance.now() - start).toBeLessThan(1800);
   });
 });

@@ -17,6 +17,7 @@ import { type ReducedSecondOrder, XD, XDD } from "../core/second-order";
 import { secondOrderNode } from "./equation";
 import { toSystem } from "../core/slope-field";
 import type { Range, Vec2 } from "../core/types";
+import type { MathNode } from "mathjs";
 import type { SeriesMode } from "./equation";
 
 /** Samples of a function across the chart. */
@@ -134,25 +135,102 @@ function mergeLegs(legs: Vec2[][]): Vec2[] {
   return out;
 }
 
+/** E as [its value at x'' = 0, its coefficient of x''] from the scope, or null where the shape is not affine. */
+type AffineInXdd = (scope: Record<string, number>) => [number, number];
+
+function containsXdd(node: MathNode): boolean {
+  let found = false;
+  node.traverse((n) => {
+    if (mathjs.isSymbolNode(n) && n.name === XDD) found = true;
+  });
+  return found;
+}
+
+/**
+ * E split STRUCTURALLY into [E at x'' = 0, the coefficient of x''] (dual numbers on the expression
+ * tree): a subtree without x'' is one compiled evaluation, a sum or product combines the pairs by the
+ * sum and product rules, a quotient divides by an x''-free denominator. No subtraction E(.., 1) - E(.., 0)
+ * (which cancels when the other terms dwarf the coefficient, as in 1e-8 x'' + x = 0) and one pass per
+ * evaluation. null for a shape that is not visibly affine in x'' (then the two-sample formula is used).
+ */
+function affineInXdd(node: MathNode): AffineInXdd | null {
+  if (!containsXdd(node)) {
+    const code = node.compile();
+    return (scope) => {
+      try {
+        const r = code.evaluate(scope);
+        return [typeof r === "number" ? r : NaN, 0];
+      } catch {
+        return [NaN, 0];
+      }
+    };
+  }
+  if (mathjs.isSymbolNode(node)) return () => [0, 1];
+  if (mathjs.isParenthesisNode(node)) return affineInXdd(node.content);
+  if (!mathjs.isOperatorNode(node)) return null;
+  const parts = node.args.map(affineInXdd);
+  if (parts.some((p) => p === null)) return null;
+  const [A, B] = parts as AffineInXdd[];
+  switch (node.fn) {
+    case "unaryPlus":
+      return A;
+    case "unaryMinus":
+      return (s) => {
+        const [v, c] = A(s);
+        return [-v, -c];
+      };
+    case "add":
+      return (s) => {
+        const [v1, c1] = A(s);
+        const [v2, c2] = B(s);
+        return [v1 + v2, c1 + c2];
+      };
+    case "subtract":
+      return (s) => {
+        const [v1, c1] = A(s);
+        const [v2, c2] = B(s);
+        return [v1 - v2, c1 - c2];
+      };
+    case "multiply":
+      return (s) => {
+        const [v1, c1] = A(s);
+        const [v2, c2] = B(s);
+        // One factor is free of x'' (E is linear): the product rule then has a single term.
+        return [v1 * v2, (c1 === 0 ? 0 : c1 * v2) + (c2 === 0 ? 0 : v1 * c2)];
+      };
+    case "divide":
+      if (containsXdd(node.args[1])) return null;
+      return (s) => {
+        const [v1, c1] = A(s);
+        const [v2] = B(s);
+        return [v1 / v2, c1 / v2];
+      };
+    default:
+      return null;
+  }
+}
+
 /**
  * The student's second-order equation E(t, x, x', x'') = 0 as the system x' = v, v' = F, evaluated
- * DIRECTLY from the text: E is affine in x'' (the exact reader verified it), so F = -E(.., 0) / (E(.., 1)
- * - E(.., 0)), the kernel's own definition of the reduction, with no symbolic simplification. The
- * kernel's reduceSecondOrder takes no budget and spends seconds to minutes simplifying a long product
- * ((t - 1)...(t - 24)(x'' + x) = 0); a reference must never wait for it. `spec` carries only what the
- * integrator reads from it: whether the field depends on t (its equilibrium stop is for autonomous systems).
+ * DIRECTLY from the text: E is affine in x'' (the exact reader verified it), so F = -E0 / a with E0 = E
+ * at x'' = 0 and a its coefficient of x'' (affineInXdd), the kernel's own definition of the reduction,
+ * with no symbolic simplification. The kernel's reduceSecondOrder takes no budget and spends seconds
+ * to minutes simplifying a long product ((t - 1)...(t - 24)(x'' + x) = 0); a reference must never wait
+ * for it. `spec` carries only what the integrator reads from it: whether the field depends on t (its
+ * equilibrium stop is for autonomous systems).
  */
 function directSecondOrder(text: string, params: Record<string, number> | undefined): CompiledSystem {
   const node = secondOrderNode(text, params);
-  const code = node.compile();
   let mentionsT = false;
   node.traverse((n) => {
     if (mathjs.isSymbolNode(n) && n.name === "t") mentionsT = true;
   });
-  const scope = { ...(params ?? {}) };
+  const base = { ...(params ?? {}) };
+  const affine = affineInXdd(node);
+  const code = affine ? null : node.compile();
   const E = (x: number, v: number, a: number, t: number): number => {
     try {
-      const r = code.evaluate({ ...scope, x, [XD]: v, [XDD]: a, t });
+      const r = code!.evaluate({ ...base, x, [XD]: v, [XDD]: a, t });
       return typeof r === "number" ? r : NaN;
     } catch {
       return NaN;
@@ -160,9 +238,12 @@ function directSecondOrder(text: string, params: Record<string, number> | undefi
   };
   return {
     eval(p: Vec2, t = 0): Vec2 {
+      if (affine) {
+        const [e0, a] = affine({ ...base, x: p.x, [XD]: p.y, [XDD]: 0, t });
+        return { x: p.y, y: -e0 / a };
+      }
       const e0 = E(p.x, p.y, 0, t);
-      const F = -e0 / (E(p.x, p.y, 1, t) - e0);
-      return { x: p.y, y: F };
+      return { x: p.y, y: -e0 / (E(p.x, p.y, 1, t) - e0) };
     },
     spec: { f: "y", g: mentionsT ? "t" : "0" },
   };
