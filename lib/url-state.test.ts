@@ -7,6 +7,7 @@ import {
   buildShareUrl, decodeState, DEFAULT_STATE, encodeState, MAX_QUERY_LENGTH, MAX_TRAJECTORY_STARTS, MAX_URL_EXPRESSION_LENGTH,
   MODE_DEFAULT_EXPRESSIONS, queryFromSearchParams, type AppState, type UrlProblem,
 } from "./url-state";
+import { DEFAULT_SERIES_SETTINGS, MAX_SERIES_TERMS, MIN_SERIES_TERMS } from "./series-panel";
 
 const D = DEFAULT_STATE;
 const withDefaults = (patch: Partial<AppState>): AppState => ({ ...D, box: { ...D.box }, trajectoryStarts: [], ...patch });
@@ -78,6 +79,10 @@ describe("round trip", () => {
     diff: withDefaults({ mode: "diff", M: "2*t*y", N: "t^2+y^2", box: { xMin: -2, xMax: 2, yMin: -2, yMax: 2 }, equalScale: false, density: 12 }),
     system: withDefaults({ f: "y", g: "-x + sin(t)", snapshotT: -1.25, arrowMode: "scaled", locale: "zh", trajectoryStarts: [{ x: 1, y: 0 }, { x: -2.5, y: 0.125 }] }),
     second: withDefaults({ mode: "second", eq: "x'' = -sin(x)", box: { xMin: -7, xMax: 7, yMin: -3, yMax: 3 }, trajectoryStarts: [{ x: 0, y: 2.5 }] }),
+    // Round 12: every series setting away from its default, in each of the two modes that have the panel
+    // (a first-order picture carries the one initial value y(t0); its second slot is the default 0).
+    "first with the power series": withDefaults({ mode: "first", g: "2*t*y", series: { kind: "series", terms: 10, center: 0.5, initial: [2, 0] } }),
+    "second with the solution formula": withDefaults({ mode: "second", eq: "x'' + 3*x' + 2*x = 0", series: { kind: "formula", terms: 12, center: -1.5, initial: [0.25, -2] } }),
   };
   for (const [name, state] of Object.entries(cases)) {
     it(`${name}: decode(encode(state)) is the state, with no problems`, () => {
@@ -249,7 +254,7 @@ describe("decodeState validation (a public link is an attack surface)", () => {
   });
 
   it("never throws on garbage", () => {
-    for (const q of ["%", "%E0%A4%A", "m=&g=&tmin=&traj=;;;", "=&&&", "a".repeat(4096)]) {
+    for (const q of ["%", "%E0%A4%A", "m=&g=&tmin=&traj=;;;", "=&&&", "a".repeat(4096), "m=second&ser=&sn=&sc=&si=,,;", "m=first&si=%00&sc=--1&sn=1e3"]) {
       expect(() => decodeState(q, D)).not.toThrow();
     }
   });
@@ -544,5 +549,126 @@ describe("[Y] a link cannot smuggle a glued function in as a parameter either", 
     expect(decodeState("m=first&g=y*ln(y)", D)).toMatchObject({ problems: [], state: { g: "y*ln(y)" } });
     // an explicit parameter of that name in the link is the author's own decision and still works
     expect(decodeState("m=first&g=cost*y&p=cost:2", D)).toMatchObject({ problems: [], state: { g: "cost*y", params: [{ name: "cost", value: 2 }] } });
+  });
+});
+
+describe("[12] the series panel in the link (ser, sn, sc, si)", () => {
+  // Every expectation follows from the rules in the url-state header: ser = ps | sol, sn the highest power
+  // 1..30 (default 8), sc the expansion point t0 (default 0), si = y(t0) on a first-order picture and the
+  // pair x(t0),x'(t0) on a second-order one (default 1 / 1,0); defaults omitted, written after sl.
+  const off = DEFAULT_SERIES_SETTINGS;
+  const firstSeries = withDefaults({ mode: "first", g: "2*t*y", series: { kind: "series", terms: 10, center: 0.5, initial: [2, 0] } });
+  const secondFormula = withDefaults({ mode: "second", eq: "x'' + 3*x' + 2*x = 0", series: { kind: "formula", terms: 12, center: -1.5, initial: [0.25, -2] } });
+
+  it("the documented bounds and defaults: 1..30 powers, 8 by default, t0 = 0, initial values 1 and 0, the panel off", () => {
+    expect([MIN_SERIES_TERMS, MAX_SERIES_TERMS]).toEqual([1, 30]);
+    expect(D.series).toEqual({ kind: null, terms: 8, center: 0, initial: [1, 0] });
+  });
+
+  it("omitted at the defaults; only what differs is written, after every other field", () => {
+    expect(encodeState(withDefaults({ mode: "first", g: "y" }))).toBe("m=first&g=y");
+    expect(encodeState(withDefaults({ mode: "second", eq: "x'' = -x" }))).toBe("m=second&eq=x''+%3D+-x");
+    // first order: one initial value, y(t0) = 2 (the second slot is not a first-order initial value)
+    expect(encodeState(firstSeries)).toBe("m=first&g=2*t*y&ser=ps&sn=10&sc=0.5&si=2");
+    // second order: the pair, always written as a pair; '+' and '=' stay structural, the apostrophes readable
+    expect(encodeState(secondFormula)).toBe("m=second&eq=x''+%2B+3*x'+%2B+2*x+%3D+0&ser=sol&sn=12&sc=-1.5&si=0.25,-2");
+    expect(encodeState(withDefaults({ mode: "second", eq: "x'' = -x", series: { ...off, kind: "series" } }))).toBe("m=second&eq=x''+%3D+-x&ser=ps");
+    expect(encodeState(withDefaults({ mode: "second", eq: "x'' = -x", series: { ...off, initial: [1, 0.5] } }))).toBe("m=second&eq=x''+%3D+-x&si=1,0.5");
+    expect(encodeState(withDefaults({ mode: "first", g: "y", series: { ...off, initial: [1, 7] } }))).toBe("m=first&g=y");
+    // the settings travel while the panel is off, so switching it on restores them
+    expect(encodeState(withDefaults({ mode: "first", g: "y", series: { ...off, terms: 5 } }))).toBe("m=first&g=y&sn=5");
+    // after p and sl: the cooling lesson dy/dt = -k y + 1 with a slider on k and the formula from y(0) = 0
+    const cooling = withDefaults({ mode: "first", g: "-k*y + 1", params: [{ name: "k", value: 1 }], sliders: [{ name: "k", min: 0, max: 3, step: 0.1 }], series: { kind: "formula", terms: 8, center: 0, initial: [0, 0] } });
+    expect(encodeState(cooling)).toBe("m=first&g=-k*y+%2B+1&p=k:1&sl=k:0:3:0.1&ser=sol&si=0");
+  });
+
+  it("decodes both kinds and both shapes of si; 'a' alone on a second-order picture is x(t0) = a, x'(t0) = 0", () => {
+    expect(decodeState("m=first&g=2*t*y&ser=ps&sn=10&sc=0.5&si=2", D)).toEqual({ state: firstSeries, problems: [] });
+    expect(decodeState("m=second&eq=x''+%2B+3*x'+%2B+2*x+%3D+0&ser=sol&sn=12&sc=-1.5&si=0.25,-2", D)).toEqual({ state: secondFormula, problems: [] });
+    const short = decodeState("m=second&eq=x''+%3D+-x&si=3", D);
+    expect(short.problems).toEqual([]);
+    expect(short.state.series).toEqual({ ...off, initial: [3, 0] });
+    // re-encoded as the pair
+    expect(encodeState(short.state)).toBe("m=second&eq=x''+%3D+-x&si=3,0");
+    expect(decodeState("m=first&g=y&si=-2", D).state.series).toEqual({ ...off, initial: [-2, 0] });
+    // the bounds are inclusive
+    expect(decodeState("m=first&g=y&sn=1", D).state.series.terms).toBe(1);
+    expect(decodeState("m=first&g=y&sn=30", D).state.series.terms).toBe(30);
+  });
+
+  it("each invalid value is reported with its reason and keeps the fallback's value; the other values still apply", () => {
+    const first = (query: string) => {
+      const { state, problems } = decodeState(`m=first&g=y&${query}`, D);
+      return { series: state.series, problems: reasons(problems) };
+    };
+    const second = (query: string) => {
+      const { state, problems } = decodeState(`m=second&eq=x''+%3D+-x&${query}`, D);
+      return { series: state.series, problems: reasons(problems) };
+    };
+    expect(first("ser=series")).toEqual({ series: off, problems: ["ser:badChoice"] });
+    expect(first("ser=PS")).toEqual({ series: off, problems: ["ser:badChoice"] });
+    expect(first("ser=")).toEqual({ series: off, problems: ["ser:badChoice"] });
+    expect(first("sn=7.5")).toEqual({ series: off, problems: ["sn:notInteger"] });
+    expect(first("sn=abc")).toEqual({ series: off, problems: ["sn:notInteger"] });
+    expect(first("sn=0")).toEqual({ series: off, problems: ["sn:outOfRange"] });
+    expect(first("sn=31")).toEqual({ series: off, problems: ["sn:outOfRange"] });
+    expect(first("sc=abc")).toEqual({ series: off, problems: ["sc:notANumber"] });
+    expect(first("sc=Infinity")).toEqual({ series: off, problems: ["sc:notANumber"] });
+    expect(first("sc=1e7")).toEqual({ series: off, problems: ["sc:outOfRange"] });
+    // a first-order picture has one initial value: a pair is one value too many
+    expect(first("si=1,2")).toEqual({ series: off, problems: ["si:tooMany"] });
+    expect(second("si=1,2,3")).toEqual({ series: off, problems: ["si:tooMany"] });
+    for (const bad of ["1,", ",2", ","]) expect(second(`si=${bad}`), bad).toEqual({ series: off, problems: ["si:malformedPair"] });
+    expect(first("si=1,")).toEqual({ series: off, problems: ["si:malformedPair"] });
+    expect(first("si=abc")).toEqual({ series: off, problems: ["si:notANumber"] });
+    expect(first("si=")).toEqual({ series: off, problems: ["si:notANumber"] });
+    expect(second("si=1,abc")).toEqual({ series: off, problems: ["si:notANumber"] });
+    expect(second("si=1,1e999")).toEqual({ series: off, problems: ["si:outOfRange"] });
+    expect(second("si=0x10")).toEqual({ series: off, problems: ["si:notANumber"] });
+    // one bad value: the others apply
+    expect(second("ser=ps&sn=99&sc=0.5&si=2,1")).toEqual({ series: { kind: "series", terms: 8, center: 0.5, initial: [2, 1] }, problems: ["sn:outOfRange"] });
+  });
+
+  it("on a planar system or a differential form every series parameter is reported as unused and never written", () => {
+    const system = decodeState("ser=ps&sn=5&sc=1&si=2,3", D);
+    expect(reasons(system.problems)).toEqual(["ser:unusedInMode", "sn:unusedInMode", "sc:unusedInMode", "si:unusedInMode"]);
+    expect(system.state).toEqual(D);
+    const diff = decodeState("m=diff&M=t&N=y&ser=sol&si=1", D);
+    expect(reasons(diff.problems)).toEqual(["ser:unusedInMode", "si:unusedInMode"]);
+    expect(diff.state.series).toEqual(off);
+    const settings = { kind: "series" as const, terms: 5, center: 1, initial: [2, 3] as const };
+    expect(encodeState(withDefaults({ series: settings }))).toBe("");
+    expect(encodeState(withDefaults({ mode: "diff", M: "t", N: "y", series: settings }))).toBe("m=diff&M=t&N=y");
+  });
+
+  it("a link without series parameters keeps the fallback's settings; the fallback is never changed", () => {
+    const fallback = withDefaults({ mode: "second", eq: "x'' - t*x = 0", series: { kind: "series", terms: 9, center: 0, initial: [1, 0] } });
+    expect(decodeState("", fallback).state).toEqual(fallback);
+    const decoded = decodeState("sn=12&si=2,1", fallback).state;
+    expect(decoded.series).toEqual({ kind: "series", terms: 12, center: 0, initial: [2, 1] });
+    expect(fallback.series).toEqual({ kind: "series", terms: 9, center: 0, initial: [1, 0] });
+    expect(decoded.series.initial).not.toBe(fallback.series.initial);
+  });
+
+  it("the 4096-character cap still applies to the whole query, series parameters included", () => {
+    const huge = "m=first&g=y&ser=ps&si=" + "1".repeat(5000);
+    expect(huge.length).toBeGreaterThan(MAX_QUERY_LENGTH);
+    expect(decodeState(huge, D)).toEqual({ state: D, problems: [{ param: "query", reason: "queryTooLong" }] });
+  });
+});
+
+describe("[12] equations the picture refuses only numerically travel in the link", () => {
+  it("Bessel's t x'' + x' + t x = 0 (its x'' coefficient vanishes at t = 0) round-trips with the series panel", () => {
+    // The reduction refuses it (second_order_zero_coefficient), the exact reader accepts it: the
+    // link must carry it, or it would open the panel on the default equation instead.
+    const s = withDefaults({ mode: "second", eq: "t*x'' + x' + t*x = 0", series: { ...DEFAULT_SERIES_SETTINGS, kind: "series" } });
+    const decoded = decodeState(encodeState(s), D);
+    expect(decoded.problems).toEqual([]);
+    expect(decoded.state.eq).toBe("t*x'' + x' + t*x = 0");
+  });
+
+  it("a genuinely nonlinear equation is still refused", () => {
+    const decoded = decodeState("m=second&eq=x''%2Bsin(x'')%3D0", D);
+    expect(decoded.problems).toEqual([{ param: "eq", reason: "invalidExpression" }]);
   });
 });

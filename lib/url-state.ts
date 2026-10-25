@@ -47,6 +47,16 @@
  *          need a phase plane: on a first-order picture they are reported as unused.
  *   lecture  1 = lecture mode (round W: the numbers hidden, the conclusions kept; /embed takes it
  *          too, so a lesson page can embed the projected view directly). Omitted when off.
+ *   ser    ps | sol   the series panel (round 12): ps = the power series about t0, sol = the solution
+ *          formula u = u_h + u_p of a constant-coefficient equation; omitted = the panel is off.
+ *          ser, sn, sc and si exist on the two pictures that are ONE equation for one unknown,
+ *          dy/dt = g(t, y) (first) and a second-order equation (second); on a differential form or a
+ *          planar system each one given is reported as unused and the settings stay as they were.
+ *   sn     the highest power N of the partial sum, an integer 1..30 (omitted at 8)
+ *   sc     the expansion point t0, also where the initial values are given (omitted at 0)
+ *   si     the initial values: y(t0) on a first-order picture ("si=2"; a second value is one too
+ *          many there); x(t0),x'(t0) on a second-order one ("si=2,0.5", always written as a pair;
+ *          "si=2" also reads as 2,0). Omitted at y(t0) = 1, or x(t0) = 1, x'(t0) = 0.
  * Unknown parameters are ignored (so /embed's own `controls` never counts as a problem).
  */
 import { compileScalar } from "./core/parse";
@@ -55,6 +65,8 @@ import type { Locale, Range, Vec2 } from "./core/types";
 import { DEFAULT_PARAM_VALUE, discoverParams, formatParamValue, MAX_PARAMS, paramNameProblem, paramsRecord, sliderRangeProblem, type ParamEntry, type ParamMode, type SliderEntry } from "./params";
 import { NO_AIDS, type AidFlags } from "./phase-aids";
 import type { ArrowMode } from "./render/arrows";
+import { DEFAULT_SERIES_SETTINGS, MAX_SERIES_TERMS, MIN_SERIES_TERMS, type SeriesKind, type SeriesSettings } from "./series-panel";
+import { isNumericalRefusal, readableAsLinearSecondOrder } from "./series/equation";
 import { MAX_TRAJECTORIES } from "./trajectory-store";
 
 export type AppMode = ParamMode;
@@ -96,6 +108,8 @@ export type AppState = {
   aids: AidFlags;
   /** Round W: lecture mode (`lecture=1` in the link). Display only. */
   lecture: boolean;
+  /** Round 12: the series panel's settings (`ser`, `sn`, `sc`, `si` in the link; modes first and second only). */
+  series: SeriesSettings;
 };
 
 export type UrlProblemReason =
@@ -154,6 +168,7 @@ export const DEFAULT_STATE: AppState = {
   sliders: [],
   aids: NO_AIDS,
   lecture: false,
+  series: DEFAULT_SERIES_SETTINGS,
 };
 
 /**
@@ -177,6 +192,19 @@ export function horizontalIsT(mode: AppMode): boolean {
 export function verticalIsXp(mode: AppMode): boolean {
   return mode === "second";
 }
+
+/** Whether the mode has the series panel (`ser`, `sn`, `sc`, `si`): the two pictures that are one equation for one unknown. */
+export function hasSeriesPanel(mode: AppMode): boolean {
+  return mode === "first" || mode === "second";
+}
+
+/** How many initial values `si` carries in a mode with the series panel: y(t0), or x(t0) and x'(t0). */
+function seriesInitialCount(mode: AppMode): 1 | 2 {
+  return mode === "first" ? 1 : 2;
+}
+
+/** The link's names of the series panel's two kinds. */
+const SERIES_KIND_PARAM: Record<SeriesKind, string> = { series: "ps", formula: "sol" };
 
 /** Which expression fields a mode uses; the others are never encoded and are ignored when decoding. */
 export function expressionKeysOf(mode: AppMode): ReadonlyArray<"g" | "f" | "M" | "N" | "eq"> {
@@ -202,7 +230,17 @@ export function validateExpression(mode: AppMode, key: "g" | "f" | "M" | "N" | "
   const free = discoverParams(mode, { g: expr, f: expr, M: expr, N: expr, eq: expr }) ?? [];
   const all = paramsRecord([...free.filter((name) => !params.some((e) => e.name === name)).map((name) => ({ name, value: DEFAULT_PARAM_VALUE })), ...params]);
   if (key === "eq") {
-    reduceSecondOrder(expr, all);
+    try {
+      reduceSecondOrder(expr, all);
+    } catch (error) {
+      // Round 12: a refusal by the reduction's NUMERICAL checks (t x'' + x' + t x = 0: the coefficient of
+      // x'' vanishes at t = 0, the Frobenius case) is not a fault of the text: such a link is kept when
+      // the text passes the series panel's own parse and is linear by its shape, and the page then shows
+      // the picture's message and the panel. Only those static checks run here, never the exact reading:
+      // decoding happens on the server for every request, and exact arithmetic on a hostile
+      // 40-character equation can take minutes.
+      if (!(isNumericalRefusal(error) && readableAsLinearSecondOrder(expr, all))) throw error;
+    }
     return;
   }
   compileScalar(expr, all, { variables: mode === "system" ? "xy" : "ty" });
@@ -273,6 +311,17 @@ export function encodeState(state: AppState): string {
   if (aidLetters.length) q.set("aids", aidLetters.join(","));
   if (state.lecture) q.set("lecture", "1");
   if (state.sliders.length) q.set("sl", state.sliders.map((e) => `${e.name}:${formatParamValue(e.min)}:${formatParamValue(e.max)}:${formatParamValue(e.step)}`).join(","));
+  // Round 12: the series panel, on the two pictures that have it. Only the initial values the mode
+  // uses are compared with the default (a first-order picture has no x'(t0)).
+  if (hasSeriesPanel(state.mode)) {
+    const s = state.series;
+    const ds = d.series;
+    if (s.kind !== null) q.set("ser", SERIES_KIND_PARAM[s.kind]);
+    if (s.terms !== ds.terms) q.set("sn", String(s.terms));
+    if (s.center !== ds.center) q.set("sc", formatExact(s.center));
+    const count = seriesInitialCount(state.mode);
+    if (s.initial.slice(0, count).some((v, i) => v !== ds.initial[i])) q.set("si", s.initial.slice(0, count).map(formatExact).join(","));
+  }
   return readable(q.toString());
 }
 
@@ -307,7 +356,16 @@ function parseBounded(text: string): Parsed {
 }
 
 function cloneState(s: AppState): AppState {
-  return { ...s, box: { ...s.box }, timeRange: { ...s.timeRange }, trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })), params: s.params.map((e) => ({ ...e })), sliders: s.sliders.map((e) => ({ ...e })), aids: { ...s.aids } };
+  return {
+    ...s,
+    box: { ...s.box },
+    timeRange: { ...s.timeRange },
+    trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })),
+    params: s.params.map((e) => ({ ...e })),
+    sliders: s.sliders.map((e) => ({ ...e })),
+    aids: { ...s.aids },
+    series: { ...s.series, initial: [s.series.initial[0], s.series.initial[1]] },
+  };
 }
 
 /**
@@ -560,6 +618,57 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
       sliders.push({ name, min, max, step });
     }
     state.sliders = sliders;
+  }
+
+  // Round 12: the series panel. Only dy/dt = g(t, y) and a second-order equation have it; on the
+  // other pictures each parameter given is reported as unused (the t0 pattern) and the settings
+  // stay the fallback's. Every value is checked on its own: a bad one keeps the fallback's value.
+  const seriesKeys = ["ser", "sn", "sc", "si"] as const;
+  if (!hasSeriesPanel(mode)) {
+    for (const key of seriesKeys) if (q.get(key) !== null) problem(key, "unusedInMode");
+  } else {
+    let series: SeriesSettings = state.series;
+    const ser = q.get("ser");
+    if (ser !== null) {
+      const kind = (Object.keys(SERIES_KIND_PARAM) as SeriesKind[]).find((k) => SERIES_KIND_PARAM[k] === ser);
+      if (kind) series = { ...series, kind };
+      else problem("ser", "badChoice");
+    }
+    const sn = q.get("sn");
+    if (sn !== null) {
+      const s = sn.trim();
+      if (!INTEGER_RE.test(s)) problem("sn", "notInteger");
+      else {
+        const v = Number(s);
+        if (v < MIN_SERIES_TERMS || v > MAX_SERIES_TERMS) problem("sn", "outOfRange");
+        else series = { ...series, terms: v };
+      }
+    }
+    const sc = q.get("sc");
+    if (sc !== null) {
+      const p = parseBounded(sc);
+      if (p.reason) problem("sc", p.reason);
+      else series = { ...series, center: p.value };
+    }
+    const si = q.get("si");
+    if (si !== null) {
+      // "a" or "a,b": y(t0) on a first-order picture (one value), x(t0) and x'(t0) on a
+      // second-order one, where "a" alone means x'(t0) = 0.
+      const parts = si.split(",");
+      const count = seriesInitialCount(mode);
+      if (parts.length > 1 && parts.some((part) => part.trim() === "")) problem("si", "malformedPair");
+      else if (parts.length > count) problem("si", "tooMany");
+      else {
+        const values = parts.map(parseBounded);
+        const bad = values.find((v) => v.reason);
+        if (bad?.reason) problem("si", bad.reason);
+        else {
+          const [a, b] = values.map((v) => v.value as number);
+          series = { ...series, initial: [a, b ?? 0] };
+        }
+      }
+    }
+    state.series = series;
   }
 
   return { state, problems };

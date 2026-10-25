@@ -18,15 +18,24 @@
  * NAME and opens its note with the reduction (let y = x', the velocity). The other planar presets
  * (Lotka-Volterra, saddle, star node) are untouched: their x and y are two unknown functions with
  * no hidden meaning. Z1.3: such a preset and its second-order twin point at each other (`twin`).
+ *
+ * Round 12: the last chapter opens the SERIES PANEL (`series`): power series of linear equations
+ * with polynomial coefficients (Airy, Legendre, Hermite, dy/dt = 2ty) and the solution formula
+ * u = u_h + u_p of constant-coefficient equations (the forced damped oscillator, dy/dt = -k y + 1,
+ * x'' + w^2 x = cos t). Their notes are derived by hand for the preset's own values, name every
+ * symbol they introduce (a_n, x_1, x_h, x_p, C, r) and say what dragging the slider does; the facts
+ * they state are checked through lib/series in presets.test.ts. Each one's start is the panel's own
+ * initial value at t0 = 0, so the kept curve is the solution the panel expands.
  */
 import type { Locale, Range, Vec2 } from "@/lib/core/types";
 import type { ParamEntry, SliderEntry } from "@/lib/params";
+import { DEFAULT_SERIES_SETTINGS, type SeriesSettings } from "@/lib/series-panel";
 import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState, type ViewChoice } from "@/lib/url-state";
 
 /** The form vocabulary of VectorFieldApp (explicit / differential); presets use the link vocabulary AppMode. */
 export type PresetMode = "system" | "explicit" | "differential" | "second";
 
-export type PresetGroupId = "separable" | "linear" | "exact" | "bernoulli" | "homogeneous" | "noClosedForm" | "uniqueness" | "secondOrder" | "systems" | "nonAutonomous";
+export type PresetGroupId = "separable" | "linear" | "exact" | "bernoulli" | "homogeneous" | "noClosedForm" | "uniqueness" | "secondOrder" | "systems" | "nonAutonomous" | "series";
 
 export type PresetGroup = { id: PresetGroupId; name: Record<Locale, string> };
 
@@ -58,6 +67,8 @@ export type Preset = {
   twin?: { id: string; label: Record<Locale, string> };
   /** Round Z2.1: the view the preset opens with ("both" for the four mechanical presets written as systems); absent = the default rule. */
   view?: ViewChoice;
+  /** Round 12: the series panel the preset opens with (the power series or the solution formula); absent = the panel is off. */
+  series?: SeriesSettings;
 };
 
 /** Route the preset links point to. */
@@ -76,6 +87,8 @@ export const PRESET_GROUPS: PresetGroup[] = [
   { id: "secondOrder", name: { zh: "二阶方程", en: "Second-order equations" } },
   { id: "systems", name: { zh: "平面系统", en: "Planar systems" } },
   { id: "nonAutonomous", name: { zh: "非自治", en: "Non-autonomous" } },
+  // Round 12: the series panel's chapter (power series, the split u = u_h + u_p).
+  { id: "series", name: { zh: "幂级数与解的公式", en: "Power series and solution formulas" } },
 ];
 
 const sq = (r: number): AppBox => ({ xMin: -r, xMax: r, yMin: -r, yMax: r });
@@ -311,6 +324,101 @@ export const PRESETS: Preset[] = [
       en: "x'' = −x + F·cos(g·t) with F = 0.5, g = 1.2: t appears on the right, so the equation is non-autonomous, the phase plane is only the snapshot at t₀ and no equilibrium analysis is made. From rest the solution is x = F/(g² − 1)·(cos t − cos g·t) = (0.5/0.44)(cos t − cos 1.2t) = 2.27·sin(0.1t)·sin(1.1t): the forcing frequency g = 1.2 is close to the natural frequency 1, so the amplitude rises and falls slowly with sin(0.1t): beats. Move g toward 1: the amplitude F/|g² − 1| grows and the beats slow down; at g = 1 it is resonance, x = (F/2)·t·sin t, whose amplitude grows linearly in t and reaches 16.9 within t ≤ 70, which is why the vertical axis runs to ±20.",
     },
   },
+  // ---- Round 12: power series and solution formulas (the series panel opens with the preset) ----
+  {
+    id: "airy", group: "series", mode: "second", name: { zh: "Airy 方程 x'' − t·x = 0（幂级数）", en: "Airy equation x'' − t·x = 0 (power series)" },
+    expressions: { eq: "x'' - t*x = 0" }, box: sq(3), starts: [{ x: 1, y: 0 }],
+    // x(0) = 1, x'(0) = 0 oscillates for t < 0 and grows fast for t > 0: x(2) = 1 + 8/6 + 64/180 + ... = 2.7.
+    timeRange: { min: -8, max: 2 },
+    series: { kind: "series", terms: 9, center: 0, initial: [1, 0] },
+    note: {
+      zh: "x'' − t·x = 0（Airy 方程）：设 x = Σ aₙtⁿ，比较 tⁿ 的系数得 (n + 2)(n + 1)aₙ₊₂ = aₙ₋₁，所以 a₂ = 0、aₙ₊₂ = aₙ₋₁/((n + 2)(n + 1))，级数拆成 x = a₀x₁ + a₁x₂，其中 a₀ = x(0)、a₁ = x'(0)。x₁ = 1 + t³/6 + t⁶/180 + … 和 x₂ = t + t⁴/12 + … 都不会终止。系数都是多项式、x'' 的系数是常数 1，没有奇点，所以级数对所有 t 收敛；不过有限项的部分和在 |t| 大时仍会离开解。",
+      en: "x'' − t·x = 0 (Airy): put x = Σ aₙtⁿ; the power tⁿ gives (n + 2)(n + 1)aₙ₊₂ = aₙ₋₁, so a₂ = 0 and aₙ₊₂ = aₙ₋₁/((n + 2)(n + 1)), and the series splits as x = a₀x₁ + a₁x₂ with a₀ = x(0), a₁ = x'(0). Neither x₁ = 1 + t³/6 + t⁶/180 + … nor x₂ = t + t⁴/12 + … stops. The coefficients are polynomials and the coefficient of x'' is the constant 1, so there is no singular point and the series converges for every t; a partial sum with finitely many terms still leaves the solution once |t| is large.",
+    },
+  },
+  {
+    id: "legendre", group: "series", mode: "second",
+    name: { zh: "Legendre 方程 (1 − t²)x'' − 2t·x' + l(l + 1)x = 0", en: "Legendre equation (1 − t²)x'' − 2t·x' + l(l + 1)x = 0" },
+    expressions: { eq: "(1 - t^2)*x'' - 2*t*x' + l*(l + 1)*x = 0" }, params: [{ name: "l", value: 2 }],
+    // Every whole l from 0 to 5 is on the slider's grid: each one gives a polynomial basis series.
+    sliders: [{ name: "l", min: 0, max: 5, step: 0.5 }],
+    // x₁ = 1 − 3t² and x₁' = −6t on |t| < 1: x from −2 to 1, x' from −6 to 6.
+    box: { xMin: -3, xMax: 3, yMin: -7, yMax: 7 }, starts: [{ x: 1, y: 0 }],
+    // The solution graph shows the interval where convergence is guaranteed (the coefficient of x'' vanishes at t = ±1).
+    timeRange: { min: -1, max: 1 },
+    series: { kind: "series", terms: 8, center: 0, initial: [1, 0] },
+    note: {
+      zh: "(1 − t²)x'' − 2t·x' + l(l + 1)x = 0，参数 l = 2：设 x = Σ aₙtⁿ，得 aₙ₊₂ = (n − l)(n + l + 1)aₙ/((n + 2)(n + 1))，所以 l = 2 时偶次级数立刻终止：x₁ = 1 − 3t²（a₀ = x(0) = 1、a₁ = x'(0) = 0）。l 取任何非负整数时，两个基本级数中总有一个是多项式（l 为偶数时是偶次的那个，奇数时是奇次的那个）；拖动 l，其他取值下两个都是无穷级数。系数 1 − t² 在 t = ±1 处为零，这两点是奇点，所以只保证在 |t| < 1 内收敛。",
+      en: "(1 − t²)x'' − 2t·x' + l(l + 1)x = 0 with the parameter l = 2: with x = Σ aₙtⁿ, aₙ₊₂ = (n − l)(n + l + 1)aₙ/((n + 2)(n + 1)), so at l = 2 the even series stops at once: x₁ = 1 − 3t² (a₀ = x(0) = 1, a₁ = x'(0) = 0). For every whole number l one of the two basis series is a polynomial (the even one for even l, the odd one for odd l); drag l and every other value gives two infinite series. The coefficient 1 − t² vanishes at t = ±1, the singular points, so convergence is guaranteed only for |t| < 1.",
+    },
+  },
+  {
+    id: "hermite", group: "series", mode: "second", name: { zh: "Hermite 方程 x'' − 2t·x' + 2m·x = 0", en: "Hermite equation x'' − 2t·x' + 2m·x = 0" },
+    expressions: { eq: "x'' - 2*t*x' + 2*m*x = 0" }, params: [{ name: "m", value: 2 }],
+    sliders: [{ name: "m", min: 0, max: 6, step: 1 }],
+    // x₁ = 1 − 2t² and x₁' = −4t on |t| <= 2: x from −7 to 1, x' from −8 to 8.
+    box: sq(8), starts: [{ x: 1, y: 0 }],
+    timeRange: { min: -2, max: 2 },
+    series: { kind: "series", terms: 8, center: 0, initial: [1, 0] },
+    note: {
+      zh: "x'' − 2t·x' + 2m·x = 0，参数 m = 2：设 x = Σ aₙtⁿ，得 aₙ₊₂ = 2(n − m)aₙ/((n + 2)(n + 1))，所以 m = 2 时偶次级数终止：x₁ = 1 − 2t²（a₀ = x(0) = 1、a₁ = x'(0) = 0）。m 取任何非负整数时，两个基本级数中总有一个是多项式（拖动 m：m 为偶数时是偶次的那个，奇数时是奇次的那个）。系数都是多项式、x'' 的系数是 1，所以级数对所有 t 收敛。",
+      en: "x'' − 2t·x' + 2m·x = 0 with the parameter m = 2: with x = Σ aₙtⁿ, aₙ₊₂ = 2(n − m)aₙ/((n + 2)(n + 1)), so at m = 2 the even series stops: x₁ = 1 − 2t² (a₀ = x(0) = 1, a₁ = x'(0) = 0). For every whole number m one of the two basis series is a polynomial (drag m: the even one for even m, the odd one for odd m). The coefficients are polynomials and the coefficient of x'' is 1, so the series converges for every t.",
+    },
+  },
+  {
+    id: "gauss", group: "series", mode: "first", name: { zh: "dy/dt = 2ty（幂级数）", en: "dy/dt = 2ty (power series)" },
+    expressions: { g: "2*t*y" },
+    // y = e^(t²) from y(0) = 1: e^(1.5²) = 9.5 is inside the picture, e^4 = 54.6 at t = ±2 far above it.
+    box: { xMin: -2, xMax: 2, yMin: -2, yMax: 10 }, starts: [{ x: 0, y: 1 }],
+    series: { kind: "series", terms: 10, center: 0, initial: [1, 0] },
+    note: {
+      zh: "dy/dt = 2ty：设 y = Σ aₙtⁿ，比较 tⁿ 的系数得 (n + 1)aₙ₊₁ = 2aₙ₋₁，所以 a₁ = 0、aₙ₊₁ = 2aₙ₋₁/(n + 1)；奇次系数全为 0，a₂ₖ = a₀/k!。y(0) = a₀ = 1 时级数就是 y = Σ t²ᵏ/k! = e^(t²)，和分离变量得到的解相同，对所有 t 收敛。",
+      en: "dy/dt = 2ty: with y = Σ aₙtⁿ the power tⁿ gives (n + 1)aₙ₊₁ = 2aₙ₋₁, so a₁ = 0 and aₙ₊₁ = 2aₙ₋₁/(n + 1); every odd coefficient vanishes and a₂ₖ = a₀/k!. For y(0) = a₀ = 1 the series is y = Σ t²ᵏ/k! = e^(t²), the solution separation of variables gives, and it converges for every t.",
+    },
+  },
+  {
+    // "forced" is the first-order dy/dt = −y + sin t of the linear chapter; second-order versions carry a 2 (harmonic2, damped2).
+    id: "forced2", group: "series", mode: "second",
+    name: { zh: "受迫阻尼振子 x'' + b·x' + k·x = F·cos(w·t)（解的公式）", en: "Forced damped oscillator x'' + b·x' + k·x = F·cos(w·t) (solution formula)" },
+    expressions: { eq: "x'' + b*x' + k*x = F*cos(w*t)" },
+    params: [{ name: "b", value: 0.5 }, { name: "k", value: 4 }, { name: "F", value: 1 }, { name: "w", value: 1 }],
+    // b runs past critical damping b = 2√k = 4 (k = 4); w runs past the natural frequency √k = 2.
+    sliders: [{ name: "b", min: 0, max: 5, step: 0.05 }, { name: "w", min: 0, max: 4, step: 0.05 }],
+    // x_h decays like e^(−bt/2) = e^(−t/4): e^(−7.5) = 0.0006 at t = 30, so the graph ends on the steady state.
+    box: { xMin: -2, xMax: 2, yMin: -3, yMax: 3 }, starts: [{ x: 1, y: 0 }],
+    timeRange: { min: 0, max: 30 },
+    series: { kind: "formula", terms: 8, center: 0, initial: [1, 0] },
+    note: {
+      zh: "x'' + b·x' + k·x = F·cos(w·t)，阻尼 b = 0.5、刚度 k = 4、外力振幅 F = 1、外力频率 w = 1：解的公式是 x = xₕ + xₚ（xₕ 是右端换成 0 的齐次方程的通解，xₚ 是一个特解）。特征方程 r² + b·r + k = 0 决定 xₕ：b² − 4k < 0 欠阻尼（这里 0.25 − 16 < 0），= 0 临界阻尼（k = 4 时 b = 4），> 0 过阻尼；b > 0 时两个根的实部都是负的，xₕ 衰减到 0，剩下的 xₚ = A·cos(w·t) + B·sin(w·t)（A、B 由待定系数法求出）就是稳态。b = 0 且 w = 2 = √k 时外力频率等于固有频率：共振，xₚ = (t/4)·sin(2t) 随 t 增长。",
+      en: "x'' + b·x' + k·x = F·cos(w·t) with damping b = 0.5, stiffness k = 4, forcing amplitude F = 1 and forcing frequency w = 1: the solution formula is x = xₕ + xₚ (xₕ solves the equation with right-hand side 0, xₚ is one particular solution). The characteristic equation r² + b·r + k = 0 decides xₕ: b² − 4k < 0 is underdamped (here 0.25 − 16 < 0), = 0 critical (b = 4 at k = 4), > 0 overdamped; for b > 0 both roots have a negative real part, so xₕ dies out and xₚ = A·cos(w·t) + B·sin(w·t) (A, B from undetermined coefficients) is the steady state that remains. At b = 0 and w = 2 = √k the forcing is at the natural frequency: resonance, xₚ = (t/4)·sin(2t) grows.",
+    },
+  },
+  {
+    id: "cooling", group: "series", mode: "first", name: { zh: "dy/dt = −k·y + 1（解的公式）", en: "dy/dt = −k·y + 1 (solution formula)" },
+    expressions: { g: "-k*y + 1" }, params: [{ name: "k", value: 1 }],
+    sliders: [{ name: "k", min: 0, max: 3, step: 0.1 }],
+    // From y(0) = 0: y = 1 − e^(−t) rises to the line y = 1/k = 1; at k = 0 the line y = t reaches 3 at t = 3.
+    box: { xMin: 0, xMax: 8, yMin: -1, yMax: 3 }, starts: [{ x: 0, y: 0 }],
+    series: { kind: "formula", terms: 8, center: 0, initial: [0, 0] },
+    note: {
+      zh: "dy/dt = −k·y + 1 即 dy/dt + k·y = 1，参数 k = 1：解的公式是 y = yₕ + yₚ，其中 yₕ = C·e^(−kt) 是 dy/dt + k·y = 0 的通解（C 是常数，r + k = 0 的根是 r = −k），常数试探解给出特解 yₚ = 1/k；所以 y = 1/k + (y(0) − 1/k)·e^(−kt)，k > 0 时 → 1/k，从 y(0) = 0 出发就是 y = 1 − e^(−t)。k = 0 时根 r = 0 正好是右端 1 = e^(0·t) 的指数，试探解要多乘一个 t：yₚ = t，y = y(0) + t。",
+      en: "dy/dt = −k·y + 1, that is dy/dt + k·y = 1, with the parameter k = 1: the solution formula is y = yₕ + yₚ, where yₕ = C·e^(−kt) solves dy/dt + k·y = 0 (C a constant, r = −k the root of r + k = 0) and the constant trial gives the particular solution yₚ = 1/k; so y = 1/k + (y(0) − 1/k)·e^(−kt), which tends to 1/k for k > 0, and from y(0) = 0 it is y = 1 − e^(−t). At k = 0 the root r = 0 is the exponent of the right-hand side 1 = e^(0·t), so the trial gets the factor t: yₚ = t and y = y(0) + t.",
+    },
+  },
+  {
+    id: "resonance-formula", group: "series", mode: "second", name: { zh: "x'' + w²·x = cos t（解的公式，共振）", en: "x'' + w²·x = cos t (solution formula, resonance)" },
+    expressions: { eq: "x'' + w^2*x = cos(t)" }, params: [{ name: "w", value: 1.5 }],
+    // w = 1 (resonance) is on the slider's grid: 0.5 + 10 * 0.05.
+    sliders: [{ name: "w", min: 0.5, max: 3, step: 0.05 }],
+    // From rest |x| = |cos t − cos(w t)|/|w² − 1| <= 2/0.75 = 2.67 at w = 0.5, 2/1.25 = 1.6 at w = 1.5.
+    box: sq(3), starts: [{ x: 0, y: 0 }],
+    timeRange: { min: 0, max: 60 },
+    series: { kind: "formula", terms: 8, center: 0, initial: [0, 0] },
+    note: {
+      zh: "x'' + w²·x = cos t，固有频率 w = 1.5：x = xₕ + xₚ，齐次部分 xₕ = C₁·cos(w·t) + C₂·sin(w·t)（C₁、C₂ 是常数，r² + w² = 0 的根是 ±w·i），w ≠ 1 时特解 xₚ = cos t/(w² − 1)；从静止 x(0) = x'(0) = 0 出发，x = (cos t − cos(1.5t))/1.25。w = 1 时外力 cos t 本身就是齐次方程的解，试探解要多乘一个 t，xₚ = (t/2)·sin t 无界增长：共振。",
+      en: "x'' + w²·x = cos t with the natural frequency w = 1.5: x = xₕ + xₚ, the homogeneous part xₕ = C₁·cos(w·t) + C₂·sin(w·t) (C₁, C₂ constants; the roots of r² + w² = 0 are ±w·i) and, for w ≠ 1, the particular solution xₚ = cos t/(w² − 1); from rest, x(0) = x'(0) = 0, x = (cos t − cos(1.5t))/1.25. At w = 1 the forcing cos t itself solves the homogeneous equation, so the trial gets the factor t and xₚ = (t/2)·sin t grows without bound: resonance.",
+    },
+  },
 ];
 
 /** The whole page state of a preset (unused expressions keep the defaults, so links stay short). */
@@ -325,6 +433,7 @@ export function presetState(p: Preset): AppState {
     sliders: (p.sliders ?? []).map((e) => ({ ...e })),
     ...(p.timeRange ? { timeRange: { ...p.timeRange } } : {}),
     ...(p.view ? { view: p.view } : {}),
+    series: p.series ? { ...p.series, initial: [p.series.initial[0], p.series.initial[1]] } : DEFAULT_SERIES_SETTINGS,
   };
 }
 
