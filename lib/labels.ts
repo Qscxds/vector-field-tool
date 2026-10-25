@@ -23,6 +23,177 @@ import type { Scene } from "./scene";
 export type { Locale };
 export const LOCALES: readonly Locale[] = ["zh", "en"];
 
+/** Round 12: the keys of the series / solution-formula section (lib/labels-series fills them with formulas). */
+export type SeriesLabelKey =
+  | "legend"
+  | "kindAria"
+  | "kindOff"
+  | "kindSeries"
+  | "kindFormula"
+  | "kindHint"
+  | "center"
+  | "centerFormula"
+  | "terms"
+  | "termsAria"
+  | "initialValues"
+  | "initialAt"
+  | "sliderOf"
+  | "numberProblem"
+  | "unavailableMode"
+  | "fixEquationFirst"
+  | "chartSeriesBoth"
+  | "chartSeriesOnly"
+  | "chartNumericalOnly"
+  | "chartBand"
+  | "chartFormula"
+  | "legendNumerical"
+  | "legendPartialSum"
+  | "legendBand"
+  | "failNonlinear"
+  | "failUnsupportedFunction"
+  | "failNonIntegerPower"
+  | "failPiecewise"
+  | "failDivision"
+  | "failDivisionByZero"
+  | "failNotFinite"
+  | "failTooComplex"
+  | "seriesNotPolynomialCoefficient"
+  | "seriesNotPolynomialRhs"
+  | "formulaNotConstant"
+  | "approximateNote"
+  | "roundedNote"
+  | "digitsCap"
+  | "tooExpensive"
+  | "seriesTitle"
+  | "stepEquation"
+  | "linearForm"
+  | "cleared"
+  | "cancelledFactor"
+  | "stepOrdinary"
+  | "stepSingular"
+  | "ordinaryConstant"
+  | "ordinaryAt"
+  | "shifted"
+  | "stepAnsatz"
+  | "ansatz"
+  | "derivatives"
+  | "stepSubstitute"
+  | "substituteIntro"
+  | "stepCollect"
+  | "collectAll"
+  | "collectSeparately"
+  | "lowLine"
+  | "lowLineDirect"
+  | "generalLine"
+  | "stepRecurrence"
+  | "recurrence"
+  | "freeCoefficients2"
+  | "freeCoefficients1"
+  | "stepCoefficients"
+  | "stepSplit"
+  | "split2"
+  | "split1"
+  | "polynomialNote"
+  | "particularNote"
+  | "initialMeaning2"
+  | "initialMeaning1"
+  | "shownThrough"
+  | "stepRadius"
+  | "radiusInfinite"
+  | "radiusFinite"
+  | "radiusNote"
+  | "radiusBound"
+  | "frobeniusRadiusBound"
+  | "stepInitial"
+  | "initialLine"
+  | "singularTitle"
+  | "singularLine"
+  | "regularSingular"
+  | "irregularSingular"
+  | "stepFrobenius"
+  | "frobeniusAnsatz"
+  | "frobeniusRoot"
+  | "frobeniusFree"
+  | "frobeniusSecondSeries"
+  | "frobeniusSecondLucky"
+  | "frobeniusLogEqual"
+  | "frobeniusLogInteger"
+  | "frobeniusUndecided"
+  | "frobeniusRadius"
+  | "frobeniusRadiusInfinite"
+  | "frobeniusForcing"
+  | "frobeniusNotRational"
+  | "formulaTitle"
+  | "stepSplitF"
+  | "splitIntro"
+  | "homogeneousOnly"
+  | "stepCharacteristic"
+  | "characteristic"
+  | "discriminant"
+  | "casePositive"
+  | "caseZero"
+  | "caseNegative"
+  | "singleRoot"
+  | "stepHomogeneous"
+  | "homogeneous"
+  | "homogeneous1"
+  | "behaviorDecay"
+  | "behaviorGrow"
+  | "behaviorOscillate"
+  | "behaviorLinear"
+  | "behaviorConstant"
+  | "dampingUndamped"
+  | "dampingUnder"
+  | "dampingCritical"
+  | "dampingOver"
+  | "stepParticular"
+  | "particularTry"
+  | "trialCoefficients"
+  | "trialCoefficient"
+  | "resonance"
+  | "multiplicity1"
+  | "multiplicity2"
+  | "particularFound"
+  | "superposition"
+  | "checkResidualFailed"
+  | "checkExactOnly"
+  | "formulaNearResonance"
+  | "formulaOverflow"
+  | "formulaRhsNotQuasi"
+  | "formulaNotConstantNoSeries"
+  | "stepConstants"
+  | "constants"
+  | "constantsApprox"
+  | "stepSolution"
+  | "steadyState"
+  | "checkOk"
+  | "checkFailed"
+  | "checkOkHomogeneous"
+  | "checkFailedHomogeneous"
+  | "checkExactOnlyHomogeneous"
+  | "checkUnresolvable"
+  | "checkUnresolvableHomogeneous"
+  | "failTooManyDigits"
+  | "cancelledFactorPlain"
+  | "formulaNearResonanceExponent"
+  | "tooExpensiveFormula"
+  | "budgetExceeded"
+  | "formulaNotConstantDivided"
+  | "formulaNotConstantDividedNoSeries"
+  | "roundedNoteDistinct"
+  | "approximateLiteralNote"
+  | "formulaRhsNotQuasiDivided"
+  | "dividedExponential"
+  | "failInvalidArgument"
+  | "failNoSecondDerivative"
+  | "centerName"
+  | "centerFormulaName"
+  | "formulaOverflowFixed"
+  | "chartCancellation"
+  | "dividedEquation"
+  | "failExponentTooLarge"
+  | "clearedEquation";
+
 export type LabelTable = {
   classification: Record<Classification, string>;
   /**
@@ -166,6 +337,8 @@ export type LabelTable = {
     | "xpMin" | "xpMax" | "secondOrderYSymbol" | "snapshotTSecond" | "queryHitSecond" | "timeDependentNoteSecond" | "timeDependentShortSecond",
     string
   >;
+  /** Round 12: the power-series and solution-formula panel and tools; placeholders take formulas (lib/series/notation fillFormula). */
+  series: Record<SeriesLabelKey, string>;
 };
 
 export const LABELS: Record<Locale, LabelTable> = {
@@ -610,6 +783,176 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryTimeError: "（±{error}）",
       queryTooLong: "查询耗时过长，已中止：请换一个更简单的方程或更小的范围。",
     },
+    series: {
+      legend: "幂级数与解的公式",
+      kindAria: "显示内容",
+      kindOff: "关闭",
+      kindSeries: "幂级数",
+      kindFormula: "解的公式",
+      kindHint: "把方程一步步写出来：在某一点处展开成幂级数；或者在常系数时，拆成齐次解与特解两部分。",
+      center: "展开点 t =",
+      centerFormula: "初值所在的时刻 t =",
+      terms: "展开到 {power} 次",
+      termsAria: "显示的最高次数",
+      initialValues: "该处的初值",
+      initialAt: "{name}({t0})",
+      sliderOf: "{name} 的滑块",
+      numberProblem: "{field}：请填一个数。",
+      unavailableMode: "只适用于一阶方程 dy/dt = g(t, y) 与二阶方程。",
+      fixEquationFirst: "方程暂时无法计算；图上方的提示说明了原因。",
+      chartSeriesBoth: "部分和（虚线）与同一初值的数值解（实线）。",
+      chartSeriesOnly: "部分和（虚线）；这里画不出数值解。",
+      chartNumericalOnly: "同一初值的数值解（实线）；部分和在这里落在图外。",
+      chartBand: "阴影带是保证收敛的区间。",
+      chartFormula: "解 {u}（实线）及其两部分 {uh}（虚线）与 {up}（点线）。",
+      legendNumerical: "数值解",
+      legendPartialSum: "到 {power} 的部分和",
+      legendBand: "保证收敛",
+      failNonlinear: "这个方法只适用于线性方程，而 {fragment} 关于 {u} 不是线性的。",
+      failUnsupportedFunction: "{fragment} 在这里无法展开：能处理的 t 的函数只有多项式，以及自变量为一次式 a·t + b 的 e、sin、cos、sinh、cosh。",
+      failNonIntegerPower: "{fragment}：这里只能处理 t 的整数次幂。",
+      failPiecewise: "{fragment}：这里不能处理分段定义或比较。",
+      failDivision: "{fragment}：这里不能处理除以一个不是 t 的多项式的式子。",
+      failDivisionByZero: "{fragment} 除以了零。",
+      failNotFinite: "{fragment} 不是有限的数。",
+      failTooComplex: "{fragment} 太大，这里无法展开（次数超过 {max}，或指数项太多）。",
+      failTooManyDigits: "{fragment} 的精确数字太长（超过约 1200 位），这里无法精确计算。",
+      seriesNotPolynomialCoefficient: "这里的幂级数方法要求系数是 t 的多项式；{d} 的系数是 {P}。",
+      seriesNotPolynomialRhs: "这里的幂级数方法要求右端是 t 的多项式；这里右端是 {G}。",
+      formulaNotConstant: "解的公式要求常系数；{d} 的系数是 {P}，它随 t 变化。这类方程可以改用幂级数方法。",
+      approximateNote: "π、e 或函数值是按 16 位小数代入的，所以下面的分数对这个小数是精确的，对真实值则是近似。",
+      roundedNote: "超过 16 位的分数以 6 位有效数字的小数显示。",
+      digitsCap: "精确分数超过了大约 1200 位，所以只算到 {power}。",
+      tooExpensive: "这个展开在这里算起来太费时（精确分数增长得太快）；试试展开点 t = 0，或者更简单的方程。",
+      seriesTitle: "在 t = {t0} 处的幂级数解",
+      stepEquation: "方程",
+      linearForm: "写成线性方程：{equation}",
+      cleared: "（两边同乘 {den} 以去掉分母）",
+      cancelledFactor: "（每一项都有公因式 {g}，已约去；它的零点不是方程的奇点）",
+      cancelledFactorPlain: "（每一项都有公因式 {g}，已约去）",
+      stepOrdinary: "常点",
+      stepSingular: "奇点",
+      ordinaryConstant: "{d} 的系数是常数 {P} ≠ 0，所以每个 t 都是常点。",
+      ordinaryAt: "{d} 的系数是 {P}，在 t = {t0} 处等于 {value} ≠ 0，所以 t = {t0} 是常点。",
+      shifted: "按 {s} 的幂重写：{list}。",
+      stepAnsatz: "设幂级数解",
+      ansatz: "{u}(t) = {sum}，其中系数 {an} 待定。",
+      derivatives: "逐项求导：{list}。",
+      stepSubstitute: "代入并平移指标",
+      substituteIntro: "方程的每一项都化成一个和式。平移指标，使每个和式都含 {power}（{k} 是平移前的指标）：",
+      stepCollect: "合并 {power} 的系数",
+      collectAll: "每个和式都从 {n} = 0 开始，所以对每个 {n} ≥ 0：",
+      collectSeparately: "各和式起始的 {n} 不同，所以前几个 {n} 单独处理：",
+      lowLine: "{n} = {value}：{equation}，所以 {solved}。",
+      lowLineDirect: "{n} = {value}：{equation}。",
+      generalLine: "{n} ≥ {from}：{equation}。",
+      stepRecurrence: "递推公式",
+      recurrence: "{formula}，{n} ≥ {from}。",
+      freeCoefficients2: "{a0} 与 {a1} 可以任意取，递推公式随后确定其余所有系数。",
+      freeCoefficients1: "{a0} 可以任意取，递推公式随后确定其余所有系数。",
+      stepCoefficients: "前几个系数",
+      stepSplit: "把级数拆开",
+      split2: "把含 {a0} 的项与含 {a1} 的项分开：{split}，其中",
+      split1: "提出 {a0}：{split}，其中",
+      polynomialNote: "{name} 是多项式：递推公式使 {power} 之后的系数都为零。",
+      particularNote: "{name} 是右端 {G} 带来的部分。",
+      initialMeaning2: "{a0} = {u}({t0})，{a1} = {up}({t0})：正是两个初值。",
+      initialMeaning1: "{a0} = {u}({t0})：正是初值。",
+      shownThrough: "显示到 {power}；省略号代表更高次的项。",
+      stepRadius: "收敛范围",
+      radiusInfinite: "方程没有奇点（{d} 的系数约去公因式后没有零点），所以级数对所有 t 都收敛。",
+      radiusFinite: "最近的奇点（{d} 的系数的零点）是 {points}，到展开点的距离为 {rho}，所以级数至少在 {interval} 上收敛。",
+      radiusNote: "实际收敛范围可能更大；定理保证的是这一段。",
+      radiusBound: "有些奇点（{d} 的系数的零点）无法精确定位；但可以证明它们离展开点都不小于 {rho}，所以级数至少在 {interval} 上收敛。",
+      frobeniusRadiusBound: "有些别的奇点无法精确定位；但它们离展开点都不小于 {rho}，所以这些级数至少在 0 < {interval} 上收敛。",
+      stepInitial: "代入所选初值",
+      initialLine: "{conditions}：{u}(t) = {series}",
+      singularTitle: "t = {t0} 是奇点",
+      singularLine: "{d} 的系数是 {P}，在 t = {t0} 处为 0，所以不能在 t = {t0} 处用普通的幂级数方法（换一个使这个系数不为 0 的展开点就可以用）。",
+      regularSingular: "t = {t0} 是正则奇点，可以用 Frobenius 方法：{u}(t) = {sum}，指数 {r} 是指标方程 {indicial} = 0 的根：{roots}。",
+      irregularSingular: "t = {t0} 是非正则奇点：幂级数方法与 Frobenius 方法在那里都不适用。",
+      stepFrobenius: "Frobenius 级数",
+      frobeniusAnsatz: "设 {u}(t) = {sum}，其中 {a0} ≠ 0，并取 {a0} = 1。",
+      frobeniusRoot: "取 {r} = {root}：{equation}，{n} ≥ 1，所以 {recurrence}。",
+      frobeniusFree: "在 {n} = {index} 处 {an} 的系数为 0，右边也为 0，所以 {aN} 可以任取；取 {aN} = 0。",
+      frobeniusSecondSeries: "两个根之差不是整数，所以第二个根给出另一个独立的级数解：",
+      frobeniusSecondLucky: "两个根相差整数 {gap}，但第二个根仍然给出一个级数解：",
+      frobeniusLogEqual: "两个指标根相等，所以第二个解含有 {log} 这一项；本工具不展开它。",
+      frobeniusLogInteger: "两个指标根相差整数 {gap}，较小根的递推在 {n} = {gap} 处无法继续，所以第二个解含有 {log}（乘一个常数）这一项；本工具不展开它。",
+      frobeniusUndecided: "两个指标根相差整数 {gap}；第二个解要不要对数项，要算到 {n} = {gap} 才能确定，这超出了这里能算的范围，所以不展开。",
+      frobeniusRadius: "这些级数至少在 0 < {interval} 上收敛，直到最近的另一个奇点 {points}。",
+      frobeniusRadiusInfinite: "没有别的奇点，所以这些级数对每个 t ≠ {t0} 都收敛。",
+      frobeniusForcing: "方程有非零右端；本工具只为齐次方程展开 Frobenius 级数。",
+      frobeniusNotRational: "指标根不是有理数，所以本工具不展开 Frobenius 级数。",
+      formulaTitle: "解的公式：{split}",
+      stepSplitF: "把解拆成两部分",
+      splitIntro: "{uh} 满足齐次方程 {homogeneous}，{up} 是原方程的一个特解；于是 {u} = {uh} + {up}。",
+      homogeneousOnly: "右端为 0：方程是齐次的，{u} = {uh}。",
+      stepCharacteristic: "特征方程",
+      characteristic: "设 {u} = {trial}，代入得 {chi} = 0。",
+      discriminant: "判别式 Δ = {expr} = {value}。",
+      casePositive: "Δ > 0，两个不同的实根：{roots}。",
+      caseZero: "Δ = 0，一个二重实根：{roots}。",
+      caseNegative: "Δ < 0，一对共轭复根：{roots}。",
+      singleRoot: "一个根：{roots}。",
+      stepHomogeneous: "齐次解",
+      homogeneous: "{uh}(t) = {form}，{constants} 是任意常数。",
+      homogeneous1: "{uh}(t) = {form}，{constants} 是任意常数。",
+      behaviorDecay: "所有根的实部都为负，所以随着 t 增大 {uh} → 0。",
+      behaviorGrow: "有根的实部为正，所以除非对应的常数为 0，{uh} 会无界增长。",
+      behaviorOscillate: "两个根都是纯虚数，所以 {uh} 以不变的振幅振荡，周期为 {period}。",
+      behaviorLinear: "0 是二重根，所以 {uh} 是 t 的一次函数。",
+      behaviorConstant: "有一个根为 0，所以常数满足齐次方程，{uh} 不趋于 0。",
+      dampingUndamped: "看作弹簧振子（质量与劲度为正，没有阻尼项）：无阻尼，会一直振荡。",
+      dampingUnder: "看作弹簧振子（质量、阻尼、劲度都为正）：欠阻尼，一边振荡一边衰减。",
+      dampingCritical: "看作弹簧振子（质量、阻尼、劲度都为正）：临界阻尼，不振荡，并以不振荡运动中最快的方式回到平衡。",
+      dampingOver: "看作弹簧振子（质量、阻尼、劲度都为正）：过阻尼，不振荡地回到平衡。",
+      stepParticular: "特解（待定系数法）",
+      particularTry: "对右端的项 {term}，设 {trial}{unknowns}",
+      trialCoefficients: "（{names} 为待定系数）。",
+      trialCoefficient: "（{names} 为待定系数）。",
+      resonance: "{mu} 是特征方程的{multiplicity}，所以试探解要乘上 {factor}：这就是共振。",
+      multiplicity1: "单根",
+      multiplicity2: "二重根",
+      particularFound: "代入并比较系数：{up}(t) = {value}。",
+      superposition: "由叠加原理，{up} = {sum}。",
+      checkResidualFailed: "核对未通过：把 {up} 代回方程，没有恰好得到右端。请报告这个方程。",
+      checkExactOnly: "核对：把 {up} 代回方程恰好得到右端，常数也重现了初值。",
+      formulaNearResonance: "以 16 位小数代入的外力频率（π、√2，或位数超过浮点数能保存的数）与某个固有频率在舍入误差内相等：对这个小数的精确公式，系数大到 10¹⁵ 左右，没有意义。如果两个频率本来就该相等，这就是共振（试探解要乘 t）；本工具只能对有理数频率精确写出。",
+      formulaOverflow: "初值给在 t = {t0} 时，解的公式里的数超出了浮点数的范围；请选一个离 0 更近的时刻。",
+      formulaOverflowFixed: "解的公式里的数超出了浮点数的范围（超过约 10³⁰⁸），这里无法计算。",
+      chartCancellation: "公式的各项彼此相消，超出了浮点运算能画准的程度，所以图上画的是同一初值的数值解。",
+      approximateLiteralNote: "某个输入的数位数超过了浮点数能保存的（或超出了它的范围），按最接近的浮点数读入，所以下面的分数对这个浮点数是精确的。",
+      formulaRhsNotQuasiDivided: "解的公式要求右端由多项式、e^(a·t)、sin、cos 组成；把方程除以 {top} 的系数之后，右端是 {G}。",
+      dividedExponential: "（每一项都除以了 {e}，它永远不为零）",
+      dividedEquation: "除以 {e}（它永远不为零）后，方程是 {equation}。",
+      clearedEquation: "两边乘以 {den} 去掉分母后，方程是 {equation}。",
+      failExponentTooLarge: "{fragment}：这里不支持超过 2⁵³（约 9·10¹⁵）的整数指数。",
+      failInvalidArgument: "{fragment}：round 的小数位数必须是 0 到 15 的整数。",
+      failNoSecondDerivative: "{fragment} 里 x'' 的系数恒为 0，所以这不是二阶方程。",
+      centerName: "展开点 t",
+      centerFormulaName: "初值所在的时刻 t",
+      formulaRhsNotQuasi: "解的公式要求右端由多项式、e^(a·t)、sin、cos 组成；这里右端是 {G}。",
+      formulaNotConstantNoSeries: "解的公式要求常系数；{d} 的系数是 {P}，它随 t 变化。",
+      stepConstants: "由初值确定常数",
+      constants: "由 {conditions} 得 {values}。",
+      constantsApprox: "由 {conditions} 得 {values}（取 6 位有效数字；核对用的是未舍入的值）。",
+      stepSolution: "解",
+      steadyState: "长时间后 {uh} → 0，所以 {u}(t) ≈ {up}(t)：{up} 是稳态部分，{uh} 是暂态部分。",
+      checkOk: "核对：把 {up} 代回方程恰好得到右端，常数重现了初值，并且在 {range} 上公式与数值解之差不超过 {deviation}。",
+      checkFailed: "核对未通过：把 {up} 代回方程恰好得到右端，但在 {range} 上公式与数值解最多相差 {deviation}。请报告这个方程。",
+      checkOkHomogeneous: "核对：公式的每一项都满足方程（它的指数是特征方程的根），常数重现了初值，并且在 {range} 上公式与数值解之差不超过 {deviation}。",
+      checkFailedHomogeneous: "核对未通过：公式的每一项都满足方程，但在 {range} 上公式与数值解最多相差 {deviation}。请报告这个方程。",
+      checkExactOnlyHomogeneous: "核对：公式的每一项都满足方程（它的指数是特征方程的根），常数也重现了初值。",
+      checkUnresolvable: "核对：把 {up} 代回方程恰好得到右端，常数也重现了初值。这里不再和数值解比较：公式各项的大小可达解本身的 {ratio} 倍，彼此相消，单是舍入误差就可能接近核对的容差。",
+      checkUnresolvableHomogeneous: "核对：公式的每一项都满足方程，常数也重现了初值。这里不再和数值解比较：公式各项的大小可达解本身的 {ratio} 倍，彼此相消，单是舍入误差就可能接近核对的容差。",
+      formulaNearResonanceExponent: "以 16 位小数代入的右端指数（π、√2，或位数超过浮点数能保存的数）与特征方程的某个根在舍入误差内相等：对这个小数的精确公式，系数大到 10¹⁵ 左右，没有意义。如果两者本来就该相等，试探解要乘 t；本工具只能对有理数指数精确写出。",
+      tooExpensiveFormula: "这个解的公式在这里算起来太费时（精确分数增长得太快）；试试更简单的右端。",
+      budgetExceeded: "这里算起来太费时；试试更简单的方程。",
+      formulaNotConstantDivided: "解的公式要求常系数；把方程除以 {top} 的系数之后，{d} 的系数是 {P}，它随 t 变化。这类方程可以改用幂级数方法。",
+      formulaNotConstantDividedNoSeries: "解的公式要求常系数；把方程除以 {top} 的系数之后，{d} 的系数是 {P}，它随 t 变化。",
+      roundedNoteDistinct: "超过 16 位的分数以 6 位有效数字的小数显示；指数和频率保留 {digits} 位，使不同的值看得出不同。",
+    },
   },
   en: {
     classification: {
@@ -1051,6 +1394,176 @@ export const LABELS: Record<Locale, LabelTable> = {
       queryHitSystem: "t = {t}, x = {x}, y = {y} (±{error})",
       queryTimeError: " (±{error})",
       queryTooLong: "The query took too long and was stopped: try a simpler equation or a smaller range.",
+    },
+    series: {
+      legend: "Series and solution formula",
+      kindAria: "What to show",
+      kindOff: "Off",
+      kindSeries: "Power series",
+      kindFormula: "Solution formula",
+      kindHint: "Write the equation out step by step: as a power series about a point, or, for constant coefficients, split into a homogeneous and a particular part.",
+      center: "Expand about t =",
+      centerFormula: "Initial values given at t =",
+      terms: "Terms through the power {power}",
+      termsAria: "Highest power shown",
+      initialValues: "Initial values there",
+      initialAt: "{name}({t0})",
+      sliderOf: "Slider for {name}",
+      numberProblem: "{field}: enter a number.",
+      unavailableMode: "Available for a first-order equation dy/dt = g(t, y) and for a second-order equation.",
+      fixEquationFirst: "The equation cannot be computed yet; the message above the picture says why.",
+      chartSeriesBoth: "The partial sum (dashed) and the numerical solution with the same initial values (solid).",
+      chartSeriesOnly: "The partial sum (dashed); the numerical solution could not be drawn here.",
+      chartNumericalOnly: "The numerical solution with the same initial values (solid); the partial sum lies outside the chart here.",
+      chartBand: "The shaded band is the interval where convergence is guaranteed.",
+      chartFormula: "The solution {u} (solid) and its two parts {uh} (dashed) and {up} (dotted).",
+      legendNumerical: "numerical solution",
+      legendPartialSum: "partial sum through {power}",
+      legendBand: "guaranteed convergence",
+      failNonlinear: "This method needs a linear equation, and {fragment} is not linear in {u}.",
+      failUnsupportedFunction: "{fragment} cannot be expanded here: the functions of t it can handle are polynomials and e, sin, cos, sinh, cosh of a linear argument a·t + b.",
+      failNonIntegerPower: "{fragment}: only whole-number powers of t can be handled here.",
+      failPiecewise: "{fragment}: piecewise definitions and comparisons cannot be handled here.",
+      failDivision: "{fragment}: dividing by something that is not a polynomial in t cannot be handled here.",
+      failDivisionByZero: "{fragment} divides by zero.",
+      failNotFinite: "{fragment} is not a finite number.",
+      failTooComplex: "{fragment} is too large to expand here (a degree above {max}, or too many exponential terms).",
+      failTooManyDigits: "{fragment} has too many digits to compute exactly here (more than about 1200).",
+      seriesNotPolynomialCoefficient: "The power-series method here needs coefficients that are polynomials in t; the coefficient of {d} is {P}.",
+      seriesNotPolynomialRhs: "The power-series method here needs a right-hand side that is a polynomial in t; here it is {G}.",
+      formulaNotConstant: "The solution formula needs constant coefficients; the coefficient of {d} is {P}, which changes with t. The power-series method handles such equations.",
+      approximateNote: "π, e or a function value entered as its 16-digit decimal, so the fractions are exact for that decimal, not for the true value.",
+      roundedNote: "Fractions with more than 16 digits are shown as decimals rounded to 6 significant digits.",
+      digitsCap: "The exact fractions grew past about 1200 digits, so the computation stopped at {power}.",
+      tooExpensive: "This expansion takes too long to compute here (its exact fractions grow too fast); try the expansion point t = 0 or a simpler equation.",
+      seriesTitle: "Power series about t = {t0}",
+      stepEquation: "The equation",
+      linearForm: "As a linear equation: {equation}",
+      cleared: "(both sides multiplied by {den} to clear the denominator)",
+      cancelledFactor: "(every term has the common factor {g}, which is cancelled; its zeros are not singular points of the equation)",
+      cancelledFactorPlain: "(every term has the common factor {g}, which is cancelled)",
+      stepOrdinary: "An ordinary point",
+      stepSingular: "A singular point",
+      ordinaryConstant: "The coefficient of {d} is the constant {P} ≠ 0, so every t is an ordinary point.",
+      ordinaryAt: "The coefficient of {d} is {P}; at t = {t0} it equals {value} ≠ 0, so t = {t0} is an ordinary point.",
+      shifted: "In powers of {s}: {list}.",
+      stepAnsatz: "Assume a power series",
+      ansatz: "{u}(t) = {sum}, where the coefficients {an} are numbers to be found.",
+      derivatives: "Differentiating term by term: {list}.",
+      stepSubstitute: "Substitute and shift the index",
+      substituteIntro: "Each term of the equation becomes a sum. Shift the index so that every sum contains {power} ({k} is the index before the shift):",
+      stepCollect: "Collect the coefficient of {power}",
+      collectAll: "Every sum starts at {n} = 0, so for every {n} ≥ 0:",
+      collectSeparately: "The sums start at different values of {n}, so the first ones are taken separately:",
+      lowLine: "{n} = {value}: {equation}, so {solved}.",
+      lowLineDirect: "{n} = {value}: {equation}.",
+      generalLine: "{n} ≥ {from}: {equation}.",
+      stepRecurrence: "The recurrence relation",
+      recurrence: "{formula}, for {n} ≥ {from}.",
+      freeCoefficients2: "{a0} and {a1} can be chosen freely; the recurrence then fixes every other coefficient.",
+      freeCoefficients1: "{a0} can be chosen freely; the recurrence then fixes every other coefficient.",
+      stepCoefficients: "The first coefficients",
+      stepSplit: "Split the series",
+      split2: "Grouping the terms with {a0} and the terms with {a1}: {split}, where",
+      split1: "Factoring out {a0}: {split}, where",
+      polynomialNote: "{name} is a polynomial: the recurrence makes every coefficient after {power} zero.",
+      particularNote: "{name} is the part that comes from the right-hand side {G}.",
+      initialMeaning2: "{a0} = {u}({t0}) and {a1} = {up}({t0}): the two initial values.",
+      initialMeaning1: "{a0} = {u}({t0}): the initial value.",
+      shownThrough: "Shown through {power}; the dots stand for the higher powers.",
+      stepRadius: "Where the series converges",
+      radiusInfinite: "The equation has no singular point (the coefficient of {d} has no zero that survives cancelling common factors), so the series converges for every t.",
+      radiusFinite: "The nearest singular point (a zero of the coefficient of {d}) is {points}, at distance {rho} from the expansion point, so the series converges at least for {interval}.",
+      radiusNote: "It may converge on a larger interval; the theorem guarantees this one.",
+      radiusBound: "Some singular points (zeros of the coefficient of {d}) could not be located exactly; still, none lies within {rho} of the expansion point, so the series converges at least for {interval}.",
+      frobeniusRadiusBound: "Some other singular points could not be located exactly; still, none lies within {rho} of the expansion point, so the series converge at least for 0 < {interval}.",
+      stepInitial: "With the chosen initial values",
+      initialLine: "{conditions}: {u}(t) = {series}",
+      singularTitle: "t = {t0} is a singular point",
+      singularLine: "The coefficient of {d} is {P}, which is 0 at t = {t0}, so the ordinary power-series method about t = {t0} does not apply (about any center where it is not 0, it does).",
+      regularSingular: "t = {t0} is a regular singular point, where the Frobenius method applies: {u}(t) = {sum}, with the exponent {r} a root of the indicial equation {indicial} = 0: {roots}.",
+      irregularSingular: "t = {t0} is an irregular singular point: neither the power-series method nor the Frobenius method applies there.",
+      stepFrobenius: "The Frobenius series",
+      frobeniusAnsatz: "Assume {u}(t) = {sum} with {a0} ≠ 0, and take {a0} = 1.",
+      frobeniusRoot: "For {r} = {root}: {equation} for {n} ≥ 1, so {recurrence}.",
+      frobeniusFree: "At {n} = {index} the factor of {an} is 0 and so is the right-hand side, so {aN} is free; take {aN} = 0.",
+      frobeniusSecondSeries: "The two roots do not differ by a whole number, so the second root gives a second, independent series:",
+      frobeniusSecondLucky: "The two roots differ by the whole number {gap}, and still the second root gives a series:",
+      frobeniusLogEqual: "The two indicial roots are equal, so the second solution contains the term {log}; this tool does not expand it.",
+      frobeniusLogInteger: "The two indicial roots differ by the whole number {gap} and the recurrence of the smaller one fails at {n} = {gap}, so the second solution contains the term {log} (times a constant); this tool does not expand it.",
+      frobeniusUndecided: "The two indicial roots differ by the whole number {gap}; whether the second solution needs a logarithm is decided at {n} = {gap}, beyond what could be computed here, so it is not expanded.",
+      frobeniusRadius: "The series converge at least for 0 < {interval}, up to the nearest other singular point {points}.",
+      frobeniusRadiusInfinite: "There is no other singular point, so the series converge for every t ≠ {t0}.",
+      frobeniusForcing: "The equation has a right-hand side; this tool expands the Frobenius series of homogeneous equations only.",
+      frobeniusNotRational: "The indicial roots are not rational numbers, so this tool does not expand the Frobenius series.",
+      formulaTitle: "Solution formula: {split}",
+      stepSplitF: "Split the solution",
+      splitIntro: "{uh} solves the homogeneous equation {homogeneous} and {up} is one particular solution of the full equation; then {u} = {uh} + {up}.",
+      homogeneousOnly: "The right-hand side is 0: the equation is homogeneous and {u} = {uh}.",
+      stepCharacteristic: "The characteristic equation",
+      characteristic: "Trying {u} = {trial} gives {chi} = 0.",
+      discriminant: "Discriminant Δ = {expr} = {value}.",
+      casePositive: "Δ > 0, two different real roots: {roots}.",
+      caseZero: "Δ = 0, one double real root: {roots}.",
+      caseNegative: "Δ < 0, two complex conjugate roots: {roots}.",
+      singleRoot: "One root: {roots}.",
+      stepHomogeneous: "The homogeneous solution",
+      homogeneous: "{uh}(t) = {form}, with arbitrary constants {constants}.",
+      homogeneous1: "{uh}(t) = {form}, with an arbitrary constant {constants}.",
+      behaviorDecay: "Every root has a negative real part, so {uh} → 0 as t grows.",
+      behaviorGrow: "A root has a positive real part, so {uh} grows without bound unless its constant is 0.",
+      behaviorOscillate: "The roots are purely imaginary, so {uh} oscillates with a constant amplitude and the period {period}.",
+      behaviorLinear: "0 is a double root, so {uh} is a linear function of t.",
+      behaviorConstant: "A root is 0, so constants solve the homogeneous equation and {uh} does not tend to 0.",
+      dampingUndamped: "As a mass-spring system (positive mass and stiffness, no damping term): undamped, it oscillates forever.",
+      dampingUnder: "As a mass-spring system (positive mass, damping and stiffness): underdamped, it oscillates while it decays.",
+      dampingCritical: "As a mass-spring system (positive mass, damping and stiffness): critically damped, it returns without oscillating, as fast as any non-oscillating motion can.",
+      dampingOver: "As a mass-spring system (positive mass, damping and stiffness): overdamped, it returns without oscillating.",
+      stepParticular: "A particular solution (undetermined coefficients)",
+      particularTry: "For the term {term} of the right-hand side, try {trial} {unknowns}",
+      trialCoefficients: "({names} are the coefficients to be found).",
+      trialCoefficient: "({names} is the coefficient to be found).",
+      resonance: "{mu} is a {multiplicity} of the characteristic equation, so the trial carries the factor {factor}: this is resonance.",
+      multiplicity1: "simple root",
+      multiplicity2: "double root",
+      particularFound: "Substituting and comparing coefficients: {up}(t) = {value}.",
+      superposition: "By superposition {up} = {sum}.",
+      checkResidualFailed: "Check failed: substituting {up} into the equation does not give the right-hand side exactly. Please report this equation.",
+      checkExactOnly: "Check: substituting {up} into the equation gives the right-hand side exactly, and the constants reproduce the initial values.",
+      formulaNearResonance: "A forcing frequency entered as a 16-digit decimal (π, √2, or a number with more digits than floating point keeps) agrees with a natural frequency to within its rounding: the exact formula for that decimal has coefficients near 10¹⁵ and says nothing useful. If the two frequencies are meant to be equal, this is resonance (the trial gets a factor t), which this tool writes out exactly only for rational frequencies.",
+      formulaOverflow: "The numbers of this solution formula exceed the range of floating point when the initial values are given at t = {t0}; choose a time closer to 0.",
+      formulaOverflowFixed: "The numbers of this solution formula exceed the range of floating point (beyond about 10³⁰⁸), so it cannot be evaluated here.",
+      chartCancellation: "The terms of the formula cancel beyond what floating point can draw, so the chart shows the numerical solution with the same initial values instead.",
+      approximateLiteralNote: "A number was typed with more digits than floating point keeps (or beyond its range) and is read as the nearest floating-point number, so the fractions are exact for that number.",
+      formulaRhsNotQuasiDivided: "The solution formula needs a right-hand side built from polynomials, e^(a·t), sin and cos; once the equation is divided by the coefficient of {top}, the right-hand side is {G}.",
+      dividedExponential: "(every term is divided by {e}, which is never zero)",
+      dividedEquation: "Divided by {e}, which is never zero, the equation reads {equation}.",
+      clearedEquation: "Multiplied by {den} to clear the denominator, the equation reads {equation}.",
+      failExponentTooLarge: "{fragment}: a whole exponent above 2⁵³ (about 9·10¹⁵) is not supported here.",
+      failInvalidArgument: "{fragment}: the number of decimals in round must be a whole number from 0 to 15.",
+      failNoSecondDerivative: "The coefficient of x'' in {fragment} is identically 0, so this is not a second-order equation.",
+      centerName: "The expansion point t",
+      centerFormulaName: "The time t of the initial values",
+      formulaRhsNotQuasi: "The solution formula needs a right-hand side built from polynomials, e^(a·t), sin and cos; here it is {G}.",
+      formulaNotConstantNoSeries: "The solution formula needs constant coefficients; the coefficient of {d} is {P}, which changes with t.",
+      stepConstants: "The constants from the initial values",
+      constants: "From {conditions}: {values}.",
+      constantsApprox: "From {conditions}: {values} (rounded to 6 significant digits; the check uses the unrounded values).",
+      stepSolution: "The solution",
+      steadyState: "In the long run {uh} → 0, so {u}(t) ≈ {up}(t): {up} is the steady state and {uh} the transient.",
+      checkOk: "Check: substituting {up} into the equation gives the right-hand side exactly, the constants reproduce the initial values, and for {range} the formula agrees with the numerical solution to within {deviation}.",
+      checkFailed: "Check failed: for {range} the formula and the numerical solution differ by up to {deviation}, although substituting {up} gives the right-hand side exactly. Please report this equation.",
+      checkOkHomogeneous: "Check: every term of the formula solves the equation (its exponent is a root of the characteristic equation), the constants reproduce the initial values, and for {range} the formula agrees with the numerical solution to within {deviation}.",
+      checkFailedHomogeneous: "Check failed: for {range} the formula and the numerical solution differ by up to {deviation}, although every term of the formula solves the equation. Please report this equation.",
+      checkExactOnlyHomogeneous: "Check: every term of the formula solves the equation (its exponent is a root of the characteristic equation), and the constants reproduce the initial values.",
+      checkUnresolvable: "Check: substituting {up} into the equation gives the right-hand side exactly, and the constants reproduce the initial values. A comparison with the numerical solution is not made here: the terms of the formula are up to {ratio} times the size of the solution and cancel, so rounding alone could approach the check's tolerance.",
+      checkUnresolvableHomogeneous: "Check: every term of the formula solves the equation, and the constants reproduce the initial values. A comparison with the numerical solution is not made here: the terms of the formula are up to {ratio} times the size of the solution and cancel, so rounding alone could approach the check's tolerance.",
+      formulaNearResonanceExponent: "An exponent of the right-hand side entered as a 16-digit decimal (π, √2, or a number with more digits than floating point keeps) agrees with a root of the characteristic equation to within its rounding: the exact formula for that decimal has coefficients near 10¹⁵ and says nothing useful. If the two are meant to be equal, the trial gets a factor t, which this tool writes out exactly only for rational exponents.",
+      tooExpensiveFormula: "This solution formula takes too long to compute here (its exact fractions grow too fast); try a simpler right-hand side.",
+      budgetExceeded: "This takes too long to compute here; try a simpler equation.",
+      formulaNotConstantDivided: "The solution formula needs constant coefficients; once the equation is divided by the coefficient of {top}, the coefficient of {d} is {P}, which changes with t. The power-series method handles such equations.",
+      formulaNotConstantDividedNoSeries: "The solution formula needs constant coefficients; once the equation is divided by the coefficient of {top}, the coefficient of {d} is {P}, which changes with t.",
+      roundedNoteDistinct: "Fractions with more than 16 digits are shown as decimals rounded to 6 significant digits; exponents and frequencies keep {digits}, so that different values look different.",
     },
   },
 };
