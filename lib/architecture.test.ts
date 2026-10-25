@@ -9,7 +9,7 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 const LIB_DIR = fileURLToPath(new URL(".", import.meta.url));
-const PURE_DIRS = ["core", "render"].map((d) => join(LIB_DIR, d)).filter((d) => existsSync(d));
+const PURE_DIRS = ["core", "render", "series"].map((d) => join(LIB_DIR, d)).filter((d) => existsSync(d));
 
 const FORBIDDEN_IMPORTS = [
   /^react(\/|$)/,
