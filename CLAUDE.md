@@ -32,12 +32,21 @@ the split u = a0 u1 + a1 u2 + up, proven termination, the radius lower bound, th
 regular singular point; the constant-coefficient split u = u_h + u_p with undetermined coefficients
 and resonance), the web shell's "Series and solution formula" panel with sliders and its chart, the
 preset chapter "Power series and solution formulas", and two text-only MCP tools (power_series,
-solution_formula; no widget change, still z-1).
+solution_formula; no widget change, still z-1). Round 13 (AB, 2026-11-05): eigenvalues and
+eigen-directions: the switch "Eigenvalues & eigen-directions" (`aids=e`) adds a panel (EXACT for a
+constant-coefficient linear system or second-order equation, new module lib/eigen on lib/series'
+rationals: matrix, characteristic equation, surd / complex eigenvalues, integer eigenvectors, type
+with an exact center, general solution; the kernel's linearization per equilibrium otherwise; "none"
+and "not applicable" said with the reason), whole eigen-lines for linear systems, the
+complex-eigenvalue picture (a, b and an open arc, a closed ellipse only for an exact center),
+SNAPPING of the preview and the click to eigen-lines / separatrices / a node's segment (12 px, Alt:
+none, snapped starts keep all digits in `traj`), the preset chapter "Linear systems and
+eigenvalues", the tools' exact eigen block and `showEigen`; widget z-2.
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
 2026-09-10 fixes and validation, and all 16 original docs in full. Historical entries retain their
-then-current status; use the current section for superseding decisions. Widget version is now z-1 (round Z4).
+then-current status; use the current section for superseding decisions. Widget version is now z-2 (round 13).
 
 ## Module map
 
@@ -206,6 +215,38 @@ then-current status; use the current section for superseding decisions. Widget v
   stopped where the field is EXACTLY zero (drawing only, never the check; a slow start is not held); `sampleCurve` / `clipPolyline` cut a curve 20 chart heights off the chart;
   `checkFormula`: deviation <= 1e-6 of the solution's size, with the range actually `covered`, ends
   within 16 eps snapped to the range, null for a single point).
+- `lib/eigen/` (round 13, pure, in PURE_DIRS, OUTSIDE the frozen kernel) `linear-system`
+  (`readLinearSystem(source)`: a planar system's f, g through the "xy" whitelist and lib/series'
+  `linearFormOf` with x, y as unknown slots 0 and 1, every coefficient and the constant part a real
+  CONSTANT (else timeDependent), or a second-order equation through `linearEquation` +
+  `constantCoefficientOde` with a constant right-hand side, phase plane A = [[0, 1], [−P0/P2,
+  −P1/P2]], b = (0, G/P2); the page's reduction is reused, otherwise `secondOrderSyntaxPasses`
+  pre-filters; failures nonlinear (with the student's fragment) / timeDependent / tooComplex /
+  other / parse. `analyzeLinear`: tr, det, disc = (a − d)² + 4bc exactly; √disc = scale·√m (square
+  factors of primes ≤ `SQUARE_FREE_LIMIT` 10000 pulled out), numbers r + s√m; the type from the
+  EXACT signs (an exact `center`); eigenvectors (2b, (d − a) ± √disc) or (λ − d, c) made primitive
+  integers with the first non-zero component positive (complex: v of α + iβ, β > 0, re / im);
+  generalized w for a degenerate node checked exactly; the equilibrium point / line / plane / none;
+  rotation ccw iff c > 0; `borderline` (approximate systems only: tr, det, disc non-zero within
+  `NEAR_ZERO_FRACTION` 1e-12 of the matrix scale); `numericLinear` = the doubles the picture draws
+  and snaps to), `geometry` (`numericEigen` of a kernel equilibrium (complex: v = (1, (d − a)/(2b) +
+  i√(−disc)/(2b))), `rotationAids`, `rotationArc` (e^(αs/β)(re cos s − im sin s), open at most
+  `ARC_OPEN_ANGLE` 3π/2 and `ARC_MAX_GROWTH` 4, closed only for an exact center), `eigenLines`,
+  `eigenSegments` (exact for a linear system, the kernel's otherwise), `snapTargets` / `snapPoint`
+  (`SNAP_THRESHOLD_PX` 12; lines: the foot of the perpendicular in world coordinates; segments: the
+  drawn half-length `EIGEN_HALF_FRACTION` of lib/phase-aids; branches: up to `branchExtent` = the
+  first strict local minimum of the chord speed after it rose, near the saddle only unless the
+  separatrices are drawn, the point re-integrated from the branch's start by an injected `locate`)).
+- `lib/labels-eigen.ts` (round 13) the words of the eigen features: `eigenDerivation` (a lib/labels-
+  series Derivation: matrix form + equilibrium, characteristic equation + tr / det + discriminant,
+  eigenvalues with decimals for fractions and roots, eigenvectors (v = a + b·i, i√15 never √15i),
+  type, general solution in the student's notation ((x(t), y(t)) or x(t), offsets, symbolic λ / v /
+  α / β / a / b with "as above" when not rational); notes: lines, rotation, star, exact center vs
+  the list's "center or weak spiral", approximate, borderline, the formula panel on a second-order
+  picture; the numerical version per equilibrium with the reason it is not linear; time-dependent
+  and no-equilibrium sentences), `snapHint` (canvas, a few words), `snapSentence` (under the
+  picture), `eigenText` (plain, the tools). All sentences are lib/labels' `eigen` section.
+  `components/EigenPanel.tsx` draws the Derivation (web and widget, `compact`).
 - `lib/labels-series.ts` (round 12) the derivations as steps of formulas, word for word the same in
   the panel and the tools: `seriesDerivation` (equation, ordinary point, ansatz, substitute and
   shift with k the index before the shift, collect, recurrence, coefficients, split, radius, the
@@ -341,7 +382,9 @@ then-current status; use the current section for superseding decisions. Widget v
   (found on the production build: a cold first measurement locked the whole first drag into the
   debounce). `Deferred` + `requestDeferred` / `flushDeferred` / `isStale`: the debounce as a state
   machine with an injected clock (the hook owns the timer). Outside a drag nothing is deferred.
-- `lib/phase-aids.ts` (round V) three optional overlays from EXISTING machinery, outside the
+- `lib/phase-aids.ts` (round V; round 13: `EigenLine`, `RotationAid`, `EIGEN_HALF_FRACTION` 0.11
+  moved here from drawScene, and every `Separatrix` keeps its `start` and `times` so a point of it
+  can be re-integrated) three optional overlays from EXISTING machinery, outside the
   kernel: `computeNullclines` (marching squares of lib/render/contours over the visible box; a sign
   change that is not a zero, the pole of 1/x or a jump, is dropped by a residual check against the
   cell's own corner values), `eigenDirections` (2x2 closed form on the kernel's Jacobian, decided
@@ -393,7 +436,8 @@ then-current status; use the current section for superseding decisions. Widget v
   preselected; a click cannot both select and remove a curve).
 - `components/VectorFieldCanvas.tsx` draws a Scene on a base + overlay canvas; data props only,
   never calls lib/core; draws the axis names (t or x from `scene.system.variables`, and y);
-  reports pointer/wheel as world/screen coordinates. Touch pointers go through `lib/gestures.ts`
+  reports pointer/wheel as world/screen coordinates (round 13: plus `event.altKey`, and a
+  `snapMarker` ring on the overlay). Touch pointers go through `lib/gestures.ts`
   (pure state machine, every event carries its time: pinch = distance ratio -> `onWheelZoom` about
   the midpoint, one-finger pan, tap -> hover preview that stays, double tap (300 ms / 30 px) ->
   reset, long press (500 ms, < 8 px) -> keep); mouse and pen keep the original handlers.
@@ -410,7 +454,11 @@ then-current status; use the current section for superseding decisions. Widget v
   viewport with `equalScale` (default true; false fills the canvas with the entered box and the
   web shell shows a persistent not-to-scale warning), resampled field, debounced features, rAF
   hover preview, click-to-keep / click-to-remove through `lib/trajectory-store` and
-  `lib/trajectory-hit`; inputs `retraceKey`, `query` + `queryStart` (the query is kept on the scene
+  `lib/trajectory-hit`; round 13: input `linear` (lib/eigen numericLinear or null) and, with the
+  eigen switch, the aids `eigenLines` / `rotations`, the separatrices traced for snapping at a
+  nonlinear saddle even when not drawn, output `snap`, handlers `onHoverWorld(…, noSnap)` /
+  `onClickWorld(p, noSnap)` (Alt), removal of a kept curve before snapping, a snapped start added as
+  `{x, y, precise: true}`; inputs `retraceKey`, `query` + `queryStart` (the query is kept on the scene
   only while a kept trajectory still starts there), `secondOrder` pass-through; outputs `highlight`,
   `cursor`, `addTrajectory`, `deleteTrajectory`, `clearTrajectories`, `clearOwnTrajectories` (round R: the
   widget's Clear, keeps a tool's own curves), `ownCount`, `atCapacity` (the hover hint then says the
@@ -436,7 +484,10 @@ then-current status; use the current section for superseding decisions. Widget v
   stop box 20x the view like the shells, Scene kind "query_solution" + `Scene.query`; its description
   says value-at-time / time-of-value questions must call it, never a closed form); `app/mcp/budget.ts` (2 s wall-clock budget per call via kernel checkpoints) and
   `app/mcp/rate-limit.ts` (per-process sliding window, best effort only on serverless).
-- `app/widget/page.tsx` MCP Apps widget (compiles the Scene's equation locally, falls back to the
+- `app/widget/page.tsx` MCP Apps widget (round 13, z-2: on analyze_system scenes the switch
+  "Eigenvalues & eigen-directions", reset from `Scene.showEigen` on every tool result, the exact
+  reading from scene.system or scene.secondOrder.equation, snapping, the snap sentence and a compact
+  EigenPanel; compiles the Scene's equation locally, falls back to the
   static picture if compiling is blocked; round Z4: on a planar or second-order scene the same
   three-way view switch as the web shell, the solution graph STACKED under the phase plane (the
   widget is narrow), one color per kept curve in both pictures (the tool's own curve is group 0),
@@ -455,7 +506,9 @@ then-current status; use the current section for superseding decisions. Widget v
   first-order link); `decodeState(query, fallback)` never throws: 4096-char query cap, 200-char expressions
   validated through the SAME parser whitelist as the page (compileScalar "ty" / "xy",
   reduceSecondOrder), finite bounded numbers, per-field fallback with reason keys rendered by the
-  shell; `buildShareUrl`, `queryFromSearchParams`. A link is a public attack surface: no relaxation,
+  shell; `buildShareUrl`, `queryFromSearchParams`. Round 13: a start marked `precise` (snapped)
+  is written with all its digits (String(n)) and a decoded start with more than 6 significant digits
+  is marked again (`isPreciseStart`); ordinary starts keep 6 digits. A link is a public attack surface: no relaxation,
   with ONE exception (round 12): an eq that reduceSecondOrder refuses only for a
   `NUMERICAL_REDUCTION_CODES` reason passes when lib/series' `readableAsLinearSecondOrder` accepts
   it (static checks only, NEVER the exact reading: decoding runs on the server for every request and
@@ -523,8 +576,9 @@ then-current status; use the current section for superseding decisions. Widget v
   `presetState`, `presetUrl` (a shareable link per preset), `presetsByGroup`. Tests check
   compilation per mode, both languages, unique ids, link round trips, derived key features and
   the Z1.1 rule for every system preset whose f is "y".
-- `scripts/smoke.mjs` HTTP smoke test against a running server (`npm run smoke`; 20 checks, 7
-  tools, the widget URI version). `scripts/mock-host/` (`serve.mjs`, `host.html`, `sandbox.html`)
+- `scripts/smoke.mjs` HTTP smoke test against a running server (`npm run smoke`; 28 checks, 9
+  tools, the widget URI version; round 13: the exact eigen block and `showEigen`). The mock host
+  has the scenarios `linear_eigen` and `second_eigen`. `scripts/mock-host/` (`serve.mjs`, `host.html`, `sandbox.html`)
   the two-origin mock MCP Apps host (`npm run mock-host -- --mcp <url>`): the sandbox page is served
   by URL on its own origin with the CSP built from `_meta.ui.csp`, no eval; scenarios for ping and
   the visual tools (analyze_first_order, analyze_system, analyze_second_order, trace_trajectory,
@@ -661,6 +715,13 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
   classroom failure drives it, with a derived test. Its siblings are display choices, not
   thresholds: `NULLCLINE_GRID` 80, `SEPARATRIX_OFFSET_FRACTION` 1e-3 of the box diagonal,
   `SEPARATRIX_TSPAN` 100.
+- `lib/eigen/` (round 13, OUTSIDE lib/core; no kernel decision changed): display and interaction
+  choices only. `SQUARE_FREE_LIMIT` 10000 (how far a radicand is simplified; exact either way),
+  `NEAR_ZERO_FRACTION` 1e-12 (when an APPROXIMATE system's tr / det / disc is flagged borderline;
+  the conclusion is not changed), `SNAP_THRESHOLD_PX` 12, `ARC_OPEN_ANGLE` 3π/2, `ARC_MAX_GROWTH`
+  4, `ARC_SAMPLES` 96, the web shell's `EIGEN_BUDGET_MS` 500, and the `branchExtent` rule (a new
+  heuristic: a separatrix branch snaps only up to its first strict local speed minimum after the
+  speed rose; it decides no mathematics, only how far the pointer may snap).
 - `lib/series/` (round 12, OUTSIDE lib/core; the exact module adds no threshold to any kernel
   decision): caps and display choices only. `MAX_SHOWN_TERMS` 30, `COMPUTED_TERMS` 60 coefficients
   (a polynomial of degree up to ~55 can be proven), `MAX_DEGREE` 40 / `MAX_EXPONENTS` 24 /

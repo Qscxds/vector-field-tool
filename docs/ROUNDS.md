@@ -16,5 +16,6 @@
 | 10 | Y | 2026-09-18 | `y-polish-done` | [summary](round-10-summary.md) | T–W 遗留小修：siny 护栏、ln、讲课模式保留位置、拍频纵轴、50 ms 预算；widget y-1 |
 | 11 | Z | 2026-09-28 | 见 round-11-summary | [summary](round-11-summary.md) · [decisions](round-11-decisions.md) · [open-questions](round-11-open-questions.md) | 四个「写成系统」的预设改名并写明 y = x'（孪生互链）；新增「两张一起」视图并联动，视图切换移到图的正上方；widget 新增解的图像（z-1）；交付物按轮次改名 |
 | 12 | AA | 2026-10-25 | 见 round-12-summary | [summary](round-12-summary.md) · [decisions](round-12-decisions.md) · [open-questions](round-12-open-questions.md) | 幂级数与解的公式：新的精确模块 lib/series（常点的幂级数推导、拆成基本解、收敛半径下界、正则奇点的 Frobenius 级数；常系数方程拆成齐次解 + 特解，含共振）；网页「级数与解的公式」面板（滑块、图）；预设新增一章；两个只返回文字的 MCP 工具（widget 不变，仍 z-1） |
+| 13 | AB | 2026-11-05 | 见 round-13-summary | [summary](round-13-summary.md) · [decisions](round-13-decisions.md) · [open-questions](round-13-open-questions.md) | 特征值与特征方向：常系数线性系统的精确特征值分析（新模块 lib/eigen：矩阵、特征方程、√ 与复数特征值、整数特征向量、类型、通解），其他系统逐个平衡点线性化；复特征值画 a、b 与旋转方向；指针贴靠特征直线 / 分界线 / 结点短线段；预设新增一章；工具附精确特征值分析与 showEigen；widget z-2 |
 
 另有 [ENGINEERING-RECORD.md](ENGINEERING-RECORD.md)（2026-09-10 的集中工程记录，不属于任何一轮；它收录了第 1–6 轮 16 份记录的全文，改名说明见其「历史记录索引」一节）。
