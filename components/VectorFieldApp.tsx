@@ -14,6 +14,7 @@ import { TimeSeriesCanvas } from "@/components/TimeSeriesCanvas";
 import type { TimeSeriesDrawing } from "@/components/drawTimeSeries";
 import { useDocumentLang } from "@/components/useDocumentLang";
 import { SeriesControls, SeriesResult } from "@/components/SeriesPanel";
+import { EigenPanel } from "@/components/EigenPanel";
 import { exportDualPng, exportScenePng, exportTimeSeriesPng } from "@/components/exportScenePng";
 import { exportDualFooterText, exportFileName, exportFooterText, exportTimeSeriesFooterText } from "@/lib/export-footer";
 import { coordinateNamesForMode, type CoordinateNames } from "@/lib/coordinate-names";
@@ -46,6 +47,8 @@ import { PRESETS, presetsByGroup, presetState, type Preset, type PresetMode } fr
 import { computeSeriesPanel, seriesModeOf, type SeriesPanelResult, type SeriesSettings } from "@/lib/series-panel";
 import { f } from "@/lib/series/notation";
 import { NUMERICAL_REDUCTION_CODES, type ReductionOutcome } from "@/lib/series/equation";
+import { linearAnalysisOf, numericLinear, type EigenSource } from "@/lib/eigen/linear-system";
+import { eigenDerivation, snapSentence } from "@/lib/labels-eigen";
 
 export type VectorFieldAppProps = {
   /** Decoded page state (lib/url-state); the first render already shows it, no flash of a default. */
@@ -66,6 +69,8 @@ const COPIED_MS = 2000;
 const QUERY_BUDGET_MS = 2000;
 /** Round 12: budget of the series panel's reference integration; past it the chart simply lacks the numerical curve. */
 const SERIES_BUDGET_MS = 1500;
+/** Round 13: the exact eigen reading of the equation (small texts take milliseconds; a pathological one falls back to the numerical linearization). */
+const EIGEN_BUDGET_MS = 500;
 
 class QueryBudgetError extends Error {}
 
@@ -526,6 +531,25 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
   const planar = shown.mode === "system" || shown.mode === "second";
   const spans = useMemo(() => (planar ? traceSpans(timeRange, snapshotT, CLICK_TSPAN) : undefined), [planar, timeRange, snapshotT]);
 
+  // Round 13: with the eigen switch on, the EXACT reading of a planar picture's equation (lib/eigen):
+  // a linear system with constant coefficients gets its exact eigen-analysis (drawn, snapped to and
+  // derived in the panel); anything else falls back to the kernel's linearization at each equilibrium.
+  const eigenOn = planar && aids.eigenDirections;
+  const eigenRead = useMemo(() => {
+    if (!eigenOn) return null;
+    const params = resolvedParams(shown).values;
+    const source: EigenSource = shown.mode === "system" ? { mode: "system", f: shown.f, g: shown.g, params } : { mode: "second", equation: shown.second, params, reduction: compiled.reduction };
+    const deadline = performance.now() + EIGEN_BUDGET_MS;
+    try {
+      return linearAnalysisOf(source, () => {
+        if (performance.now() > deadline) throw new RangeError("eigen budget");
+      });
+    } catch {
+      return null;
+    }
+  }, [eigenOn, shown, compiled]);
+  const linearGeometry = useMemo(() => (eigenRead?.ok ? numericLinear(eigenRead.analysis) : null), [eigenRead]);
+
   const interactive = useInteractiveScene({
     sys: compiled.sys,
     spec: compiled.spec,
@@ -552,11 +576,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     traceSpans: spans,
     // Eigen-directions and separatrices belong to a phase plane; a first-order picture has its nullcline only.
     aids: planar ? aids : { nullclines: aids.nullclines, eigenDirections: false, separatrices: false },
+    linear: linearGeometry,
     query: queryView,
     queryStart: queryRun?.start,
     secondOrder: secondOrderView,
   });
-  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers, featuresPending, hoveredIndex, hoverTrajectory } = interactive;
+  const { scene, viewport, overlay, hint, trajectories, trajectoryStarts, highlight, cursor, addTrajectory, clearTrajectories, undo, canUndo, handlers, featuresPending, hoveredIndex, hoverTrajectory, snap } = interactive;
 
   // "Initial value" row: two typed numbers kept exactly like a click (same addTrajectory, same
   // undo entry, same traj encoding). Text state so "-" or "1." can be typed; validated on Add.
@@ -715,6 +740,8 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
     setTrajectorySeeds((p.starts ?? []).map((q) => ({ x: q.x, y: q.y })));
     // Round 12: a preset of the series chapter opens the panel with its settings; any other closes it.
     setSeriesSettings(presetState(p).series);
+    // Round 13: a preset of the eigen chapter switches its overlays on; any other keeps the page's choice.
+    if (p.aids) setAids((a) => ({ ...a, ...p.aids }));
     setSeriesRevision((r) => r + 1);
     setPresetId(p.id);
   };
@@ -1146,7 +1173,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
               </label>
               {form.mode === "system" || formSecond ? (
                 <>
-                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                  <label style={{ display: "inline-flex", gap: 6, alignItems: "center" }} title={L.eigen.switchHint}>
                     <input type="checkbox" checked={aids.eigenDirections} onChange={(e) => setAids((a) => ({ ...a, eigenDirections: e.target.checked }))} name="aidEigen" />
                     <span>{L.ui.aidEigen}</span>
                   </label>
@@ -1155,7 +1182,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                     <span>{L.ui.aidSeparatrices}</span>
                   </label>
                 </>
-              ) : null}
+              ) : (
+                // Round 13: a first-order picture has no eigenvectors; said where the switch would be.
+                <p style={{ margin: 0, color: "#52606d", fontSize: 12 }} data-eigen-not-applicable>
+                  {L.eigen.firstOrderNotApplicable}
+                </p>
+              )}
             </fieldset>
           ) : null}
           <div style={{ color: "#1f2933" }}>
@@ -1327,6 +1359,7 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                     lecture={lecture}
                     overlay={overlay}
                     overlayHint={hint}
+                    snapMarker={snap?.point ?? null}
                     highlight={highlight}
                     highlightColor={hoverColor}
                     trajectoryColors={legColors}
@@ -1338,6 +1371,12 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
                   {!equalScale ? (
                     <p role="status" data-scale-warning style={{ margin: "6px 0 0", color: "#92400e" }}>
                       {scale.warning}
+                    </p>
+                  ) : null}
+                  {/* Round 13: what the pointer snapped to, in a full sentence (the canvas hint has room for a few words only). */}
+                  {snap ? (
+                    <p role="status" data-snap={snap.target.kind} style={{ margin: "6px 0 0", color: "#1f2933" }}>
+                      {snapSentence(L, snap, second ? "second" : "system")}
                     </p>
                   ) : null}
                   {/* The hover preview passes through a point where uniqueness fails (kept curves say it in the last-trajectory line). */}
@@ -1437,6 +1476,10 @@ export function VectorFieldApp({ initial, embed = false, controls = true, urlPro
           {/* Round U: while a drag's debounce holds the last results, they are dimmed (and "Computing…" floats over the picture). */}
           <div className={featuresPending ? "vf-stale" : undefined} data-features-pending={featuresPending ? "true" : undefined}>
             {scene?.kind === "analyze_system" && !scene.timeDependent ? <EquilibriaList scene={scene} L={L} second={second} eigen={aids.eigenDirections && showsPhase(view)} lecture={lecture} /> : null}
+            {/* Round 13: the eigenvalue panel (exact for a linear system, the linearization per equilibrium otherwise; "none" says why). */}
+            {scene?.kind === "analyze_system" && eigenOn && showsPhase(view) ? (
+              <EigenPanel derivation={eigenDerivation(L, { picture: second ? "second" : "system", linear: eigenRead, equilibria: scene.equilibria, timeDependent: Boolean(scene.timeDependent) })} />
+            ) : null}
             {scene?.kind === "analyze_first_order" ? <FirstOrderList scene={scene} L={L} lecture={lecture} /> : null}
           </div>
           {/* Round W: the last-trajectory line is numbers and is hidden in lecture mode, but never the fact that a kept curve runs through a point where uniqueness fails. */}
