@@ -179,6 +179,11 @@ export type Scene = {
    * with a legend. No tool fills it: a tool's Scene and summary are unchanged.
    */
   aids?: PhaseAids;
+  /**
+   * Round 13: analyze_system / analyze_second_order were asked to open the widget with the eigen
+   * panel and the eigen-directions on (the tools' showEigen). The widget's switch starts from it.
+   */
+  showEigen?: boolean;
   /** ping only */
   message?: string;
 };

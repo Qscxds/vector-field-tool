@@ -27,6 +27,8 @@ export type VectorFieldCanvasProps = {
   overlay?: TrajectoryView[];
   /** Short text shown on the overlay near the cursor (e.g. "direction undefined here"). */
   overlayHint?: { at: Vec2; text: string } | null;
+  /** Round 13: where the pointer is snapped (an eigen-line, a separatrix, a node's eigen segment): a ring on the overlay. */
+  snapMarker?: Vec2 | null;
   /** Kept curves under the pointer (a click removes them): redrawn on the overlay with a thicker stroke. */
   highlight?: TrajectoryView[];
   /** Round Z2.4 (web shell): the highlighted curve's own color, under a white halo; without it the forward / backward colors. */
@@ -36,10 +38,10 @@ export type VectorFieldCanvasProps = {
   starts?: DrawSceneOptions["starts"];
   /** Cursor over the canvas while interactive (default crosshair; the parent passes "pointer" over a removable curve). */
   cursor?: string;
-  /** A click, or a touch long press (lib/gestures): the parent decides whether it keeps or removes a curve. */
-  onClickWorld?: (p: Vec2) => void;
-  /** World and screen position while the pointer moves; null when it leaves. `touch` marks a finger's tap. */
-  onHoverWorld?: (world: Vec2 | null, screen: Vec2 | null, touch?: boolean) => void;
+  /** A click, or a touch long press (lib/gestures): the parent decides whether it keeps or removes a curve. `noSnap`: Alt was held (round 13). */
+  onClickWorld?: (p: Vec2, noSnap?: boolean) => void;
+  /** World and screen position while the pointer moves; null when it leaves. `touch` marks a finger's tap; `noSnap`: Alt is held (round 13). */
+  onHoverWorld?: (world: Vec2 | null, screen: Vec2 | null, touch?: boolean, noSnap?: boolean) => void;
   onWheelZoom?: (screenPoint: Vec2, factor: number) => void;
   onPan?: (dxScreen: number, dyScreen: number) => void;
   /**
@@ -68,6 +70,7 @@ export function VectorFieldCanvas({
   lecture = false,
   overlay,
   overlayHint,
+  snapMarker,
   highlight,
   highlightColor,
   trajectoryColors,
@@ -147,6 +150,21 @@ export function VectorFieldCanvas({
       }
       ctx.setLineDash([]);
     }
+    if (snapMarker) {
+      // Round 13: a ring where the pointer snapped, so the start of the preview is visible.
+      const m = worldToScreen(v, snapMarker);
+      ctx.setLineDash([]);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = COLORS.background;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 6, 0, 2 * Math.PI);
+      ctx.stroke();
+      ctx.lineWidth = 1.6;
+      ctx.strokeStyle = COLORS.aid;
+      ctx.beginPath();
+      ctx.arc(m.x, m.y, 6, 0, 2 * Math.PI);
+      ctx.stroke();
+    }
     if (overlayHint) {
       const s = worldToScreen(v, overlayHint.at);
       ctx.font = `${lastPointerWasTouch.current ? 12 : 11}px system-ui, sans-serif`;
@@ -155,7 +173,7 @@ export function VectorFieldCanvas({
       ctx.textBaseline = "bottom";
       ctx.fillText(overlayHint.text, Math.min(s.x + 10, width - 160), Math.max(s.y - 8, 12));
     }
-  }, [overlay, overlayHint, highlight, highlightColor, v, width, height]);
+  }, [overlay, overlayHint, snapMarker, highlight, highlightColor, v, width, height]);
 
   // Wheel must be non-passive to prevent the page from scrolling; React's onWheel is passive.
   useEffect(() => {
@@ -273,7 +291,7 @@ export function VectorFieldCanvas({
         return;
       }
     }
-    if (v && onHoverWorld) onHoverWorld(screenToWorld(v, s), s);
+    if (v && onHoverWorld) onHoverWorld(screenToWorld(v, s), s, false, event.altKey);
   };
 
   // A click is only reported after a short pause, so the two clicks of a double-click are not
@@ -308,10 +326,11 @@ export function VectorFieldCanvas({
     }
     if (!wasDrag && v && onClickWorld) {
       const world = screenToWorld(v, s);
+      const noSnap = event.altKey;
       cancelPendingClick();
       clickTimer.current = window.setTimeout(() => {
         clickTimer.current = null;
-        onClickWorld(world);
+        onClickWorld(world, noSnap);
       }, CLICK_DELAY_MS);
     }
   };

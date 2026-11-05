@@ -12,7 +12,8 @@ import { axisNameAnchors } from "@/lib/render/axis-names";
 import { chooseTicks } from "@/lib/render/ticks";
 import { formatNumber, labels, pictureModeOf } from "@/lib/labels";
 import { constantSolutionTag } from "@/lib/lecture";
-import { nullclineNames, type EigenDirection, type PhaseAids, type Separatrix } from "@/lib/phase-aids";
+import { EIGEN_HALF_FRACTION, nullclineNames, type EigenDirection, type EigenLine, type PhaseAids, type RotationAid, type Separatrix } from "@/lib/phase-aids";
+import { rotationArc } from "@/lib/eigen/geometry";
 import { worldToScreen, type Viewport } from "@/lib/render/viewport";
 import type { Scene } from "@/lib/scene";
 
@@ -65,8 +66,6 @@ export const COLORS = {
 /** Round V line styles: the second nullcline family and everything "unstable" is dashed. */
 const NULLCLINE_G_DASH = [7, 4];
 const UNSTABLE_DASH = [9, 5];
-/** Half-length of an eigen-direction line, as a fraction of the canvas's shorter side (the same on screen at every zoom). */
-const EIGEN_HALF_LENGTH = 0.11;
 
 /**
  * Non-uniqueness marks, all data-driven from the Scene (uniqueness verdict "unbounded"):
@@ -103,8 +102,11 @@ export function drawScene(ctx: CanvasRenderingContext2D, scene: Scene, v: Viewpo
   if (scene.firstOrder?.implicit) drawImplicit(ctx, v, scene.firstOrder.implicit.levels);
   if (scene.firstOrder) drawFirstOrderLines(ctx, v, scene, lecture, fonts);
   if (scene.aids?.separatrices) drawSeparatrices(ctx, v, scene.aids.separatrices);
+  // Round 13: a linear system's whole straight-line solutions, under the kept curves.
+  if (scene.aids?.eigenLines) drawEigenLines(ctx, v, scene.aids.eigenLines);
   if (scene.trajectories) drawTrajectories(ctx, v, scene, lecture, fonts, options);
   if (scene.aids?.eigenDirections) drawEigenDirections(ctx, v, scene.aids.eigenDirections);
+  if (scene.aids?.rotations) drawRotations(ctx, v, scene.aids.rotations, fonts);
   if (scene.equilibria) drawEquilibria(ctx, v, scene.equilibria);
   if (scene.firstOrder?.singularities?.length) drawSingularities(ctx, v, scene.firstOrder.singularities);
   // Last, so the names stay legible over the field. Data-driven (lib/coordinate-names): a
@@ -167,7 +169,7 @@ function drawSeparatrices(ctx: CanvasRenderingContext2D, v: Viewport, branches: 
  * pointing OUT (so the two read without color, and without the legend).
  */
 function drawEigenDirections(ctx: CanvasRenderingContext2D, v: Viewport, directions: readonly EigenDirection[]): void {
-  const half = EIGEN_HALF_LENGTH * Math.min(v.width, v.height);
+  const half = EIGEN_HALF_FRACTION * Math.min(v.width, v.height);
   ctx.strokeStyle = COLORS.aid;
   ctx.fillStyle = COLORS.aid;
   ctx.lineWidth = 2;
@@ -199,6 +201,101 @@ function drawEigenDirections(ctx: CanvasRenderingContext2D, v: Viewport, directi
   }
 }
 
+/**
+ * Round 13: each straight-line solution of a linear system across the whole picture, thin (the
+ * short bold eigen segment with its arrow heads is drawn at the equilibrium as before); stable solid,
+ * unstable dashed. Clipped by the canvas: the line is cut where it leaves a box around the view.
+ */
+function drawEigenLines(ctx: CanvasRenderingContext2D, v: Viewport, lines: readonly EigenLine[]): void {
+  const reach = 4 * Math.hypot(v.box.x.max - v.box.x.min, v.box.y.max - v.box.y.min);
+  const cx = (v.box.x.min + v.box.x.max) / 2;
+  const cy = (v.box.y.min + v.box.y.max) / 2;
+  ctx.strokeStyle = COLORS.aid;
+  ctx.lineWidth = 1;
+  for (const l of lines) {
+    // From the point of the line nearest the view's center, far enough both ways to cross the canvas.
+    const s0 = (cx - l.through.x) * l.direction.x + (cy - l.through.y) * l.direction.y;
+    const mid = { x: l.through.x + s0 * l.direction.x, y: l.through.y + s0 * l.direction.y };
+    const a = worldToScreen(v, { x: mid.x - reach * l.direction.x, y: mid.y - reach * l.direction.y });
+    const b = worldToScreen(v, { x: mid.x + reach * l.direction.x, y: mid.y + reach * l.direction.y });
+    if (![a.x, a.y, b.x, b.y].every(Number.isFinite)) continue;
+    ctx.setLineDash(l.eigenvalue < 0 ? [] : UNSTABLE_DASH);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+/**
+ * Round 13: a complex pair at an equilibrium. The arrows a = Re v and b = Im v from the point (thin,
+ * labelled a and b), and the linearized flow through the tip of a as an arc with an arrow head where
+ * time runs: a closed ellipse only for an exact center of a linear system, otherwise an open arc
+ * (lib/eigen rotationArc), never a closed curve that would claim a center.
+ */
+function drawRotations(ctx: CanvasRenderingContext2D, v: Viewport, rotations: readonly RotationAid[], fonts: Fonts): void {
+  const radius = EIGEN_HALF_FRACTION * Math.min(v.width, v.height);
+  for (const r of rotations) {
+    const arc = rotationArc(r, v, radius);
+    if (!arc) continue;
+    const c = worldToScreen(v, r.at);
+    ctx.strokeStyle = COLORS.aid;
+    ctx.fillStyle = COLORS.aid;
+    ctx.setLineDash([]);
+    // The two parts of the eigenvector.
+    ctx.lineWidth = 1.2;
+    for (const [tip, name] of [[arc.reTip, "a"], [arc.imTip, "b"]] as const) {
+      const t = worldToScreen(v, tip);
+      if (Math.hypot(t.x - c.x, t.y - c.y) < 4) continue;
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      ctx.lineTo(t.x, t.y);
+      ctx.stroke();
+      const head = arrowPolygon(c, t, 6);
+      if (head.length === 3) {
+        ctx.beginPath();
+        ctx.moveTo(head[0].x, head[0].y);
+        ctx.lineTo(head[1].x, head[1].y);
+        ctx.lineTo(head[2].x, head[2].y);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.font = fonts.axisName;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      const ux = (t.x - c.x) / Math.hypot(t.x - c.x, t.y - c.y);
+      const uy = (t.y - c.y) / Math.hypot(t.x - c.x, t.y - c.y);
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = COLORS.background;
+      ctx.strokeText(name, t.x + 9 * ux, t.y + 9 * uy);
+      ctx.fillText(name, t.x + 9 * ux, t.y + 9 * uy);
+      ctx.strokeStyle = COLORS.aid;
+      ctx.lineWidth = 1.2;
+    }
+    // The flow: dotted, with an arrow head at its end (the direction time runs).
+    const pts = arc.points.map((p) => worldToScreen(v, p));
+    if (pts.length < 2) continue;
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([2, 3]);
+    ctx.beginPath();
+    pts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.stroke();
+    ctx.setLineDash([]);
+    const end = pts[pts.length - 1];
+    const before = pts[Math.max(0, pts.length - 4)];
+    const head = arrowPolygon(before, end, 8);
+    if (head.length === 3) {
+      ctx.beginPath();
+      ctx.moveTo(head[0].x, head[0].y);
+      ctx.lineTo(head[1].x, head[1].y);
+      ctx.lineTo(head[2].x, head[2].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+  }
+}
+
 /** The legend of the overlays that are on (top right, under the snapshot time): a line sample and its name. */
 function drawAidsLegend(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene, aids: PhaseAids, fonts: Fonts): void {
   const L = labels(scene.locale ?? "en");
@@ -214,6 +311,9 @@ function drawAidsLegend(ctx: CanvasRenderingContext2D, v: Viewport, scene: Scene
   if (aids.eigenDirections?.some((d) => d.kind === "unstable")) entries.push({ text: L.ui.legendUnstableDirection, color: COLORS.aid, dash: UNSTABLE_DASH, width: 2 });
   if (aids.separatrices?.some((b) => b.kind === "stable")) entries.push({ text: L.ui.legendSeparatrixStable, color: COLORS.aid, dash: [], width: 2.6 });
   if (aids.separatrices?.some((b) => b.kind === "unstable")) entries.push({ text: L.ui.legendSeparatrixUnstable, color: COLORS.aid, dash: UNSTABLE_DASH, width: 2.6 });
+  // Round 13.
+  if (aids.eigenLines?.length) entries.push({ text: L.eigen.legendEigenLine, color: COLORS.aid, dash: [], width: 1 });
+  if (aids.rotations?.length) entries.push({ text: L.eigen.legendRotation, color: COLORS.aid, dash: [2, 3], width: 1.6 });
   if (entries.length === 0) return;
   ctx.font = fonts.tick;
   const sample = 30;

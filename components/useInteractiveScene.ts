@@ -31,7 +31,11 @@ import type { Box, Locale, SystemSpec, Vec2 } from "@/lib/core/types";
 import { deferredOf, featurePolicy, flushDeferred, isStale, requestDeferred } from "@/lib/feature-schedule";
 import { computeFeatures, FEATURE_DEBOUNCE_MS, featuresBoxFor, fixedStopBox, HOVER_PIXEL_THRESHOLD, markNonUnique, SINGULAR_PIXEL_RADIUS, traceFixed, tracePreview, type Features, type NonUniqueProbe } from "@/lib/interactive";
 import { coordinateNames } from "@/lib/coordinate-names";
-import { computeNullclines, eigenDirections, separatrices, type AidFlags, type PhaseAids } from "@/lib/phase-aids";
+import { computeNullclines, separatrices, type AidFlags, type PhaseAids, type Separatrix } from "@/lib/phase-aids";
+import { eigenLines, eigenSegments, rotationAids, snapPoint, snapTargets, type Snap } from "@/lib/eigen/geometry";
+import type { NumericLinear } from "@/lib/eigen/linear-system";
+import { snapHint } from "@/lib/labels-eigen";
+import { integrateAdaptive } from "@/lib/core/integrate";
 import { curveWords, fill, labels } from "@/lib/labels";
 import { sampleField } from "@/lib/core/field";
 import { fitViewport, panBy, pinchAt, worldToScreen, zoomAt, type Viewport } from "@/lib/render/viewport";
@@ -130,15 +134,26 @@ export type InteractiveInput = {
    * Put it in `retraceKey` so a change re-traces the kept curves.
    */
   traceSpans?: { forward: number; backward: number };
-  /** Round V: which overlays (lib/phase-aids) the scene carries; omitted (the widget) = none. */
+  /** Round V: which overlays (lib/phase-aids) the scene carries; omitted = none. */
   aids?: AidFlags;
+  /**
+   * Round 13: the exact geometry of a LINEAR system with constant coefficients (lib/eigen
+   * numericLinear of the shell's exact reading), or null for any other system. With the
+   * eigen-direction switch on it decides what is drawn and what the pointer snaps to: the exact
+   * lines through the equilibrium, or the kernel's linearization at each equilibrium.
+   */
+  linear?: NumericLinear | null;
 };
 
 export type InteractiveHandlers = {
-  /** A click or a touch long press: removes the kept pair within HIT_THRESHOLD_PX of the point, else keeps the solution through it. */
-  onClickWorld: (p: Vec2) => void;
-  /** `touch` marks a finger's tap (the hint over a removable curve then says "hold", not "click"). */
-  onHoverWorld: (world: Vec2 | null, screen: Vec2 | null, touch?: boolean) => void;
+  /**
+   * A click or a touch long press: removes the kept pair within HIT_THRESHOLD_PX of the point, else
+   * keeps the solution through it (round 13: through the snapped point while the eigen-direction
+   * switch is on and something is within SNAP_THRESHOLD_PX, unless `noSnap`: Alt held).
+   */
+  onClickWorld: (p: Vec2, noSnap?: boolean) => void;
+  /** `touch` marks a finger's tap (the hint over a removable curve then says "hold", not "click"); `noSnap`: Alt held (round 13). */
+  onHoverWorld: (world: Vec2 | null, screen: Vec2 | null, touch?: boolean, noSnap?: boolean) => void;
   onWheelZoom: (screen: Vec2, factor: number) => void;
   onPan: (dx: number, dy: number) => void;
   /** One touch pinch step as one viewport update (see pinchAt). */
@@ -182,11 +197,13 @@ export type InteractiveScene = {
   canUndo: boolean;
   /** Round U: the features on the scene belong to an older parameter value and are being recomputed (debounced during a slider drag). */
   featuresPending: boolean;
+  /** Round 13: where the pointer is snapped right now (an eigen-line, a separatrix, a node's eigen segment), or null. */
+  snap: Snap | null;
   handlers: InteractiveHandlers;
 };
 
 export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
-  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart, secondOrder, dragging = false, traceSpans, aids } = input;
+  const { sys, spec, firstOrder, homeBox, width, height, density, locale, kind, fieldStyle, systemKey, initialTrajectories, initialTrajectoryStarts, retraceKey = "", start, withFeatures, equalScale = true, snapshotT = 0, query, queryStart, secondOrder, dragging = false, traceSpans, aids, linear = null } = input;
 
   const [view, setView] = useState<Viewport | null>(null);
   // Curves that came with the scene (the widget's trace_trajectory result): drawn and cleared with
@@ -196,6 +213,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const [hoverTarget, setHoverTarget] = useState<number | null>(null);
   const [overlay, setOverlay] = useState<TrajectoryView[]>([]);
   const [hint, setHint] = useState<{ at: Vec2; text: string } | null>(null);
+  const [snap, setSnap] = useState<Snap | null>(null);
   const trajectories = useMemo(() => (external.length ? [...external, ...trajectoriesOf(store)] : trajectoriesOf(store)), [external, store]);
   const trajectoryStarts = useMemo(() => trajectoryStartsOf(store), [store]);
   const queryShown = useMemo(
@@ -205,6 +223,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
 
   // Screen position of the last hover preview; declared here because the reset effect clears it.
   const lastHoverScreen = useRef<Vec2 | null>(null);
+  const lastNoSnap = useRef(false);
 
   const homeKey = homeBox ? JSON.stringify(homeBox) : "";
   useEffect(() => {
@@ -292,15 +311,34 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const showEigen = Boolean(aids?.eigenDirections);
   const showSeparatrices = Boolean(aids?.separatrices);
   const nullclineSet = useMemo(() => (showNullclines && sys && viewport ? computeNullclines(sys, viewport.box, snapshotT) : undefined), [showNullclines, sys, viewport, snapshotT]);
-  const eigenSet = useMemo(() => (showEigen && features.equilibria ? features.equilibria.flatMap((e) => eigenDirections(e).directions) : undefined), [showEigen, features]);
-  const separatrixSet = useMemo(
-    () => (showSeparatrices && featureInputs.sys && features.equilibria && effectiveFeatureBox && homeBox ? separatrices(featureInputs.sys, features.equilibria, effectiveFeatureBox, fixedStopBox(homeBox)) : undefined),
-    [showSeparatrices, featureInputs, features, effectiveFeatureBox, homeBox],
+  // Round 13: a linear system's segments, lines and rotation picture come from the EXACT analysis;
+  // any other system's from the kernel's linearization at each equilibrium found.
+  const eigenSet = useMemo(() => (showEigen && (linear || features.equilibria) ? eigenSegments(linear, features.equilibria) : undefined), [showEigen, linear, features]);
+  const eigenLineSet = useMemo(() => (showEigen && linear ? eigenLines(linear) : undefined), [showEigen, linear]);
+  const rotationSet = useMemo(() => (showEigen && (linear || features.equilibria) ? rotationAids(linear, features.equilibria) : undefined), [showEigen, linear, features]);
+  // The separatrices are traced for the overlay, and (round 13) for snapping at a NONLINEAR saddle
+  // while the eigen-direction switch is on; drawn only with their own switch.
+  const needBranches = showSeparatrices || (showEigen && !linear && Boolean(features.equilibria?.some((e) => e.classification === "saddle")));
+  const branchSet = useMemo(
+    () => (needBranches && featureInputs.sys && features.equilibria && effectiveFeatureBox && homeBox ? separatrices(featureInputs.sys, features.equilibria, effectiveFeatureBox, fixedStopBox(homeBox)) : undefined),
+    [needBranches, featureInputs, features, effectiveFeatureBox, homeBox],
   );
+  const separatrixSet = showSeparatrices ? branchSet : undefined;
   const phaseAids = useMemo<PhaseAids | undefined>(
-    () => (nullclineSet || eigenSet || separatrixSet ? { ...(nullclineSet ? { nullclines: nullclineSet } : {}), ...(eigenSet ? { eigenDirections: eigenSet } : {}), ...(separatrixSet ? { separatrices: separatrixSet } : {}) } : undefined),
-    [nullclineSet, eigenSet, separatrixSet],
+    () =>
+      nullclineSet || eigenSet || separatrixSet || eigenLineSet?.length || rotationSet?.length
+        ? {
+            ...(nullclineSet ? { nullclines: nullclineSet } : {}),
+            ...(eigenSet ? { eigenDirections: eigenSet } : {}),
+            ...(separatrixSet ? { separatrices: separatrixSet } : {}),
+            ...(eigenLineSet?.length ? { eigenLines: eigenLineSet } : {}),
+            ...(rotationSet?.length ? { rotations: rotationSet } : {}),
+          }
+        : undefined,
+    [nullclineSet, eigenSet, separatrixSet, eigenLineSet, rotationSet],
   );
+  // Round 13: what the pointer snaps to (nothing while the eigen-direction switch is off).
+  const targets = useMemo(() => (showEigen ? snapTargets(linear, features.equilibria, branchSet, showSeparatrices) : []), [showEigen, linear, features, branchSet, showSeparatrices]);
 
   const scene = useMemo<Scene | null>(() => {
     if (!sys || !spec || !viewport || !field) return null;
@@ -361,6 +399,21 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
 
   const storeRef = useRef(store);
   storeRef.current = store;
+  const targetsRef = useRef(targets);
+  targetsRef.current = targets;
+  // A separatrix branch's point is re-integrated from the branch's own start to the clock of the
+  // nearest polyline point, under the system the branch was traced with (lib/eigen snapPoint).
+  const branchSysRef = useRef(featureInputs.sys);
+  branchSysRef.current = featureInputs.sys;
+  const locate = useCallback((branch: Separatrix, t: number): Vec2 | null => {
+    const s = branchSysRef.current;
+    const home = homeBoxRef.current;
+    if (!s || !home || !(Math.abs(t) > 0)) return null;
+    const tr = integrateAdaptive(s, branch.start, Math.abs(t), { direction: t < 0 ? -1 : 1, box: fixedStopBox(home), h: 0.05 });
+    return tr.status === "completed" ? tr.points[tr.points.length - 1] : null;
+  }, []);
+  /** Where a screen point snaps (null: nothing near, the switch off, or Alt held). */
+  const snapAt = useCallback((screen: Vec2, vp: Viewport, noSnap: boolean): Snap | null => (noSnap || targetsRef.current.length === 0 ? null : snapPoint(targetsRef.current, screen, vp, locate)), [locate]);
 
   // The one rule for a kept curve: the solution through the start under the CURRENT system and
   // snapshot time, 20x the home box (traceFixed), flagged where uniqueness fails. Reads refs so
@@ -376,6 +429,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     lastHoverScreen.current = null;
     setOverlay([]);
     setHint(null);
+    setSnap(null);
   };
 
   // A new system, or new seeds (a fresh array from the shell: a link, a preset, `[]` after an
@@ -401,7 +455,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [retraceKey]);
 
-  const hoverRef = useRef<{ world: Vec2; screen: Vec2; touch: boolean } | null>(null);
+  const hoverRef = useRef<{ world: Vec2; screen: Vec2; touch: boolean; noSnap: boolean } | null>(null);
   const rafRef = useRef<number | null>(null);
 
   // Round Z2.4: a hover reported by the other picture (the solution graph).
@@ -410,6 +464,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     lastHoverScreen.current = null;
     setOverlay([]);
     setHint(null);
+    setSnap(null);
     setHoverTarget(index);
   }, []);
 
@@ -427,6 +482,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     lastHoverScreen.current = null;
     setOverlay([]);
     setHint(null);
+    setSnap(null);
     setHoverTarget(null);
   };
 
@@ -483,29 +539,37 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   }, []);
 
   const onClickWorld = useCallback(
-    (p: Vec2) => {
+    (p: Vec2, noSnap?: boolean) => {
       const vp = viewportRef.current;
       if (!vp) return;
       // The hit test is in screen pixels (a world threshold would change with the zoom); the
       // click's world point came from this viewport, so mapping it back is exact enough.
       const cur = storeRef.current;
-      const action = clickAction(trajectoriesOf(cur), trajectoryStartsOf(cur), worldToScreen(vp, p), vp);
-      if (action.type === "delete") deleteTrajectory(action.index);
-      else addTrajectory(p);
+      const screen = worldToScreen(vp, p);
+      const action = clickAction(trajectoriesOf(cur), trajectoryStartsOf(cur), screen, vp);
+      if (action.type === "delete") {
+        deleteTrajectory(action.index);
+        return;
+      }
+      // Round 13: removing a kept curve comes first; otherwise the same snap as the hover. A snapped
+      // start keeps all its digits in the link (`precise`), so the reopened curve starts ON the line.
+      const snapped = snapAt(screen, vp, Boolean(noSnap));
+      addTrajectory(snapped ? { x: snapped.point.x, y: snapped.point.y, precise: true } as Vec2 : p);
     },
-    [addTrajectory, deleteTrajectory],
+    [addTrajectory, deleteTrajectory, snapAt],
   );
 
-  const onHoverWorld = useCallback((world: Vec2 | null, screen: Vec2 | null, touch?: boolean) => {
+  const onHoverWorld = useCallback((world: Vec2 | null, screen: Vec2 | null, touch?: boolean, noSnap?: boolean) => {
     if (!world || !screen) {
       hoverRef.current = null;
       lastHoverScreen.current = null;
       setOverlay([]);
       setHint(null);
+      setSnap(null);
       setHoverTarget(null);
       return;
     }
-    hoverRef.current = { world, screen, touch: Boolean(touch) };
+    hoverRef.current = { world, screen, touch: Boolean(touch), noSnap: Boolean(noSnap) };
     if (rafRef.current !== null) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
@@ -514,13 +578,16 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       const vp = viewportRef.current;
       if (!h || !s || !vp) return;
       const last = lastHoverScreen.current;
-      if (last && Math.hypot(h.screen.x - last.x, h.screen.y - last.y) < HOVER_PIXEL_THRESHOLD) return;
+      // Round 13: pressing or releasing Alt without moving recomputes too (the snap changes).
+      if (last && Math.hypot(h.screen.x - last.x, h.screen.y - last.y) < HOVER_PIXEL_THRESHOLD && lastNoSnap.current === h.noSnap) return;
       lastHoverScreen.current = h.screen;
+      lastNoSnap.current = h.noSnap;
       // Over a kept curve: no preview, the curve is emphasized and the hint says a click removes it.
       const cur = storeRef.current;
       const hit = nearestFixedTrajectory(trajectoriesOf(cur), trajectoryStartsOf(cur), h.screen, vp);
       if (hit !== null) {
         setOverlay([]);
+        setSnap(null);
         setHoverTarget(hit);
         // "solution curve" on a first-order picture, "trajectory" on a phase plane (P2.5).
         const words = curveWords(labels(localeRef.current), probeRef.current?.firstOrder ? "first" : "system");
@@ -531,6 +598,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       // Full (round R): no preview, and the hint says why a click here would add nothing.
       if (atCapacity(cur)) {
         setOverlay([]);
+        setSnap(null);
         setHint({ at: h.world, text: fill(labels(localeRef.current).ui.trajectoryCapHint, { max: MAX_TRAJECTORIES }) });
         return;
       }
@@ -540,13 +608,18 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       });
       if (nearSingular) {
         setOverlay([]);
+        setSnap(null);
         setHint({ at: h.world, text: labels(localeRef.current).ui.hoverUndefined });
         return;
       }
-      setHint(null);
-      setOverlay(markNonUnique(tracePreview(s, h.world, vp, snapshotTRef.current), featuresRef.current, vp.box, probeRef.current ?? undefined));
+      // Round 13: within SNAP_THRESHOLD_PX of an eigen-line, a separatrix or a node's eigen segment
+      // (switch on, Alt not held) the preview starts at the snapped point and the hint says what it is.
+      const snapped = snapAt(h.screen, vp, h.noSnap);
+      setSnap(snapped);
+      setHint(snapped ? { at: snapped.point, text: snapHint(labels(localeRef.current), snapped) } : null);
+      setOverlay(markNonUnique(tracePreview(s, snapped?.point ?? h.world, vp, snapshotTRef.current), featuresRef.current, vp.box, probeRef.current ?? undefined));
     });
-  }, []);
+  }, [snapAt]);
   useEffect(
     () => () => {
       if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
@@ -599,6 +672,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     undo,
     canUndo: storeCanUndo(store),
     featuresPending,
+    snap,
     handlers: { onClickWorld, onHoverWorld, onWheelZoom, onPan, onPinch, onDoubleClick },
   };
 }
