@@ -102,6 +102,9 @@
         query_first_sqrt: ["query_solution", { mode: "first", expr: "sqrt(y)", t0: 0, y0: 0.25, target: { kind: "t", value: -1 }, locale: "en" }],
         query_diff_sqrt: ["query_solution", { mode: "diff", M: "-sqrt(y)", N: "1", t0: 0, y0: 0.25, target: { kind: "t", value: -1 }, locale: "zh" }],
         query_zero_speed: ["query_solution", { mode: "system", f: "0", g: "t", x0: 0, y0: 0, target: { kind: "t", value: 1 }, tSpan: 2, locale: "en" }],
+        // Round 13 (widget z-2): the eigen switch opened by showEigen, the exact panel, snapping.
+        linear_eigen: ["analyze_system", { f: "x + y", g: "4*x + y", showEigen: true, locale: "en" }],
+        second_eigen: ["analyze_second_order", { equation: "x'' + 0.5*x' + x = 0", showEigen: true, locale: "zh" }],
         ping: ["ping", { message: "hello widget" }],
       };
       const select = document.getElementById("scenario");

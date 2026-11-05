@@ -17,10 +17,18 @@
  * tool's own curve is group 0), one hovered curve emphasized in both, the phase plane's preview
  * and the query's hits drawn in the graph too. The tools' legs carry `times` since round Z4, so a
  * curve drawn by trace_trajectory or query_solution is seen against t as well.
+ *
+ * Round 13 (widget z-2): on an analyze_system / analyze_second_order picture the switch
+ * "Eigenvalues & eigen-directions" (opened by the tool's showEigen) draws the eigen-directions and the
+ * complex-eigenvalue picture, snaps the pointer to them (Alt held: no snap) and shows the eigenvalue
+ * panel, exactly as the web shell does (the same lib/eigen and lib/labels-eigen).
  */
 import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TimeSeriesDrawing } from "@/components/drawTimeSeries";
+import { EigenPanel } from "@/components/EigenPanel";
+import { linearAnalysisOf, numericLinear, type EigenSource } from "@/lib/eigen/linear-system";
+import { eigenDerivation, snapSentence } from "@/lib/labels-eigen";
 import { FoldedLine, Info } from "@/components/Info";
 import { TimeSeriesCanvas } from "@/components/TimeSeriesCanvas";
 import { useInteractiveScene } from "@/components/useInteractiveScene";
@@ -103,6 +111,8 @@ export default function WidgetPage() {
   const [viewChoice, setViewChoice] = useState<ViewKind | null>(null);
   const [showVelocity, setShowVelocity] = useState(false);
   const [graphHover, setGraphHover] = useState<number | null>(null);
+  // Round 13: the eigen switch; a new result starts from the tool's showEigen.
+  const [eigenChoice, setEigenChoice] = useState(false);
   const { ref, width } = useContainerWidth<HTMLDivElement>(640);
 
   const { isConnected, error } = useApp({
@@ -121,6 +131,7 @@ export default function WidgetPage() {
         setResultSeq((n) => n + 1);
         // A new answer opens on the default view of its own picture.
         setViewChoice(null);
+        setEigenChoice(next?.showEigen === true);
         setGraphHover(null);
         setPhase("result");
       };
@@ -134,6 +145,20 @@ export default function WidgetPage() {
   const local = useLocalSystem(scene);
   const kind: SceneKind = scene && scene.kind !== "ping" ? scene.kind : "sample_field";
   const snapshotT = scene?.timeDependent?.snapshotT ?? 0;
+  // Round 13: the eigen features belong to an analysis of a planar system or a second-order equation.
+  const eigenAvailable = scene?.kind === "analyze_system" && Boolean(scene.system) && scene.system?.variables !== "ty";
+  const eigenOn = eigenAvailable && eigenChoice;
+  const eigenRead = useMemo(() => {
+    if (!eigenOn || !scene?.system) return null;
+    const params = scene.system.params;
+    const source: EigenSource = scene.secondOrder ? { mode: "second", equation: scene.secondOrder.equation, params } : { mode: "system", f: scene.system.f, g: scene.system.g, params };
+    try {
+      return linearAnalysisOf(source);
+    } catch {
+      return null;
+    }
+  }, [eigenOn, scene]);
+  const linearGeometry = useMemo(() => (eigenRead?.ok ? numericLinear(eigenRead.analysis) : null), [eigenRead]);
   const interactive = useInteractiveScene({
     sys: local.sys,
     spec: scene?.system ?? null,
@@ -156,6 +181,9 @@ export default function WidgetPage() {
     query: scene?.query,
     // analyze_second_order: the reduction line stays in the live summary.
     secondOrder: scene?.secondOrder,
+    // Round 13: the eigen-directions (and what the pointer snaps to) while the switch is on.
+    aids: { nullclines: false, eigenDirections: eigenOn, separatrices: false },
+    linear: linearGeometry,
   });
 
   const live = interactive.scene && interactive.viewport ? interactive : null;
@@ -263,6 +291,7 @@ export default function WidgetPage() {
                 height={canvasHeight}
                 overlay={live.overlay}
                 overlayHint={live.hint}
+                snapMarker={live.snap?.point ?? null}
                 // Hover feedback on a kept curve (Phase N): the highlighted pair and the pointer cursor;
                 // round Z4: in the curve's own color, also when the graph reports the hover.
                 highlight={highlightLegs}
@@ -272,6 +301,12 @@ export default function WidgetPage() {
                 cursor={live.cursor}
                 {...live.handlers}
               />
+              {/* Round 13: what the pointer snapped to, in a full sentence. */}
+              {live.snap ? (
+                <p role="status" data-snap={live.snap.target.kind} style={{ margin: "4px 0 0", color: "#1f2933", fontSize: 12 }}>
+                  {snapSentence(L, live.snap, second ? "second" : "system")}
+                </p>
+              ) : null}
               {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
               {!equalScale ? (
                 <p role="status" data-scale-warning style={{ margin: "4px 0 0", color: "#92400e", fontSize: 12 }}>
@@ -322,6 +357,15 @@ export default function WidgetPage() {
             <Info label={L.ui.details} data-info="equal-scale">
               {equalScaleTexts(L, pictureModeOf(live.scene)).detail}
             </Info>
+            {eigenAvailable ? (
+              <>
+                {" · "}
+                <label style={{ display: "inline-flex", gap: 6, alignItems: "center", cursor: "pointer" }} title={L.eigen.switchHint}>
+                  <input type="checkbox" checked={eigenOn} onChange={(e) => setEigenChoice(e.target.checked)} name="aidEigen" />
+                  <span>{L.ui.aidEigen}</span>
+                </label>
+              </>
+            ) : null}
           </div>
           {/* Undo the last trajectory action (a click that kept or removed a curve), as in the web shell.
               Clear (round R) removes only the curves the student added; the tool's own curves are the answer and stay. */}
@@ -339,6 +383,8 @@ export default function WidgetPage() {
             </p>
           ) : null}
           <SceneSummary scene={live.scene} />
+          {/* Round 13: the eigenvalue panel (exact for a linear system, the linearization per equilibrium otherwise). */}
+          {eigenOn ? <EigenPanel compact derivation={eigenDerivation(L, { picture: second ? "second" : "system", linear: eigenRead, equilibria: live.scene.equilibria, timeDependent: Boolean(live.scene.timeDependent) })} /> : null}
         </>
       ) : scene?.box ? (
         <>
