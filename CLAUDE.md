@@ -38,10 +38,14 @@ constant-coefficient linear system or second-order equation, new module lib/eige
 rationals: matrix, characteristic equation, surd / complex eigenvalues, integer eigenvectors, type
 with an exact center, general solution; the kernel's linearization per equilibrium otherwise; "none"
 and "not applicable" said with the reason), whole eigen-lines for linear systems, the
-complex-eigenvalue picture (a, b and an open arc, a closed ellipse only for an exact center),
+complex-eigenvalue picture (Re ξ, Im ξ and an open arc, a closed ellipse only for an exact center),
 SNAPPING of the preview and the click to eigen-lines / separatrices / a node's segment (12 px, Alt:
 none, snapped starts keep all digits in `traj`), the preset chapter "Linear systems and
-eigenvalues", the tools' exact eigen block and `showEigen`; widget z-2.
+eigenvalues", the tools' exact eigen block and `showEigen`; widget z-2. The two independent reviews
+of round 13 (all findings fixed): letters (ξ / η, never v = x' or a student's parameter), Re ξ / Im ξ
+of a linearization share one factor, a center that only rounding made is not certified, per-surface
+notes, no exact reading during a server render or for a field with t, a checkpoint inside lib/series'
+qpMul, stale snap state, the homoclinic loop cut halfway.
 Repository: <https://github.com/Qscxds/vector-field-tool>.
 
 The consolidated current engineering record is `docs/ENGINEERING-RECORD.md`: architecture, the
@@ -225,27 +229,40 @@ then-current status; use the current section for superseding decisions. Widget v
   other / parse. `analyzeLinear`: tr, det, disc = (a − d)² + 4bc exactly; √disc = scale·√m (square
   factors of primes ≤ `SQUARE_FREE_LIMIT` 10000 pulled out), numbers r + s√m; the type from the
   EXACT signs (an exact `center`); eigenvectors (2b, (d − a) ± √disc) or (λ − d, c) made primitive
-  integers with the first non-zero component positive (complex: v of α + iβ, β > 0, re / im);
-  generalized w for a degenerate node checked exactly; the equilibrium point / line / plane / none;
+  integers with the first non-zero component positive (complex: ξ of α + iβ, β > 0, re / im);
+  generalized η for a degenerate node checked exactly; the equilibrium point / line / plane / none;
   rotation ccw iff c > 0; `borderline` (approximate systems only: tr, det, disc non-zero within
-  `NEAR_ZERO_FRACTION` 1e-12 of the matrix scale); `numericLinear` = the doubles the picture draws
-  and snaps to), `geometry` (`numericEigen` of a kernel equilibrium (complex: v = (1, (d − a)/(2b) +
-  i√(−disc)/(2b))), `rotationAids`, `rotationArc` (e^(αs/β)(re cos s − im sin s), open at most
+  `NEAR_ZERO_FRACTION` 1e-12 of the matrix scale, or EXACTLY zero by a cancellation of non-zero
+  terms, `exactZero`; a trace only where it decides the type) and `centerByRounding` (then no closed
+  ellipse, no certified center); `eigenvalueNumbers` (decimals without cancellation, Vieta for the
+  small root); `numericLinear` = the doubles the picture draws and snaps to), `geometry`
+  (`numericEigen` of a kernel equilibrium (complex: ξ = (1, (d − a)/(2b) + i√(−disc)/(2b)), Re ξ and
+  Im ξ with ONE factor), `rotationAids`, `rotationArc` (e^(αs/β)(re cos s − im sin s), open at most
   `ARC_OPEN_ANGLE` 3π/2 and `ARC_MAX_GROWTH` 4, closed only for an exact center), `eigenLines`,
   `eigenSegments` (exact for a linear system, the kernel's otherwise), `snapTargets` / `snapPoint`
   (`SNAP_THRESHOLD_PX` 12; lines: the foot of the perpendicular in world coordinates; segments: the
   drawn half-length `EIGEN_HALF_FRACTION` of lib/phase-aids; branches: up to `branchExtent` = the
-  first strict local minimum of the chord speed after it rose, near the saddle only unless the
-  separatrices are drawn, the point re-integrated from the branch's start by an injected `locate`)).
+  first strict local minimum of the chord speed after it rose that is at most `BRANCH_SLOW_FRACTION`
+  0.1 of the fastest speed before it (a shallow dip past a center is not an equilibrium), near the
+  saddle only unless the separatrices are drawn, the point re-integrated from the branch's start by
+  an injected `locate`)). `components/eigen-read.ts` (`readEigen`, `useHydrated`): the web shell
+  and the widget read exactly never during the server render, never for a field that mentions t,
+  always within `EIGEN_BUDGET_MS` 500 ("budget" is said, never silently nothing).
 - `lib/labels-eigen.ts` (round 13) the words of the eigen features: `eigenDerivation` (a lib/labels-
-  series Derivation: matrix form + equilibrium, characteristic equation + tr / det + discriminant,
-  eigenvalues with decimals for fractions and roots, eigenvectors (v = a + b·i, i√15 never √15i),
-  type, general solution in the student's notation ((x(t), y(t)) or x(t), offsets, symbolic λ / v /
-  α / β / a / b with "as above" when not rational); notes: lines, rotation, star, exact center vs
-  the list's "center or weak spiral", approximate, borderline, the formula panel on a second-order
-  picture; the numerical version per equilibrium with the reason it is not linear; time-dependent
-  and no-equilibrium sentences), `snapHint` (canvas, a few words), `snapSentence` (under the
-  picture), `eigenText` (plain, the tools). All sentences are lib/labels' `eigen` section.
+  series Derivation: matrix form + equilibrium (found from x' = 0, y' = 0 in the student's
+  coordinates), characteristic equation + tr / det + discriminant, eigenvalues with decimals for
+  fractions, roots and rounded values, eigenvectors ξ (ξ = Re ξ + i·Im ξ, i√15 never √15i; a vector
+  longer than `HUGE_VECTOR_DIGITS` 9 digits prints scaled, in decimals, after "≈"), type, general
+  solution in the student's notation ((x(t), y(t)) or x(t), offsets, symbolic λ / ξ / η / α / β /
+  Re ξ / Im ξ with "as above" when not rational); `eigenLetters(params)`: the matrix, identity,
+  Jacobian and constants letters avoid the student's parameter names (rule 9; ξ, η are Greek and
+  can never be one); `surface` "web" | "widget" | "text": notes about drawn lines and snapping only
+  where there is a picture and a pointer, the formula-panel note only on the web; notes: exact center
+  vs the list's "center or weak spiral", approximate, borderline (non-zero or exact-zero), rounded;
+  the numerical version per equilibrium with the reason it is not linear; time-dependent, budget and
+  no-equilibrium sentences), `snapHint` (canvas, a few words), `snapSentence` (under the picture; "="
+  only before a value printed exactly, "≈" otherwise; Alt for a mouse, zoom in for a finger),
+  `eigenText` (plain, the tools: surface "text"). All sentences are lib/labels' `eigen` section.
   `components/EigenPanel.tsx` draws the Derivation (web and widget, `compact`).
 - `lib/labels-series.ts` (round 12) the derivations as steps of formulas, word for word the same in
   the panel and the tools: `seriesDerivation` (equation, ordinary point, ansatz, substitute and
@@ -456,7 +473,9 @@ then-current status; use the current section for superseding decisions. Widget v
   hover preview, click-to-keep / click-to-remove through `lib/trajectory-store` and
   `lib/trajectory-hit`; round 13: input `linear` (lib/eigen numericLinear or null) and, with the
   eigen switch, the aids `eigenLines` / `rotations`, the separatrices traced for snapping at a
-  nonlinear saddle even when not drawn, output `snap`, handlers `onHoverWorld(…, noSnap)` /
+  nonlinear saddle even when not drawn (not during a slider drag), output `snap` and `snapByTouch`
+  (the snap is recomputed where the pointer rests whenever the targets change or Alt is pressed or
+  released, and cleared by a view reset), handlers `onHoverWorld(…, noSnap)` /
   `onClickWorld(p, noSnap)` (Alt), removal of a kept curve before snapping, a snapped start added as
   `{x, y, precise: true}`; inputs `retraceKey`, `query` + `queryStart` (the query is kept on the scene
   only while a kept trajectory still starts there), `secondOrder` pass-through; outputs `highlight`,
@@ -719,9 +738,13 @@ failure drives it, with a derived test for that failure. The extreme-box open qu
   choices only. `SQUARE_FREE_LIMIT` 10000 (how far a radicand is simplified; exact either way),
   `NEAR_ZERO_FRACTION` 1e-12 (when an APPROXIMATE system's tr / det / disc is flagged borderline;
   the conclusion is not changed), `SNAP_THRESHOLD_PX` 12, `ARC_OPEN_ANGLE` 3π/2, `ARC_MAX_GROWTH`
-  4, `ARC_SAMPLES` 96, the web shell's `EIGEN_BUDGET_MS` 500, and the `branchExtent` rule (a new
-  heuristic: a separatrix branch snaps only up to its first strict local speed minimum after the
-  speed rose; it decides no mathematics, only how far the pointer may snap).
+  4, `ARC_SAMPLES` 96, `HUGE_VECTOR_DIGITS` 9 (lib/labels-eigen: when an exact vector prints in
+  decimals), the web shell's and widget's `EIGEN_BUDGET_MS` 500 (components/eigen-read), and the
+  `branchExtent` rule (a new heuristic: a separatrix branch snaps only up to its first strict local
+  speed minimum after the speed rose that is at most `BRANCH_SLOW_FRACTION` 0.1 of the fastest
+  speed before it; it decides no mathematics, only how far the pointer may snap). lib/series'
+  `qpMul` / `qpMulPoly` take the reader's checkpoint (round 13, the second review): same results,
+  only a budget can now stop one large product.
 - `lib/series/` (round 12, OUTSIDE lib/core; the exact module adds no threshold to any kernel
   decision): caps and display choices only. `MAX_SHOWN_TERMS` 30, `COMPUTED_TERMS` 60 coefficients
   (a polynomial of degree up to ~55 can be proven), `MAX_DEGREE` 40 / `MAX_EXPONENTS` 24 /

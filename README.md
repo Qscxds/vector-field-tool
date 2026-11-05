@@ -68,13 +68,13 @@ parameters and results to explanations. The site is English by default; Chinese 
   section below the pictures. A linear system with constant coefficients (a constant-coefficient
   second-order equation included) is read EXACTLY from the text (`lib/eigen`, on the exact
   rationals of `lib/series`): matrix form, equilibrium, characteristic equation and discriminant,
-  eigenvalues (surds kept as √, complex pairs as α ± βi), whole-number eigenvectors (v = a + b·i for
-  a complex pair, a generalized eigenvector for a degenerate node), the type (an exact center is
+  eigenvalues (surds kept as √, complex pairs as α ± βi), whole-number eigenvectors ξ (ξ = Re ξ + i·Im ξ
+  for a complex pair, a generalized eigenvector for a degenerate node), the type (an exact center is
   called a center) and the general solution. Any other system is linearized at each equilibrium
   found (numerically, the kernel's Jacobian); no equilibrium, a non-autonomous equation or a
   first-order picture says why there is no eigenvalue. The picture draws a linear system's whole
-  eigen-lines (each is a solution) and, for complex eigenvalues, the arrows a, b and a piece of the
-  linearized orbit showing the sense of rotation (a closed ellipse only for an exact center).
+  eigen-lines (each is a solution) and, for complex eigenvalues, the arrows Re ξ, Im ξ and a piece of
+  the linearized orbit showing the sense of rotation (a closed ellipse only for an exact center).
   **Snapping**: within 12 screen pixels of an eigen-line, of a saddle's separatrix (near the saddle,
   or along the whole branch while separatrices are shown) or of a node's drawn segment, the preview
   and the click start on it and a sentence says what was snapped to; Alt held: no snap. A snapped

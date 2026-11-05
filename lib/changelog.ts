@@ -175,21 +175,21 @@ export const CHANGELOG: readonly ChangelogEntry[] = [
   {
     date: "2026-11-05",
     title: {
-      zh: "特征值与特征向量：常系数线性系统精确计算，图上画出特征方向，鼠标靠近时自动贴靠；复特征值画出 a、b 和旋转方向",
-      en: "Eigenvalues and eigenvectors: exact for linear systems with constant coefficients, eigen-directions drawn in the picture with the pointer snapping to them; complex eigenvalues drawn with a, b and the sense of rotation",
+      zh: "特征值与特征向量：常系数线性系统精确计算，图上画出特征方向，鼠标靠近时自动贴靠；复特征值画出 Re ξ、Im ξ 和旋转方向",
+      en: "Eigenvalues and eigenvectors: exact for linear systems with constant coefficients, eigen-directions drawn in the picture with the pointer snapping to them; complex eigenvalues drawn with Re ξ, Im ξ and the sense of rotation",
     },
     points: {
       zh: [
         "平面系统和二阶方程的「在图上显示」里，开关「特征值与特征方向」打开后，图的下方出现「特征值与特征向量」一节。常系数线性系统（包括常系数的二阶方程）精确计算：矩阵 A、特征方程与判别式、特征值（无理数保留 √，复数写成 α ± βi）、特征向量、类型和通解；其他系统在每个平衡点线性化（数值计算）。没有平衡点或方程含 t 时，会说明没有可用的特征值；一阶方程会说明不适用。",
         "鼠标贴靠：靠近线性系统的特征直线、鞍点的分界线或结点处的短线段时，预览和点击的起点自动吸到线上，图下方有一句话说明；按住 Alt 可以暂时不贴靠。线性系统的整条特征直线都会画出来，因为整条直线都是解。",
-        "复特征值：在平衡点画出特征向量的实部 a、虚部 b 两根箭头和一段表示旋转方向的螺线；只有线性系统的精确中心才画闭合椭圆，数值上的「中心或弱螺旋」仍不会画成闭合曲线。",
+        "复特征值：在平衡点画出特征向量 ξ 的实部 Re ξ、虚部 Im ξ 两根箭头和一段表示旋转方向的螺线；只有线性系统的精确中心才画闭合椭圆，数值上的「中心或弱螺旋」仍不会画成闭合曲线。",
         "预设新增一章「线性系统与特征值」，共 6 个：直线解、无理特征值、平衡点不在原点、退化结点、螺旋点、中心。",
         "Claude 连接器：analyze_system 和 analyze_second_order 遇到常系数线性系统时，文字结果里附上精确的特征值分析；新参数 showEigen 让 widget 打开时就显示特征方向。widget 升级到 z-2。",
       ],
       en: [
         "Under \"Show on the picture\" of a planar system or a second-order equation, the switch \"Eigenvalues & eigen-directions\" adds a section \"Eigenvalues and eigenvectors\" below the pictures. A linear system with constant coefficients (a constant-coefficient second-order equation included) is computed exactly: the matrix A, the characteristic equation and its discriminant, the eigenvalues (roots kept as √, complex pairs as α ± βi), the eigenvectors, the type and the general solution; any other system is linearized at each equilibrium (numerically). With no equilibrium, or an equation that contains t, the section says there is no eigenvalue to give; a first-order equation says that they do not apply.",
         "Snapping: near a linear system's eigen-line, a saddle's separatrix or the short segment at a node, the preview and the click start on the line, and a sentence under the picture says so; hold Alt to keep the pointer from snapping. A linear system's eigen-lines are drawn whole, because each whole line is a solution.",
-        "Complex eigenvalues: the equilibrium gets two arrows a and b, the real and imaginary parts of the eigenvector, and a piece of spiral showing the sense of rotation; only an exact center of a linear system gets a closed ellipse, and a numerical \"center or weak spiral\" is still never drawn as a closed curve.",
+        "Complex eigenvalues: the equilibrium gets two arrows Re ξ and Im ξ, the real and imaginary parts of the eigenvector ξ, and a piece of spiral showing the sense of rotation; only an exact center of a linear system gets a closed ellipse, and a numerical \"center or weak spiral\" is still never drawn as a closed curve.",
         "A new preset chapter \"Linear systems and eigenvalues\" with six presets: straight-line solutions, irrational eigenvalues, an equilibrium off the origin, a degenerate node, a spiral and a center.",
         "Claude connector: analyze_system and analyze_second_order add the exact eigen-analysis to their text when the system is linear with constant coefficients; the new parameter showEigen opens the widget with the eigen-directions on. The widget is now z-2.",
       ],
