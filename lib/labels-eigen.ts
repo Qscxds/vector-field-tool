@@ -83,13 +83,17 @@ function expRational(l: Q, ctx: NotationContext): Formula {
   return f("e", sup(tMultiple(l, ctx)));
 }
 
-/** A numerical vector scaled so its larger component is ±1 (a direction is defined up to a factor). */
+/**
+ * A numerical direction (defined up to a factor) scaled like the exact vectors read: its first
+ * component 1, as (1, λ) on a second-order picture and (1, 2) for v₁ = (1, 2); the second component 1
+ * when the first is under a tenth of it (a nearly vertical direction would otherwise print huge).
+ */
 function numericVector(v: Vec2, digits = 4): string {
-  const m = Math.max(Math.abs(v.x), Math.abs(v.y));
-  if (!(m > 0) || !Number.isFinite(m)) return `(${formatNumber(v.x, digits)}, ${formatNumber(v.y, digits)})`;
-  // The first non-zero component positive, like the exact vectors.
-  const s = v.x < 0 || (v.x === 0 && v.y < 0) ? -1 : 1;
-  return `(${formatNumber((s * v.x) / m, digits)}, ${formatNumber((s * v.y) / m, digits)})`;
+  const ax = Math.abs(v.x);
+  const ay = Math.abs(v.y);
+  if (!(Math.max(ax, ay) > 0) || !Number.isFinite(ax + ay)) return `(${formatNumber(v.x, digits)}, ${formatNumber(v.y, digits)})`;
+  const k = ax >= 0.1 * ay ? v.x : v.y;
+  return `(${formatNumber(v.x / k, digits)}, ${formatNumber(v.y / k, digits)})`;
 }
 
 // ---- the exact derivation ---------------------------------------------------------------------

@@ -132,8 +132,8 @@ describe("snapping words", () => {
     const snap: Snap = { point: { x: 1, y: 2 }, target: { kind: "line", through: { x: 0, y: 0 }, direction: { x: 1 / Math.sqrt(5), y: 2 / Math.sqrt(5) }, eigenvalue: 3 }, distancePx: 2 };
     expect(snapHint(L, snap)).toBe("straight-line solution, λ = 3");
     const s = snapSentence(L, snap, "system");
-    // The direction scaled so its larger component is 1: (0.5, 1).
-    expect(s).toContain("(0.5, 1)");
+    // The direction scaled so its first component is 1, as the panel writes v₁ = (1, 2).
+    expect(s).toContain("(1, 2)");
     expect(s).toContain("straight away from the equilibrium");
   });
 
