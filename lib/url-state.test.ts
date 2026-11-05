@@ -672,3 +672,18 @@ describe("[12] equations the picture refuses only numerically travel in the link
     expect(decoded.problems).toEqual([{ param: "eq", reason: "invalidExpression" }]);
   });
 });
+
+describe("round 13: a snapped start keeps every digit", () => {
+  it("encodes a precise start as the shortest decimal of its double and reads it back as precise", () => {
+    // 1/√2 as a double prints 0.7071067811865476 (its shortest round-trip decimal); 6 digits would be 0.707107.
+    const start = { x: Math.SQRT1_2, y: -Math.SQRT1_2, precise: true } as { x: number; y: number };
+    const q = encodeState(withDefaults({ trajectoryStarts: [start, { x: Math.SQRT1_2, y: 1 }] }));
+    expect(q).toContain("traj=0.7071067811865476,-0.7071067811865476;0.707107,1");
+    const back = decodeState(q, D).state.trajectoryStarts;
+    expect(back[0]).toEqual({ x: Math.SQRT1_2, y: -Math.SQRT1_2, precise: true });
+    // The ordinary click's start stays the 6-digit value it was written as.
+    expect(back[1]).toEqual({ x: 0.707107, y: 1 });
+    // Encoding what was decoded gives the same link (the mark survives a round trip).
+    expect(encodeState(decodeState(q, D).state)).toBe(q);
+  });
+});

@@ -251,9 +251,27 @@ function formatExact(n: number): string {
   return String(n === 0 ? 0 : n);
 }
 
-/** Trajectory starts come from clicks: 6 significant digits keep the link readable (the curve is unchanged visibly). */
-function formatStart(n: number): string {
-  return String(n === 0 ? 0 : Number(n.toPrecision(6)));
+/**
+ * Trajectory starts come from clicks: 6 significant digits keep the link readable (the curve is
+ * unchanged visibly). Round 13: a start the pointer SNAPPED to an eigen-line or a separatrix is
+ * marked `precise` and keeps every digit (the shortest decimal that reads back as the same double):
+ * rounded to 6 digits it would lie off the line, and a solution on a saddle's stable line would
+ * visibly turn away near the saddle when the link is opened again.
+ */
+function formatStart(n: number, precise = false): string {
+  if (n === 0) return "0";
+  return precise ? String(n) : String(Number(n.toPrecision(6)));
+}
+
+/** A start read back from a link keeps its `precise` mark when its text had more digits than the 6 of an ordinary click. */
+function startOf(x: number, y: number): Vec2 {
+  const precise = Number(x.toPrecision(6)) !== x || Number(y.toPrecision(6)) !== y;
+  return precise ? ({ x, y, precise: true } as Vec2) : { x, y };
+}
+
+/** Whether a start carries the `precise` mark (a snapped start, lib/eigen). */
+export function isPreciseStart(p: Vec2): boolean {
+  return (p as { precise?: boolean }).precise === true;
 }
 
 /**
@@ -303,7 +321,7 @@ export function encodeState(state: AppState): string {
   if (state.density !== d.density) q.set("d", String(state.density));
   if (state.arrowMode !== d.arrowMode) q.set("arrows", state.arrowMode);
   if (state.snapshotT !== d.snapshotT && !horizontalIsT(state.mode)) q.set("t0", formatExact(state.snapshotT));
-  if (state.trajectoryStarts.length) q.set("traj", state.trajectoryStarts.map((p) => `${formatStart(p.x)},${formatStart(p.y)}`).join(";"));
+  if (state.trajectoryStarts.length) q.set("traj", state.trajectoryStarts.map((p) => `${formatStart(p.x, isPreciseStart(p))},${formatStart(p.y, isPreciseStart(p))}`).join(";"));
   // Round T: exact values (the shortest decimal that reads back as the same number), so the
   // picture a teacher links to is the picture the reader gets.
   if (state.params.length) q.set("p", state.params.map((e) => `${e.name}:${formatParamValue(e.value)}`).join(","));
@@ -360,7 +378,7 @@ function cloneState(s: AppState): AppState {
     ...s,
     box: { ...s.box },
     timeRange: { ...s.timeRange },
-    trajectoryStarts: s.trajectoryStarts.map((p) => ({ x: p.x, y: p.y })),
+    trajectoryStarts: s.trajectoryStarts.map((p) => (isPreciseStart(p) ? ({ x: p.x, y: p.y, precise: true } as Vec2) : { x: p.x, y: p.y })),
     params: s.params.map((e) => ({ ...e })),
     sliders: s.sliders.map((e) => ({ ...e })),
     aids: { ...s.aids },
@@ -555,7 +573,7 @@ export function decodeState(query: string | URLSearchParams, fallback: AppState)
         problem("traj", "tooMany");
         break;
       }
-      starts.push({ x: x.value as number, y: y.value as number });
+      starts.push(startOf(x.value as number, y.value as number));
     }
     state.trajectoryStarts = starts;
   }
