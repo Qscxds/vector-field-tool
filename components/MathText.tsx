@@ -16,7 +16,11 @@ export const MATH_STYLE = `
 .vf-math .vf-sum { display: inline-flex; flex-direction: column; vertical-align: middle; text-align: center; line-height: 1; margin: 0 2px; }
 .vf-math .vf-sum > span:first-child, .vf-math .vf-sum > span:last-child { font-size: 0.62em; }
 .vf-math .vf-sum > span:nth-child(2) { font-size: 1.35em; }
-.vf-math .vf-matrix { display: inline-grid; vertical-align: middle; margin: 0 3px; padding: 0 5px; column-gap: 0.9em; row-gap: 1px; border-left: 1px solid currentColor; border-right: 1px solid currentColor; border-radius: 3px; line-height: 1.2; text-align: right; }
+.vf-math .vf-matrix { position: relative; display: inline-block; vertical-align: middle; margin: 0 3px; padding: 1px 7px; }
+.vf-math .vf-matrix::before, .vf-math .vf-matrix::after { content: ""; position: absolute; top: 0; bottom: 0; width: 4px; border: 1px solid currentColor; }
+.vf-math .vf-matrix::before { left: 0; border-right: none; }
+.vf-math .vf-matrix::after { right: 0; border-left: none; }
+.vf-math .vf-matrix-grid { display: inline-grid; column-gap: 0.9em; row-gap: 1px; line-height: 1.2; text-align: right; }
 .vf-sr { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
 `;
 
@@ -38,11 +42,13 @@ export function MathText({ formula, className }: { formula: Formula; className?:
             );
           }
           if ("matrix" in r) {
-            // Round 13: a 2x2 matrix in brackets (cells are plain text).
+            // Round 13: a 2x2 matrix in square brackets (never bars, which would read as a determinant); cells are plain text.
             const columns = Math.max(1, ...r.matrix.map((row) => row.length));
             return (
-              <span key={i} className="vf-matrix" style={{ gridTemplateColumns: `repeat(${columns}, auto)` }}>
-                {r.matrix.flatMap((row, j) => row.map((cell, k) => <span key={`${j}-${k}`}>{cell}</span>))}
+              <span key={i} className="vf-matrix">
+                <span className="vf-matrix-grid" style={{ gridTemplateColumns: `repeat(${columns}, auto)` }}>
+                  {r.matrix.flatMap((row, j) => row.map((cell, k) => <span key={`${j}-${k}`}>{cell}</span>))}
+                </span>
               </span>
             );
           }
