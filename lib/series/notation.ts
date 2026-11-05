@@ -20,7 +20,9 @@ export type Run =
   | { readonly sub: string }
   | { readonly sup: string }
   | { readonly frac: readonly [string, string] }
-  | { readonly sum: readonly [string, string] };
+  | { readonly sum: readonly [string, string] }
+  /** Round 13: a matrix of plain-text cells (rows), drawn in brackets; plain text [[a, b], [c, d]]. */
+  | { readonly matrix: readonly (readonly string[])[] };
 export type Formula = readonly Run[];
 
 export const MINUS = "−";
@@ -121,11 +123,18 @@ export function plain(x: Formula): string {
       // bar and parentheses where a sum or a product of groups would otherwise bind wrongly.
       const text = isToken(a) && isToken(b) ? `${a}/${b}` : `${hasTopLevelSum(a) ? `(${a})` : a} / ${isToken(b) || isOneGroup(b) ? b : `(${b})`}`;
       out += multiplies ? `(${text})` : text;
+    } else if ("matrix" in r) {
+      out += `[${r.matrix.map((row) => `[${row.join(", ")}]`).join(", ")}]`;
     } else {
       out += `Σ_{${r.sum[0]}}^{${r.sum[1]}} `;
     }
   });
   return out;
+}
+
+/** Round 13: a matrix run (cells are plain text: plain() of each cell's formula). */
+export function matrix(rows: readonly (readonly Formula[])[]): Formula {
+  return [{ matrix: rows.map((row) => row.map((cell) => plain(cell))) }];
 }
 
 /** A token that needs no parentheses on either side of a fraction bar: "12", "√3", "aₙ", "n". */
