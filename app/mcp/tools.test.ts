@@ -658,7 +658,7 @@ describe("analyze_second_order", () => {
     expect(t.description).toMatch(/straight apostrophes/);
     expect(t.description).toMatch(/reduction/);
     const props = t.inputSchema.properties as Record<string, unknown>;
-    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "t", "xMin", "xMax", "xpMin", "xpMax"].sort());
+    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "showEigen", "t", "xMin", "xMax", "xpMin", "xpMax"].sort());
     expect(t.inputSchema.required).toContain("equation");
   });
 });
@@ -1630,7 +1630,7 @@ describe("[P1] second-order notation in the tools (the professor's correction: t
     const { tools } = await client.listTools();
     const t = tools.find((t) => t.name === "analyze_second_order")!;
     const props = t.inputSchema.properties as Record<string, { description?: string }>;
-    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "t", "xMax", "xMin", "xpMax", "xpMin"]);
+    expect(Object.keys(props).sort()).toEqual(["density", "equation", "locale", "params", "showEigen", "t", "xMax", "xMin", "xpMax", "xpMin"]);
     expect(props.xpMin.description).toMatch(/x' range/);
     expect(props.equation.description).toMatch(/F\(t, x, x'\)/);
     expect(props.equation.description).toMatch(/t is the independent variable/);
@@ -2038,5 +2038,47 @@ describe("[Z4] the tools' curve legs carry the kernel's clock (`times`, one per 
       expect(leg.times!.length).toBe(leg.points.length);
       expect(leg.times![0]).toBe(0);
     }
+  });
+});
+
+describe("round 13: the eigen block of analyze_system / analyze_second_order", () => {
+  // This file already makes about 240 tool calls in a minute: its own connection, as in [Z4].
+  let own: Client;
+  beforeAll(async () => {
+    own = await connect({ limiter: new SlidingWindowLimiter(10_000, 60_000) });
+  });
+  const call = (name: string, args: Record<string, unknown>) => callTool(name, args, own);
+  it("a linear system gets its exact analysis without asking", async () => {
+    // x' = x + y, y' = 4x + y: λ² − 2λ − 3 = 0, λ = 3, −1, v = (1, 2), (1, −2), a saddle.
+    const r = await call("analyze_system", { f: "x + y", g: "4*x + y", locale: "en" });
+    expect(r.isError).toBeFalsy();
+    expect(r.text).toContain("det(A − λI) = λ² − 2λ − 3 = 0");
+    expect(r.text).toContain("v₁ = (1, 2)");
+    expect(r.text).toContain("(x(t), y(t)) = c₁e³ᵗ (1, 2) + c₂e⁻ᵗ (1, −2)");
+    expect(r.scene.showEigen).toBeUndefined();
+  });
+
+  it("a nonlinear system gets the linearization only with showEigen, which also marks the scene", async () => {
+    // x' = x − x y, y' = x y − y: equilibria (0, 0) (a saddle, J = diag(1, −1)) and (1, 1).
+    const quiet = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "en" });
+    expect(quiet.text).not.toContain("Eigenvalues and eigenvectors");
+    const asked = await call("analyze_system", { f: "x - x*y", g: "x*y - y", xMin: -0.5, xMax: 3, yMin: -0.5, yMax: 3, locale: "en", showEigen: true });
+    expect(asked.scene.showEigen).toBe(true);
+    expect(asked.text).toContain("Eigenvalues and eigenvectors (linearization at each equilibrium, numerical)");
+    expect(asked.text).toContain("is not linear in x and y");
+    // At the saddle (0, 0) the eigenvectors are the axes: (1, 0) for λ = 1 and (0, 1) for λ = −1.
+    expect(asked.text).toMatch(/v₁ ≈ \(1, 0\) \(λ₁ ≈ 1\)/);
+  });
+
+  it("a second-order equation speaks of x(t) and of (x, x')", async () => {
+    // x'' + 3x' + 2x = 0: λ = −1, −2, x(t) = c₁e⁻ᵗ + c₂e⁻²ᵗ.
+    const r = await call("analyze_second_order", { equation: "x'' + 3*x' + 2*x = 0", locale: "zh" });
+    expect(r.text).toContain("x(t) = c₁e⁻ᵗ + c₂e⁻²ᵗ");
+    expect(r.text).toContain("(x, x') = (0, 0)");
+  });
+
+  it("a non-autonomous system gets no eigen block", async () => {
+    const r = await call("analyze_system", { f: "y", g: "-x + sin(t)", locale: "en", showEigen: true });
+    expect(r.text).not.toContain("Eigenvalues and eigenvectors");
   });
 });

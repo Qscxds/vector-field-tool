@@ -130,6 +130,17 @@ const calls = [
     { mode: "system", f: "0", g: "t", x0: 0, y0: 0, tSpan: 2, target: { kind: "t", value: 1 } },
     (r) => r.structuredContent?.query?.hits?.length === 1 && Math.abs(r.structuredContent.query.hits[0].y - 0.5) < 1e-6 && r.structuredContent.trajectories?.every((t) => t.status === "completed" && t.steps > 0),
   ],
+  // Round 13: a linear system gets its exact eigen-analysis in the summary; showEigen opens the widget's switch.
+  // x' = x + y, y' = 4x + y: λ² − 2λ − 3 = 0, λ = 3 and −1, v = (1, 2) and (1, −2), a saddle.
+  [
+    "analyze_system",
+    { f: "x + y", g: "4*x + y", showEigen: true },
+    (r) =>
+      r.structuredContent?.showEigen === true &&
+      /λ² − 2λ − 3 = 0/.test(r.content?.[0]?.text ?? "") &&
+      /v₁ = \(1, 2\)/.test(r.content?.[0]?.text ?? "") &&
+      /a saddle/.test(r.content?.[0]?.text ?? ""),
+  ],
   // Airy x'' - t x = 0: a_{n+2} = a_{n-1} / ((n+2)(n+1)), so a3 = a0 / 6; no singular point.
   [
     "power_series",
@@ -180,7 +191,7 @@ if (widget) {
   const csp = c?._meta?.ui?.csp ?? {};
   // The widget version (app/mcp/server.ts WIDGET_VERSION): a stale build would still answer with
   // the previous URI, and Claude caches the URI per connection (reconnect after a bump).
-  const WIDGET_VERSION = "z-1";
+  const WIDGET_VERSION = "z-2";
   check(`resources/list and resources/read carry the ${WIDGET_VERSION} widget URI`, widget.uri.endsWith(`?v=${WIDGET_VERSION}`) && c?.uri === widget.uri, `${widget.uri} / ${c?.uri}`);
   check("resources/read returns widget HTML", html.toLowerCase().startsWith("<!doctype html") && html.includes("<base href="), JSON.stringify(read.msg).slice(0, 300));
   check("resources/read CSP declares connect/resource/baseUri domains", ["connectDomains", "resourceDomains", "baseUriDomains"].every((k) => Array.isArray(csp[k]) && csp[k].length > 0), JSON.stringify(csp));

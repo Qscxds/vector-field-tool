@@ -31,6 +31,8 @@ import { statusSentence, trajectoryStatus } from "@/lib/labels-trajectory";
 import { constantSolutionLines, constantSolutionNotices, equilibriaNotices, fill, formatEigenvalue, formatNumber, formatPoint, labels, LOCALES, noConstantSentence, paramsSentence, pointText, timeDependenceEvidence, uniquenessSentence, withParams, type Locale } from "@/lib/labels";
 import { sceneParams } from "@/lib/params";
 import type { Scene, TrajectoryView } from "@/lib/scene";
+import { linearAnalysisOf, type EigenSource } from "@/lib/eigen/linear-system";
+import { eigenText } from "@/lib/labels-eigen";
 import { BudgetExceeded, makeCheckpoint } from "./budget";
 import { defaultLimiter, type SlidingWindowLimiter } from "./rate-limit";
 
@@ -98,6 +100,38 @@ const STRUCTURED_CONTENT_RULE =
   "quote `system`, which is the internal reduction. A uniqueness verdict \"bounded_at_tested_scales\" is a " +
   "measurement at the tested scales, never a proof of uniqueness: say nothing about uniqueness unless the text " +
   "says the Lipschitz condition fails.";
+
+/** Round 13: the eigen part of analyze_system / analyze_second_order. */
+const EIGEN_RULE =
+  "EIGENVALUES AND EIGENVECTORS: when the system (or equation) is linear with constant coefficients, the text " +
+  "summary ends with its EXACT eigen-analysis (matrix form, characteristic equation and discriminant, exact " +
+  "eigenvalues, eigenvectors, type, general solution): relay it as it stands, never recompute or round it. Set " +
+  "showEigen: true whenever the student asks about eigenvalues, eigenvectors, eigen-directions, straight-line " +
+  "solutions or the general solution of a linear system: the widget then opens with the eigen-directions drawn " +
+  "(the pointer snaps to them), and for a nonlinear system the summary also lists the eigenvectors of the " +
+  "linearization at each equilibrium found.";
+
+const showEigenSchema = z
+  .boolean()
+  .optional()
+  .describe("Round 13: open the widget with the eigenvalue panel and the eigen-directions on; for a nonlinear system also list the eigenvectors of the linearization in the summary. Default false.");
+
+/**
+ * Round 13: the summary's eigen block. A linear system with constant coefficients always gets its
+ * exact analysis; any other one only when `showEigen` asked (the linearization per equilibrium).
+ * A budget spent here drops this block only: the analysis above it is complete.
+ */
+function eigenBlock(source: EigenSource, scene: Scene, locale: Locale, checkpoint: () => void, showEigen: boolean): string[] {
+  if (scene.timeDependent) return [];
+  try {
+    const read = linearAnalysisOf(source, checkpoint);
+    if (!read.ok && !showEigen) return [];
+    return [eigenText(locale, { picture: source.mode, linear: read, equilibria: scene.equilibria })];
+  } catch (error) {
+    if (error instanceof BudgetExceeded) return [];
+    throw error;
+  }
+}
 
 const BOX_RULES =
   'The viewing box (xMin, xMax, yMin, yMax) must have xMin < xMax and yMin < yMax; defaults are -3..3.';
@@ -496,7 +530,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "of a critical point, eigenvalues of the linearization, or long-term behavior of a 2D autonomous system. " +
         "For a single first-order equation dy/dt = g(t, y) use analyze_first_order instead. " +
         NON_AUTONOMOUS_RULE + " " +
-        EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
+        EIGEN_RULE + " " + EXPRESSION_RULES + " " + BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         f: expression.describe("Right-hand side of x' (dx/dt)."),
         g: expression.describe("Right-hand side of y' (dy/dt)."),
@@ -505,6 +539,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         density: density.describe("Grid points per axis for the returned vector field (5..60)."),
         t: snapshotTime,
         locale: localeSchema,
+        showEigen: showEigenSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: ui,
@@ -514,7 +549,8 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const box = resolveBox(input);
         const spec: SystemSpec = input.params ? { f: input.f, g: input.g, params: input.params } : { f: input.f, g: input.g };
         const { scene, lines } = analyzePlanar(spec, box, input.density, input.locale, input.t, checkpoint);
-        return ok(lines.join("\n"), scene);
+        const eigen = eigenBlock({ mode: "system", f: input.f, g: input.g, params: input.params }, scene, input.locale, checkpoint, Boolean(input.showEigen));
+        return ok([...lines, ...eigen].join("\n"), input.showEigen ? { ...scene, showEigen: true } : scene);
       }),
   );
 
@@ -556,7 +592,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         "Allowed functions: sin cos tan asin acos atan atan2 sinh cosh tanh exp log ln log10 sqrt abs sign pow min max floor ceil round (ln and log are both the natural logarithm; log10 is base 10); " +
         'constants pi and e. Any other constant goes into "params" as a number (e.g. {"a": 0.5}) and is referenced by name (v is reserved). ' +
         FRACTIONAL_POWER_NOTE + " " +
-        SECOND_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
+        EIGEN_RULE + " " + SECOND_ORDER_BOX_RULES + " " + LOCALE_RULE + " " + NEVER_COMPUTE + " " + STRUCTURED_CONTENT_RULE,
       inputSchema: {
         equation: z
           .string()
@@ -569,6 +605,7 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         density: density.describe("Grid points per axis for the returned vector field (5..60)."),
         t: snapshotTime.describe("Snapshot time for a non-autonomous equation (t appears in F): the phase-plane field is sampled at this t. Ignored otherwise."),
         locale: localeSchema,
+        showEigen: showEigenSchema,
       },
       annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
       _meta: ui,
@@ -583,7 +620,9 @@ export function registerTools(server: McpServer, widgetUri: string, deps: ToolDe
         const { scene, lines } = analyzePlanar(reduced.spec, box, input.density, input.locale, input.t, checkpoint, second);
         // Round T: the equation line says which parameter values the picture was computed for.
         const reduction = fill(L.tool.secondOrderReduced, { equation: withParams(L, reduced.equation, sceneParams(scene)), g: reduced.reduced.g });
-        return ok([reduction, ...lines].join("\n"), scene);
+        // Round 13: the exact reading reuses this reduction (its sampling is not paid twice).
+        const eigen = eigenBlock({ mode: "second", equation: reduced.equation, params: input.params, reduction: { error: null, reduced } }, scene, input.locale, checkpoint, Boolean(input.showEigen));
+        return ok([reduction, ...lines, ...eigen].join("\n"), input.showEigen ? { ...scene, showEigen: true } : scene);
       }),
   );
 
