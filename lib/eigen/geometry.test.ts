@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import type { Equilibrium } from "../core/equilibria";
 import type { Separatrix } from "../phase-aids";
 import type { Viewport } from "../render/viewport";
-import { ARC_MAX_GROWTH, numericEigen, rotationAids, rotationArc, snapPoint, snapTargets, type SnapTarget } from "./geometry";
+import { ARC_MAX_GROWTH, branchExtent, numericEigen, rotationAids, rotationArc, snapPoint, snapTargets, type SnapTarget } from "./geometry";
 import { linearAnalysisOf, numericLinear } from "./linear-system";
 
 const V: Viewport = { box: { x: { min: -2, max: 2 }, y: { min: -2, max: 2 } }, width: 400, height: 400 };
@@ -63,27 +63,45 @@ describe("snapPoint on a separatrix branch", () => {
   it("re-integrates to the clock of the nearest point", () => {
     // (275, 206): the foot on (0.5, 0)–(1, 0) is halfway, clock 1.5, 6 px away.
     const asked: number[] = [];
-    const s = snapPoint([{ kind: "branch", branch, nearSaddleOnly: false }], { x: 275, y: 206 }, V, (_b, t) => {
+    const s = snapPoint([{ kind: "branch", branch, nearSaddleOnly: false, extent: 3 }], { x: 275, y: 206 }, V, (_b, t) => {
       asked.push(t);
       return { x: 0.77, y: 0.001 };
     });
     expect(asked).toEqual([1.5]);
     expect(s?.point).toEqual({ x: 0.77, y: 0.001 });
     // Without a locator: the polyline's own point.
-    expect(snapPoint([{ kind: "branch", branch, nearSaddleOnly: false }], { x: 275, y: 206 }, V)?.point).toEqual({ x: 0.75, y: 0 });
+    expect(snapPoint([{ kind: "branch", branch, nearSaddleOnly: false, extent: 3 }], { x: 275, y: 206 }, V)?.point).toEqual({ x: 0.75, y: 0 });
   });
 
   it("near the saddle only while the separatrices are not drawn", () => {
     // The foot (275, 200) is 75 px from the saddle (200, 200), beyond 44 px.
-    expect(snapPoint([{ kind: "branch", branch, nearSaddleOnly: true }], { x: 275, y: 206 }, V)).toBeNull();
+    expect(snapPoint([{ kind: "branch", branch, nearSaddleOnly: true, extent: 3 }], { x: 275, y: 206 }, V)).toBeNull();
     // (230, 206): foot (230, 200) on (0.01, 0)–(0.5, 0) at u = 29/49, 30 px from the saddle.
     const asked: number[] = [];
-    snapPoint([{ kind: "branch", branch, nearSaddleOnly: true }], { x: 230, y: 206 }, V, (_b, t) => {
+    snapPoint([{ kind: "branch", branch, nearSaddleOnly: true, extent: 3 }], { x: 230, y: 206 }, V, (_b, t) => {
       asked.push(t);
       return null;
     });
     expect(asked).toHaveLength(1);
     expect(asked[0]).toBeCloseTo(29 / 49, 12);
+  });
+});
+
+describe("branchExtent", () => {
+  it("cuts a branch where it first slows down after speeding up", () => {
+    // Clock steps of 1; chord speeds 1, 2, 3, 1, 4 on the segments points[1→2], …, points[5→6]: the
+    // first strict local minimum after the rise is the segment points[4→5] (speed 1). The branch keeps
+    // that slowest segment (its closest approach) and stops at its far end: the last index is 5.
+    const xs = [0, 0, 1, 3, 6, 7, 11];
+    const branch: Separatrix = { saddle: { x: 0, y: 0 }, kind: "unstable", points: xs.map((x) => ({ x, y: 0 })), status: "completed", start: { x: 0, y: 0 }, times: [0, 1, 2, 3, 4, 5] };
+    expect(branchExtent(branch)).toBe(5);
+  });
+
+  it("keeps a branch whole that slows down to its end (it runs into a sink)", () => {
+    // Speeds 4, 2, 1, 0.5: never rising, so never cut: the last index is 5.
+    const xs = [0, 0, 4, 6, 7, 7.5];
+    const branch: Separatrix = { saddle: { x: 0, y: 0 }, kind: "unstable", points: xs.map((x) => ({ x, y: 0 })), status: "completed", start: { x: 0, y: 0 }, times: [0, 1, 2, 3, 4] };
+    expect(branchExtent(branch)).toBe(5);
   });
 });
 

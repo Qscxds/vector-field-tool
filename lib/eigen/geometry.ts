@@ -119,14 +119,50 @@ export type SnapTarget =
   | { readonly kind: "line"; readonly through: Vec2; readonly direction: Vec2; readonly eigenvalue: number }
   /** A nonlinear node's eigen-direction: the drawn segment only, an approximation near the point. */
   | { readonly kind: "segment"; readonly at: Vec2; readonly direction: Vec2; readonly eigenvalue: number }
-  /** A nonlinear saddle's separatrix branch; `nearSaddleOnly` while the separatrices are not drawn (then only the part inside the drawn eigen segment). */
-  | { readonly kind: "branch"; readonly branch: Separatrix; readonly nearSaddleOnly: boolean };
+  /**
+   * A nonlinear saddle's separatrix branch, up to `extent` (branchExtent: where it first slows down
+   * near the next equilibrium); `nearSaddleOnly` while the separatrices are not drawn (then only the
+   * part inside the drawn eigen segment).
+   */
+  | { readonly kind: "branch"; readonly branch: Separatrix; readonly nearSaddleOnly: boolean; readonly extent: number };
 
 export type Snap = {
   readonly point: Vec2;
   readonly target: SnapTarget;
   readonly distancePx: number;
 };
+
+/**
+ * The last index of `branch.points` that still belongs to the separatrix as such. A branch is a
+ * long-time integration: after it reaches the next equilibrium (where the true separatrix ends,
+ * at infinite time) the numerical curve, never exactly on the manifold, leaves along another branch
+ * and may come back past its own saddle on a DIFFERENT separatrix (the pendulum's stable branch from
+ * (π, 0), traced backward, loops around (2π, 0) and returns along the unstable one). It is cut at the
+ * first strict local minimum of its speed (chord length over clock step, points[i] to points[i + 1])
+ * after the speed has risen: where it first slows down near another equilibrium, known or not. The
+ * slowest segment (the closest approach) is kept, so the returned index is that segment's far end.
+ * A branch that runs into a sink slows down to the end and is kept whole.
+ */
+export function branchExtent(branch: Separatrix): number {
+  const { points, times } = branch;
+  // points[i] (i ≥ 1) is at times[i − 1]; segment i runs from points[i] to points[i + 1].
+  const speed = (i: number) => {
+    const dt = Math.abs(times[i] - times[i - 1]);
+    return dt > 0 ? Math.hypot(points[i + 1].x - points[i].x, points[i + 1].y - points[i].y) / dt : NaN;
+  };
+  const last = points.length - 1;
+  let first = NaN;
+  let rose = false;
+  for (let i = 2; i + 1 < points.length; i++) {
+    const before = speed(i - 1);
+    const here = speed(i);
+    if (Number.isNaN(first)) first = before;
+    if (before > first) rose = true;
+    const after = i + 2 < points.length ? speed(i + 1) : Infinity;
+    if (rose && here < before && here <= after) return i + 1;
+  }
+  return last;
+}
 
 /** What the pointer may snap to (see the file header). `linear` is the exact analysis's geometry when the system is linear, else null. */
 export function snapTargets(linear: NumericLinear | null, equilibria: readonly Equilibrium[] | undefined, separatrices: readonly Separatrix[] | undefined, separatricesShown: boolean): SnapTarget[] {
@@ -135,7 +171,7 @@ export function snapTargets(linear: NumericLinear | null, equilibria: readonly E
   for (const e of equilibria ?? []) {
     if (e.classification === "saddle") {
       for (const branch of separatrices ?? []) {
-        if (branch.saddle.x === e.at.x && branch.saddle.y === e.at.y) out.push({ kind: "branch", branch, nearSaddleOnly: !separatricesShown });
+        if (branch.saddle.x === e.at.x && branch.saddle.y === e.at.y) out.push({ kind: "branch", branch, nearSaddleOnly: !separatricesShown, extent: branchExtent(branch) });
       }
     } else if (e.classification === "stable_node" || e.classification === "unstable_node" || e.classification === "degenerate_node") {
       for (const d of eigenDirections(e).directions) out.push({ kind: "segment", at: d.at, direction: d.direction, eigenvalue: d.eigenvalue });
@@ -196,7 +232,7 @@ export function snapPoint(
     // A separatrix branch: its polyline after the saddle, points[i + 1] at times[i].
     const { branch } = target;
     const saddle = worldToScreen(v, branch.saddle);
-    for (let i = 1; i + 1 < branch.points.length; i++) {
+    for (let i = 1; i < Math.min(target.extent, branch.points.length - 1); i++) {
       const a = worldToScreen(v, branch.points[i]);
       const b = worldToScreen(v, branch.points[i + 1]);
       const dx = b.x - a.x;
