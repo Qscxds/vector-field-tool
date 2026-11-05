@@ -60,10 +60,26 @@ parameters and results to explanations. The site is English by default; Chinese 
   classification live (expensive analyses are debounced, with the last results marked stale), so
   the stable spiral of the damped oscillator is seen to become a stable node at `b = w`, and the
   beats of `x'' = -x + F*cos(g*t)` grow as `g` approaches 1.
-- **Nullclines, eigen-directions, separatrices** (`aids=n,e,s` in the link, all off by default): the
+- **Nullclines, eigenvalues & eigen-directions, separatrices** (`aids=n,e,s` in the link, all off by default): the
   two nullcline families (the equilibria are where they cross), the eigen-directions of hyperbolic
-  equilibria with real eigenvalues (a degenerate node has one, complex eigenvalues have none) and the
-  four separatrix branches of every saddle, with a legend; told apart by line style, not hue alone.
+  equilibria with real eigenvalues (a degenerate node has one) and the four separatrix branches of
+  every saddle, with a legend; told apart by line style, not hue alone.
+- **Eigenvalues and eigenvectors** (the `e` switch, planar systems and second-order equations): a
+  section below the pictures. A linear system with constant coefficients (a constant-coefficient
+  second-order equation included) is read EXACTLY from the text (`lib/eigen`, on the exact
+  rationals of `lib/series`): matrix form, equilibrium, characteristic equation and discriminant,
+  eigenvalues (surds kept as √, complex pairs as α ± βi), whole-number eigenvectors (v = a + b·i for
+  a complex pair, a generalized eigenvector for a degenerate node), the type (an exact center is
+  called a center) and the general solution. Any other system is linearized at each equilibrium
+  found (numerically, the kernel's Jacobian); no equilibrium, a non-autonomous equation or a
+  first-order picture says why there is no eigenvalue. The picture draws a linear system's whole
+  eigen-lines (each is a solution) and, for complex eigenvalues, the arrows a, b and a piece of the
+  linearized orbit showing the sense of rotation (a closed ellipse only for an exact center).
+  **Snapping**: within 12 screen pixels of an eigen-line, of a saddle's separatrix (near the saddle,
+  or along the whole branch while separatrices are shown) or of a node's drawn segment, the preview
+  and the click start on it and a sentence says what was snapped to; Alt held: no snap. A snapped
+  start keeps all its digits in `traj`. The preset chapter "Linear systems and eigenvalues" opens
+  with the switch on.
 - **Lecture mode** (`lecture=1`, also on `/embed`): for projecting in class. Positions stay,
   evidence is hidden: the coordinates of equilibria and the values of constant solutions are shown
   to 3 significant digits, while eigenvalues, trace / determinant, deviations, thresholds and the
@@ -202,7 +218,10 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   `solution_formula` (the same inputs without `terms`: the split u = u_h + u_p of a
   constant-coefficient equation, characteristic roots, undetermined coefficients with resonance,
   the constants from the initial values and a check against the numerical solution), plus `ping`
-  for the transport. `power_series` and `solution_formula` are text tools: no widget, and their
+  for the transport. `analyze_system` and `analyze_second_order` end their text with the exact
+  eigen-analysis whenever the system is linear with constant coefficients; their optional
+  `showEigen` opens the widget with the eigen switch on (and, for a nonlinear system, lists the
+  eigenvectors of the linearization at each equilibrium). `power_series` and `solution_formula` are text tools: no widget, and their
   `structuredContent` is the same derivation as plain strings, not a Scene. Every description
   starts with the call-first rule ("call this tool before answering"); `query_solution`'s says that "value at a time" and "when does it reach" questions
   must call it and are never answered from a closed form. Every Scene in `structuredContent`
@@ -213,7 +232,7 @@ $env:BASE_URL = "https://xxxx.trycloudflare.com"; npm run dev     # PowerShell; 
   2 s budget, the rate limit) are always English: they are for the model.
 - Widget version: changing the widget means bumping `WIDGET_VERSION` in `app/mcp/server.ts`, and
   every user must **remove and re-add the connector** in Claude (it caches the widget resource address from when the connector was added; disconnecting and reconnecting is not enough; it caches the tool list with
-  the old resource URI; the widget silently goes blank otherwise). The current version is `z-1` (round Z4: the widget's solution graph, the three-way view switch and one color per kept curve in both pictures). Widget changes are batched: one bump per round at most, none unless the widget really changed. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
+  the old resource URI; the widget silently goes blank otherwise). The current version is `z-2` (round 13: the eigen switch, the eigen-directions, snapping and the eigenvalue section; `z-1`, round Z4, brought the widget's solution graph, the three-way view switch and one color per kept curve in both pictures). Widget changes are batched: one bump per round at most, none unless the widget really changed. Every bump also gets an entry in `lib/changelog.ts` (the home page's "What's new") whose `action` line tells users to remove and re-add the connector.
 - Say "use analyze_system on x' = x - x*y, y' = x*y - y" to see the phase-portrait widget; "dy/dt = y,
   y(0) = 1, what is y(2)?" should call `query_solution` and mark the hit in the widget; "find the
   power-series solution of x'' - t x = 0 about t = 0" should call `power_series` and relay its
