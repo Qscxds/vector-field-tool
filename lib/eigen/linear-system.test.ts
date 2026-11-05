@@ -3,8 +3,8 @@
  * (characteristic polynomial, discriminant, eigenvectors from (b, λ − a), equilibria from −A⁻¹ b).
  */
 import { describe, expect, it } from "vitest";
-import { q, type Q } from "../series/rational";
-import { analyzeLinear, linearAnalysisOf, numericLinear, readLinearSystem, squareFreeSplit, type FieldNumber, type LinearAnalysis } from "./linear-system";
+import { q, toNumber, type Q } from "../series/rational";
+import { analyzeLinear, centerByRounding, eigenvalueNumbers, linearAnalysisOf, numericLinear, readLinearSystem, squareFreeSplit, type FieldNumber, type LinearAnalysis } from "./linear-system";
 
 const B = (v: number) => BigInt(v);
 const fn = (r: Q, s: Q = q(0)): FieldNumber => ({ r, s });
@@ -184,11 +184,42 @@ describe("analyzeLinear: complex eigenvalues", () => {
     // sqrt(2)·sqrt(2) − 2 is the square of the double nearest √2 minus 2: about 4.4e-16, not 0.
     const a = analysis({ mode: "system", f: "sqrt(2)*sqrt(2)*x - 2*x + y", g: "-x" });
     expect(a.system.approximate).toBe(true);
-    expect(a.borderline).toContain("trace");
-    // π·y, −π·x: the two entries are the same double, the trace is exactly 0: a center, not borderline.
+    // A = [[s² − 2, 1], [−1, 0]] with s the double nearest √2: tr = s² − 2 ≠ 0, det = 1, disc = tr² − 4 < 0:
+    // a spiral, and rounding may be all that separates it from a center.
+    expect(a.borderline).toEqual([{ quantity: "trace", exactZero: false }]);
+    // π·y, −π·x: a = d = 0, the trace is 0 without any cancellation: a center, not borderline.
     const b = analysis({ mode: "system", f: "pi*y", g: "-pi*x" });
     expect(b.type).toBe("center");
     expect(b.borderline).toEqual([]);
+    expect(centerByRounding(b)).toBe(false);
+    expect(numericLinear(b).complex?.closed).toBe(true);
+  });
+
+  it("an exactly zero trace made by cancelling approximate terms is borderline too (second review)", () => {
+    // a = 1/10 (the literal 0.10000000000000000001 enters as its double, shortest decimal 0.1), d = −1/10:
+    // tr = 0 by cancellation, det = −1/100 + 1 = 99/100, disc = (1/5)² − 4 = −99/25 < 0: a center of this approximate system.
+    const a = analysis({ mode: "system", f: "0.10000000000000000001*x + y", g: "-x - 0.1*y" });
+    expect(a.type).toBe("center");
+    expect(a.borderline).toEqual([{ quantity: "trace", exactZero: true }]);
+    expect(centerByRounding(a)).toBe(true);
+    expect(numericLinear(a).complex?.closed).toBe(false);
+    // π x + y, −x − π y: the trace cancels too, but a saddle (det = −π² + 1 < 0) does not depend on it: not borderline.
+    const s = analysis({ mode: "system", f: "pi*x + y", g: "-x - pi*y" });
+    expect(s.type).toBe("saddle");
+    expect(s.borderline).toEqual([]);
+    // An exact system is never borderline: x' = x + 2y, y' = −x − y has tr = 0 exactly, a center for certain.
+    expect(analysis({ mode: "system", f: "x + 2*y", g: "-x - y" }).borderline).toEqual([]);
+  });
+
+  it("the decimals of two distinct eigenvalues never cancel (Vieta for the small one)", () => {
+    // λ = s ± √2 with s the double nearest √2 (see the labels test): the product is det A = s² − 2 > 0.
+    const a = analysis({ mode: "system", f: "sqrt(2)*x + 2*y", g: "x + sqrt(2)*y" });
+    const [l1, l2] = eigenvalueNumbers(a)!;
+    expect(l1).toBeCloseTo(2 * Math.SQRT2, 14);
+    expect(l2).toBeGreaterThan(0);
+    expect(l1 * l2).toBeCloseTo(toNumber(a.det), 30);
+    // Exact roots: 3 and −1 directly.
+    expect(eigenvalueNumbers(analysis({ mode: "system", f: "x + y", g: "4*x + y" }))).toEqual([3, -1]);
   });
 
   it("the equilibrium of a forced constant: x'' + x = 2 is (2, 0)", () => {
@@ -204,5 +235,30 @@ describe("analyzeLinear on a bare matrix", () => {
     expect(a.type).toBe("stable_node");
     expect(a.roots).toEqual({ kind: "distinct", values: [fn(q(-2)), fn(q(-4))] });
     expect(a.vectors).toEqual({ kind: "two", v: [[fn(q(1)), fn(q(1))], [fn(q(1)), fn(q(-1))]] });
+  });
+});
+
+describe("a budget can stop the exact reading (second review)", () => {
+  it("checks the budget often inside one large product of quasi-polynomials", () => {
+    // 111 characters that once ran 5–7 s inside a single product without calling the checkpoint
+    // (a hostile link with the eigen switch on). The checkpoint now runs before every term product:
+    // the longest gap between two calls stays far below the 500 ms budget of the web shell.
+    const F = "((1.2345678901234567+t)*(1.2345678901234567+exp(t)))^12*((9.876543210987654+t)*(9.876543210987654+exp(t)))^11*x";
+    const start = performance.now();
+    let last = start;
+    let gap = 0;
+    let stopped = false;
+    try {
+      linearAnalysisOf({ mode: "system", f: F, g: "y" }, () => {
+        const now = performance.now();
+        gap = Math.max(gap, now - last);
+        last = now;
+        if (now - start > 300) throw new RangeError("budget");
+      });
+    } catch (error) {
+      stopped = error instanceof RangeError;
+    }
+    expect(stopped).toBe(true);
+    expect(gap).toBeLessThan(250);
   });
 });

@@ -20,9 +20,11 @@
  *
  * Honesty: a coefficient that entered as the rational of a double (π, e, a function value, a literal
  * with more digits than a double holds) makes the system `approximate`; then a decisive quantity
- * (trace, determinant, discriminant) that is non-zero but within NEAR_ZERO_FRACTION of the matrix's
- * own scale is reported in `borderline`, because rounding to 16 digits may be all that separates,
- * say, a center from a slow spiral.
+ * (trace, determinant, discriminant) is reported in `borderline` when rounding to 16 digits may be
+ * all that separates, say, a center from a slow spiral: when it is non-zero but within
+ * NEAR_ZERO_FRACTION of the matrix's own scale, and when it is EXACTLY zero by a cancellation of
+ * non-zero terms (a + d = 0 with a, d ≠ 0; ad = bc ≠ 0; (a − d)² = −4bc ≠ 0), since the true
+ * coefficients may not cancel. A zero made of zero terms (π·y, −π·x: a = d = 0) is structural.
  */
 import { ParseError, parseValidated } from "../core/parse";
 import type { Vec2 } from "../core/types";
@@ -242,9 +244,15 @@ export type LinearAnalysis = {
   readonly equilibrium: ExactEquilibrium;
   /** Complex eigenvalues only: the sense of rotation in the (x, y) plane with y pointing up (counterclockwise iff c > 0). */
   readonly rotation?: "ccw" | "cw";
-  /** Approximate systems only: decisive quantities that are non-zero but within NEAR_ZERO_FRACTION of the scale. */
-  readonly borderline: readonly ("trace" | "det" | "disc")[];
+  /**
+   * Approximate systems only: the decisive quantities rounding may have decided. `exactZero`: it is
+   * exactly 0 by a cancellation of non-zero terms (else it is non-zero within NEAR_ZERO_FRACTION of
+   * the scale). A trace counts only where it decides the type (a complex pair, or det A = 0).
+   */
+  readonly borderline: readonly Borderline[];
 };
+
+export type Borderline = { readonly quantity: "trace" | "det" | "disc"; readonly exactZero: boolean };
 
 const field = (r: Q, s: Q = ZERO): FieldNumber => ({ r, s });
 
@@ -406,15 +414,52 @@ export function analyzeLinear(system: LinearSystemQ): LinearAnalysis {
   };
 }
 
-function borderlineOf(A: Mat2Q, trace: Q, det: Q, disc: Q): ("trace" | "det" | "disc")[] {
+function borderlineOf(A: Mat2Q, trace: Q, det: Q, disc: Q): Borderline[] {
+  const [[a, b], [c, d]] = A;
   const scale = Math.max(...A.flat().map((v) => Math.abs(toNumber(v))));
   if (!(scale > 0) || !Number.isFinite(scale)) return [];
   const near = (v: Q, power: number) => !isZero(v) && Math.abs(toNumber(v)) <= NEAR_ZERO_FRACTION * scale ** power;
-  const out: ("trace" | "det" | "disc")[] = [];
-  if (near(trace, 1)) out.push("trace");
-  if (near(det, 2)) out.push("det");
-  if (near(disc, 2)) out.push("disc");
+  const amd = sub(a, d);
+  const bc = mul(b, c);
+  // Exactly 0, but only because two non-zero terms cancelled.
+  const cancelled = {
+    trace: isZero(trace) && !isZero(a),
+    det: isZero(det) && !isZero(mul(a, d)) && !isZero(bc),
+    disc: isZero(disc) && !isZero(amd) && !isZero(bc),
+  };
+  const out: Borderline[] = [];
+  // The trace decides the type only for a complex pair (center or spiral) or a zero eigenvalue (0 or tr A).
+  const traceDecides = sign(disc) < 0 || isZero(det);
+  if (near(trace, 1) || (cancelled.trace && traceDecides)) out.push({ quantity: "trace", exactZero: isZero(trace) });
+  if (near(det, 2) || cancelled.det) out.push({ quantity: "det", exactZero: isZero(det) });
+  if (near(disc, 2) || cancelled.disc) out.push({ quantity: "disc", exactZero: isZero(disc) });
   return out;
+}
+
+/**
+ * Whether the analysis is a center only because rounding to 16 digits cancelled the trace exactly
+ * (then the picture draws an open arc and no sentence certifies a center).
+ */
+export function centerByRounding(an: LinearAnalysis): boolean {
+  return an.type === "center" && an.borderline.some((x) => x.quantity === "trace" && x.exactZero);
+}
+
+/**
+ * The two distinct eigenvalues as doubles without cancellation: r + s√m directly for the one whose
+ * two parts have the same sign (or one part zero), the other from Vieta's λ₁λ₂ = det A. r − s√m with
+ * r ≈ s√m (an approximate coefficient: 1.41421… − √2) would otherwise print as 0.
+ */
+export function eigenvalueNumbers(an: LinearAnalysis): readonly [number, number] | null {
+  if (an.roots.kind !== "distinct") return null;
+  const values = an.roots.values;
+  const direct = values.map((v) => fieldNumberValue(v, an.radical));
+  if (an.radical === null) return [direct[0], direct[1]];
+  const stable = values.map((v) => isZero(v.r) || isZero(v.s) || sign(v.r) === sign(v.s));
+  if (stable[0] && stable[1]) return [direct[0], direct[1]];
+  const big = stable[0] ? 0 : 1;
+  const other = toNumber(an.det) / direct[big];
+  if (!Number.isFinite(other)) return [direct[0], direct[1]];
+  return big === 0 ? [direct[0], other] : [other, direct[1]];
 }
 
 /** The analysis of a source, or why there is none. */
@@ -431,7 +476,7 @@ export type NumericLinear = {
   readonly at: Vec2 | null;
   /** The invariant straight lines through `at` (two for a saddle or node, one for a degenerate node): unit directions and their eigenvalues. */
   readonly lines: readonly { readonly direction: Vec2; readonly eigenvalue: number }[];
-  /** Complex eigenvalues: Re v and Im v as doubles (v the eigenvector of α + iβ), α, β and the sense of rotation; `closed` for an exact center. */
+  /** Complex eigenvalues: Re ξ and Im ξ as doubles (ξ the eigenvector of α + iβ), α, β and the sense of rotation; `closed` for an exact center (never one that rounding made). */
   readonly complex: { readonly re: Vec2; readonly im: Vec2; readonly alpha: number; readonly beta: number; readonly ccw: boolean; readonly closed: boolean } | null;
 };
 
@@ -446,10 +491,11 @@ export function numericLinear(an: LinearAnalysis): NumericLinear {
   // Only a single equilibrium has straight-line solutions worth drawing: a line of equilibria has
   // one through every point, the whole plane and "none" have none to anchor.
   if (at && an.type !== "zero_eigenvalue") {
-    if (an.vectors.kind === "two" && an.roots.kind === "distinct") {
+    const values = eigenvalueNumbers(an);
+    if (an.vectors.kind === "two" && values) {
       an.vectors.v.forEach((v, i) => {
         const direction = unit({ x: fieldNumberValue(v[0], an.radical), y: fieldNumberValue(v[1], an.radical) });
-        if (direction) lines.push({ direction, eigenvalue: fieldNumberValue((an.roots as { values: readonly [FieldNumber, FieldNumber] }).values[i], an.radical) });
+        if (direction) lines.push({ direction, eigenvalue: values[i] });
       });
     } else if (an.vectors.kind === "one" && an.roots.kind === "repeated") {
       const direction = unit({ x: toNumber(an.vectors.v[0]), y: toNumber(an.vectors.v[1]) });
@@ -465,7 +511,7 @@ export function numericLinear(an: LinearAnalysis): NumericLinear {
       alpha: toNumber(an.roots.alpha),
       beta: toNumber(an.roots.beta) * root,
       ccw: an.rotation === "ccw",
-      closed: an.type === "center",
+      closed: an.type === "center" && !centerByRounding(an),
     };
   }
   return { at, lines, complex };

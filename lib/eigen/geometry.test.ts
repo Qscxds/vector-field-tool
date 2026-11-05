@@ -88,13 +88,21 @@ describe("snapPoint on a separatrix branch", () => {
 });
 
 describe("branchExtent", () => {
-  it("cuts a branch where it first slows down after speeding up", () => {
-    // Clock steps of 1; chord speeds 1, 2, 3, 1, 4 on the segments points[1→2], …, points[5→6]: the
-    // first strict local minimum after the rise is the segment points[4→5] (speed 1). The branch keeps
-    // that slowest segment (its closest approach) and stops at its far end: the last index is 5.
-    const xs = [0, 0, 1, 3, 6, 7, 11];
+  it("cuts a branch where it first nearly stops after speeding up", () => {
+    // Clock steps of 1; chord speeds 1, 2, 3, 0.2, 4 on the segments points[1→2], …, points[5→6]: the
+    // first strict local minimum after the rise is the segment points[4→5], speed 0.2 ≤ 0.1 · 3 (the
+    // fastest before it). The branch keeps that slowest segment (its closest approach) and stops at
+    // its far end: the last index is 5.
+    const xs = [0, 0, 1, 3, 6, 6.2, 10.2];
     const branch: Separatrix = { saddle: { x: 0, y: 0 }, kind: "unstable", points: xs.map((x) => ({ x, y: 0 })), status: "completed", start: { x: 0, y: 0 }, times: [0, 1, 2, 3, 4, 5] };
     expect(branchExtent(branch)).toBe(5);
+  });
+
+  it("does not cut at a shallow dip (a curve passing a center, not an equilibrium)", () => {
+    // Speeds 1, 2, 3, 1, 4: the local minimum 1 is more than 0.1 · 3 = 0.3, so the branch is kept whole: index 6.
+    const xs = [0, 0, 1, 3, 6, 7, 11];
+    const branch: Separatrix = { saddle: { x: 0, y: 0 }, kind: "unstable", points: xs.map((x) => ({ x, y: 0 })), status: "completed", start: { x: 0, y: 0 }, times: [0, 1, 2, 3, 4, 5] };
+    expect(branchExtent(branch)).toBe(6);
   });
 
   it("keeps a branch whole that slows down to its end (it runs into a sink)", () => {
@@ -162,5 +170,29 @@ describe("numericEigen and the rotation picture", () => {
     const aids = rotationAids(numericLinear(r.analysis), undefined);
     expect(aids).toHaveLength(1);
     expect(aids[0]).toMatchObject({ at: { x: 0, y: 0 }, closed: true, exact: true, alpha: 0, beta: 1 });
+  });
+});
+
+describe("branchExtent on a real separatrix (second review)", () => {
+  it("keeps the whole homoclinic loop of x'' = x − x³, not half of it", async () => {
+    // x' = y, y' = x − x³: the saddle (0, 0) and the loop y² = x² − x⁴/2, which turns at x = √2 ≈ 1.414
+    // (y = 0) and comes back to the saddle. Its speed dips a little as it passes the center (1, 0), at
+    // about 0.7 of the speed before; it nearly stops only back at the saddle.
+    const { compileSystem } = await import("../core/parse");
+    const { computeFeatures, fixedStopBox } = await import("../interactive");
+    const { separatrices } = await import("../phase-aids");
+    const box = { x: { min: -2, max: 2 }, y: { min: -1.5, max: 1.5 } };
+    const sys = compileSystem({ f: "y", g: "x - x^3" });
+    const features = computeFeatures(sys, null, box, "en", {});
+    const branches = separatrices(sys, features.equilibria ?? [], box, fixedStopBox(box));
+    expect(branches.length).toBe(4);
+    for (const b of branches) {
+      const kept = b.points.slice(0, branchExtent(b) + 1);
+      // It reaches the turning point x = ±√2 …
+      expect(Math.max(...kept.map((p) => Math.abs(p.x)))).toBeGreaterThan(1.41);
+      // … and ends back near the saddle.
+      const end = kept[kept.length - 1];
+      expect(Math.hypot(end.x, end.y)).toBeLessThan(0.05);
+    }
   });
 });

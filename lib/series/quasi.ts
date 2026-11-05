@@ -91,10 +91,18 @@ export function qpNeg(a: QuasiPoly): QuasiPoly {
 export function qpSub(a: QuasiPoly, b: QuasiPoly): QuasiPoly {
   return qpAdd(a, qpNeg(b));
 }
-export function qpMul(a: QuasiPoly, b: QuasiPoly): QuasiPoly {
+/**
+ * The product. `checkpoint` (round 13, the second review: one product of two large quasi-polynomials
+ * from a hostile link ran for seconds between two checks of the caller's budget) is called before
+ * every term product, so a budget stops it within one term.
+ */
+export function qpMul(a: QuasiPoly, b: QuasiPoly, checkpoint?: () => void): QuasiPoly {
   let out: QuasiPoly = QP_ZERO;
   for (const s of a.values()) {
-    for (const t of b.values()) out = qpAdd(out, single(cadd(s.lambda, t.lambda), cpMul(s.coef, t.coef)));
+    for (const t of b.values()) {
+      checkpoint?.();
+      out = qpAdd(out, single(cadd(s.lambda, t.lambda), cpMul(s.coef, t.coef)));
+    }
   }
   return out;
 }
@@ -105,8 +113,8 @@ export function qpScale(a: QuasiPoly, c: CQ): QuasiPoly {
   return out;
 }
 /** Multiplication by a real polynomial. */
-export function qpMulPoly(a: QuasiPoly, p: Poly): QuasiPoly {
-  return qpMul(a, qpPoly(p));
+export function qpMulPoly(a: QuasiPoly, p: Poly, checkpoint?: () => void): QuasiPoly {
+  return qpMul(a, qpPoly(p), checkpoint);
 }
 /** The real polynomial when the quasi-polynomial is one (only lambda = 0, real coefficients); else null. */
 export function asPolynomial(a: QuasiPoly): Poly | null {

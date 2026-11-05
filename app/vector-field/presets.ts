@@ -322,34 +322,34 @@ export const PRESETS: Preset[] = [
   },
   {
     id: "eigen-affine", group: "eigen", mode: "system", name: { zh: "平衡点不在原点 x' = x + y − 3, y' = x − y − 1", en: "Equilibrium off the origin x' = x + y − 3, y' = x − y − 1" },
-    // A = [[1, 1], [1, −1]], b = (−3, −1): det −2, p* = −A⁻¹ b = (2, 1); disc 4 + 4 = 8: λ = ±√2, v = (1, −1 ± √2).
+    // A = [[1, 1], [1, −1]], b = (−3, −1): det −2, p* = −A⁻¹ b = (2, 1); disc 4 + 4 = 8: λ = ±√2, ξ = (1, −1 ± √2).
     expressions: { f: "x + y - 3", g: "x - y - 1" }, box: { xMin: -1, xMax: 5, yMin: -2, yMax: 4 }, aids: { eigenDirections: true },
     note: {
-      zh: "先解 A·p = −b 得平衡点 (2, 1)；特征值 ±√2，特征向量 (1, −1 ± √2)。两条直线解穿过 (2, 1)，通解是 (2, 1) 加上两个指数项。",
-      en: "Solving A·p = −b gives the equilibrium (2, 1); the eigenvalues are ±√2 with eigenvectors (1, −1 ± √2). Both straight-line solutions pass through (2, 1), and the general solution is (2, 1) plus two exponential terms.",
+      zh: "令 x' = 0、y' = 0 解出平衡点 (2, 1)；特征值 ±√2，特征向量 (1, −1 ± √2)。两条直线解穿过 (2, 1)，通解是 (2, 1) 加上两个指数项。",
+      en: "Setting x' = 0, y' = 0 gives the equilibrium (2, 1); the eigenvalues are ±√2 with eigenvectors (1, −1 ± √2). Both straight-line solutions pass through (2, 1), and the general solution is (2, 1) plus two exponential terms.",
     },
   },
   {
     id: "eigen-degenerate", group: "eigen", mode: "system", name: { zh: "退化结点 x' = −x + y, y' = −y", en: "Degenerate node x' = −x + y, y' = −y" },
-    // A = [[−1, 1], [0, −1]]: disc 0, λ = −1 twice; v = (b, λ − a) = (1, 0); (A + I) w = v: w = (0, 1).
+    // A = [[−1, 1], [0, −1]]: disc 0, λ = −1 twice; ξ = (b, λ − a) = (1, 0); (A + I) η = ξ: η = (0, 1).
     expressions: { f: "-x + y", g: "-y" }, box: sq(3), starts: [{ x: 2, y: 0 }, { x: -2, y: 1 }, { x: 1, y: -2 }], aids: { eigenDirections: true },
     note: {
-      zh: "特征值 −1 是二重根，却只有一个特征方向 (1, 0)：这正是退化结点。广义特征向量 w = (0, 1) 给出通解里的 t·e⁻ᵗ 项；x 轴是唯一的直线解，其他解都沿 x 轴方向进入原点。",
-      en: "The eigenvalue −1 is repeated but has only one eigen-direction, (1, 0): exactly what makes a node degenerate. The generalized eigenvector w = (0, 1) gives the t·e⁻ᵗ term of the general solution; the x-axis is the only straight-line solution, and every other solution enters the origin along it.",
+      zh: "特征值 −1 是二重根，却只有一个特征方向 (1, 0)：这正是退化结点。广义特征向量 η = (0, 1) 给出通解里的 t·e⁻ᵗ 项；x 轴是唯一的直线解，其他解都沿 x 轴方向进入原点。",
+      en: "The eigenvalue −1 is repeated but has only one eigen-direction, (1, 0): exactly what makes a node degenerate. The generalized eigenvector η = (0, 1) gives the t·e⁻ᵗ term of the general solution; the x-axis is the only straight-line solution, and every other solution enters the origin along it.",
     },
   },
   {
     id: "eigen-spiral", group: "eigen", mode: "system", name: { zh: "螺旋点 x' = −x + 2y, y' = −2x − y", en: "Spiral x' = −x + 2y, y' = −2x − y" },
-    // A = [[−1, 2], [−2, −1]]: tr −2, det 5, disc −16: λ = −1 ± 2i; v = (4, 0 + 4i) ∝ (1, i): a = (1, 0), b = (0, 1); c = −2 < 0: clockwise.
+    // A = [[−1, 2], [−2, −1]]: tr −2, det 5, disc −16: λ = −1 ± 2i; ξ = (4, 0 + 4i) ∝ (1, i): Re ξ = (1, 0), Im ξ = (0, 1); c = −2 < 0: clockwise.
     expressions: { f: "-x + 2*y", g: "-2*x - y" }, box: sq(3), starts: [{ x: 2.5, y: 0 }], aids: { eigenDirections: true },
     note: {
-      zh: "特征值 −1 ± 2i：实部 −1 让解衰减，虚部 2 让它旋转（顺时针）。没有实的特征方向；画面在原点画出特征向量 v = (1, i) 的实部 a = (1, 0)、虚部 b = (0, 1) 和一段向里的螺线。",
-      en: "Eigenvalues −1 ± 2i: the real part −1 makes solutions decay, the imaginary part 2 makes them turn (clockwise). There is no real eigen-direction; the picture shows the real part a = (1, 0) and the imaginary part b = (0, 1) of the eigenvector v = (1, i), and a piece of spiral going in.",
+      zh: "特征值 −1 ± 2i：实部 −1 让解衰减，虚部 2 让它旋转（顺时针）。没有实的特征方向；画面在原点画出特征向量 ξ = (1, i) 的实部 Re ξ = (1, 0)、虚部 Im ξ = (0, 1) 和一段向里的螺线。",
+      en: "Eigenvalues −1 ± 2i: the real part −1 makes solutions decay, the imaginary part 2 makes them turn (clockwise). There is no real eigen-direction; the picture shows the real part Re ξ = (1, 0) and the imaginary part Im ξ = (0, 1) of the eigenvector ξ = (1, i), and a piece of spiral going in.",
     },
   },
   {
     id: "eigen-center", group: "eigen", mode: "system", name: { zh: "中心 x' = x + 2y, y' = −x − y", en: "Center x' = x + 2y, y' = −x − y" },
-    // A = [[1, 2], [−1, −1]]: tr 0, det 1, disc 4 − 8 = −4: λ = ±i; v = (4, −2 + 2i) ∝ (2, −1 + i); c = −1: clockwise.
+    // A = [[1, 2], [−1, −1]]: tr 0, det 1, disc 4 − 8 = −4: λ = ±i; ξ = (4, −2 + 2i) ∝ (2, −1 + i); c = −1: clockwise.
     expressions: { f: "x + 2*y", g: "-x - y" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }], aids: { eigenDirections: true },
     note: {
       zh: "tr A = 0、det A = 1，特征值 ±i 是纯虚数：这个线性系统精确地是中心，轨线是闭合的斜椭圆（顺时针）。上面的平衡点列表是数值判断，只能说「中心或弱螺旋」；面板解释了为什么这里可以确定是中心。",

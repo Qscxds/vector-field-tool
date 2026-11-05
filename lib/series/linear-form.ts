@@ -201,8 +201,8 @@ function addForms(a: LinearForm, b: LinearForm): LinearForm {
   const g = pgcd(a.den, b.den);
   const fa = pexactDiv(b.den, g);
   const fb = pexactDiv(a.den, g);
-  const u = a.u.map((v, j) => qpAdd(qpMulPoly(v, fa), qpMulPoly(b.u[j], fb)));
-  const f = qpAdd(qpMulPoly(a.free, fa), qpMulPoly(b.free, fb));
+  const u = a.u.map((v, j) => qpAdd(qpMulPoly(v, fa, activeCheckpoint), qpMulPoly(b.u[j], fb, activeCheckpoint)));
+  const f = qpAdd(qpMulPoly(a.free, fa, activeCheckpoint), qpMulPoly(b.free, fb, activeCheckpoint));
   return normalize(u, f, pmul(a.den, fa), a.approximate || b.approximate);
 }
 function negForm(a: LinearForm): LinearForm {
@@ -211,7 +211,7 @@ function negForm(a: LinearForm): LinearForm {
 function mulForms(a: LinearForm, b: LinearForm, node: MathNode): LinearForm {
   if (hasUnknown(a) && hasUnknown(b)) throw new LinearFormError("nonlinear", node.toString());
   const [withU, other] = hasUnknown(b) ? [b, a] : [a, b];
-  const { u, free: f } = mapNumerators(withU, (v) => qpMul(v, other.free));
+  const { u, free: f } = mapNumerators(withU, (v) => qpMul(v, other.free, activeCheckpoint));
   return normalize(u, f, pmul(a.den, b.den), a.approximate || b.approximate);
 }
 function divForms(a: LinearForm, b: LinearForm, node: MathNode): LinearForm {
@@ -219,14 +219,14 @@ function divForms(a: LinearForm, b: LinearForm, node: MathNode): LinearForm {
   const poly = asPolynomial(b.free);
   if (poly !== null) {
     if (pIsZero(poly)) throw new LinearFormError("divisionByZero", node.toString());
-    const { u, free: f } = mapNumerators(a, (v) => qpMulPoly(v, b.den));
+    const { u, free: f } = mapNumerators(a, (v) => qpMulPoly(v, b.den, activeCheckpoint));
     return normalize(u, f, pmul(a.den, poly), a.approximate || b.approximate);
   }
   const mono = asExponentialMonomial(b.free);
   if (mono !== null) {
     // a / (c e^(l t) / D) = a * D * (1/c) e^(-l t)
     const factor = qpScale(qpExp({ re: qneg(mono.lambda.re), im: qneg(mono.lambda.im) }), invC(mono.c));
-    const { u, free: f } = mapNumerators(a, (v) => qpMulPoly(qpMul(v, factor), b.den));
+    const { u, free: f } = mapNumerators(a, (v) => qpMulPoly(qpMul(v, factor, activeCheckpoint), b.den, activeCheckpoint));
     return normalize(u, f, a.den, a.approximate || b.approximate);
   }
   throw new LinearFormError("divisionByNonPolynomial", node.toString());

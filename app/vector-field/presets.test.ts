@@ -593,12 +593,12 @@ describe("[12] the series chapter: presets that open the power series or the sol
 describe("round 13: the eigen chapter says what the exact analysis gives", () => {
   // Each expectation is the hand computation written above the preset in presets.ts.
   const expected: Record<string, { type: string; eigen: string; vectors: string }> = {
-    "eigen-saddle": { type: "saddle", eigen: "λ₁ = 3|λ₂ = −1", vectors: "v₁ = (1, 2)|v₂ = (1, −2)" },
-    "eigen-irrational": { type: "saddle", eigen: "λ₁ = 1/2 + √5/2|λ₂ = 1/2 − √5/2", vectors: "v₁ = (2, −1 + √5)|v₂ = (2, −1 − √5)" },
-    "eigen-affine": { type: "saddle", eigen: "λ₁ = √2|λ₂ = −√2", vectors: "v₁ = (1, −1 + √2)|v₂ = (1, −1 − √2)" },
-    "eigen-degenerate": { type: "stable_degenerate", eigen: "λ₁ = λ₂ = −1", vectors: "v = (1, 0)|w = (0, 1)" },
-    "eigen-spiral": { type: "stable_spiral", eigen: "λ = −1 ± 2i", vectors: "v = (1, i)" },
-    "eigen-center": { type: "center", eigen: "λ = ± i", vectors: "v = (2, −1 + i)" },
+    "eigen-saddle": { type: "saddle", eigen: "λ₁ = 3|λ₂ = −1", vectors: "ξ₁ = (1, 2)|ξ₂ = (1, −2)" },
+    "eigen-irrational": { type: "saddle", eigen: "λ₁ = 1/2 + √5/2|λ₂ = 1/2 − √5/2", vectors: "ξ₁ = (2, −1 + √5)|ξ₂ = (2, −1 − √5)" },
+    "eigen-affine": { type: "saddle", eigen: "λ₁ = √2|λ₂ = −√2", vectors: "ξ₁ = (1, −1 + √2)|ξ₂ = (1, −1 − √2)" },
+    "eigen-degenerate": { type: "stable_degenerate", eigen: "λ₁ = λ₂ = −1", vectors: "ξ = (1, 0)|η = (0, 1)" },
+    "eigen-spiral": { type: "stable_spiral", eigen: "λ = −1 ± 2i", vectors: "ξ = (1, i)" },
+    "eigen-center": { type: "center", eigen: "λ = ± i", vectors: "ξ = (2, −1 + i)" },
   };
   const chapter = PRESETS.filter((p) => p.group === "eigen");
 

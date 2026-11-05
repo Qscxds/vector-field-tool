@@ -139,9 +139,12 @@ export type Snap = {
  * and may come back past its own saddle on a DIFFERENT separatrix (the pendulum's stable branch from
  * (π, 0), traced backward, loops around (2π, 0) and returns along the unstable one). It is cut at the
  * first strict local minimum of its speed (chord length over clock step, points[i] to points[i + 1])
- * after the speed has risen: where it first slows down near another equilibrium, known or not. The
- * slowest segment (the closest approach) is kept, so the returned index is that segment's far end.
- * A branch that runs into a sink slows down to the end and is kept whole.
+ * after the speed has risen, and only a DEEP one, at most BRANCH_SLOW_FRACTION of the fastest speed
+ * so far: where it first nearly stops near another equilibrium (or back at its own saddle), known or
+ * not. A shallow dip is not an equilibrium: the homoclinic loop of x'' = x − x³ slows a little as it
+ * passes over the center (1, 0), and was cut there halfway round (the second review). The slowest
+ * segment (the closest approach) is kept, so the returned index is that segment's far end. A branch
+ * that runs into a sink slows down to the end and is kept whole.
  */
 export function branchExtent(branch: Separatrix): number {
   const { points, times } = branch;
@@ -152,17 +155,26 @@ export function branchExtent(branch: Separatrix): number {
   };
   const last = points.length - 1;
   let first = NaN;
+  let fastest = 0;
   let rose = false;
   for (let i = 2; i + 1 < points.length; i++) {
     const before = speed(i - 1);
     const here = speed(i);
     if (Number.isNaN(first)) first = before;
     if (before > first) rose = true;
+    if (before > fastest) fastest = before;
     const after = i + 2 < points.length ? speed(i + 1) : Infinity;
-    if (rose && here < before && here <= after) return i + 1;
+    if (rose && here < before && here <= after && here <= BRANCH_SLOW_FRACTION * fastest) return i + 1;
   }
   return last;
 }
+
+/**
+ * The depth of a slowdown that ends a separatrix branch for snapping (branchExtent): its speed at most
+ * this fraction of the fastest speed before it. Near an equilibrium the speed tends to 0; a passing
+ * dip (a curve skirting a center) stays a sizable fraction of it.
+ */
+export const BRANCH_SLOW_FRACTION = 0.1;
 
 /** What the pointer may snap to (see the file header). `linear` is the exact analysis's geometry when the system is linear, else null. */
 export function snapTargets(linear: NumericLinear | null, equilibria: readonly Equilibrium[] | undefined, separatrices: readonly Separatrix[] | undefined, separatricesShown: boolean): SnapTarget[] {
