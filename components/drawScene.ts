@@ -229,8 +229,8 @@ function drawEigenLines(ctx: CanvasRenderingContext2D, v: Viewport, lines: reado
 }
 
 /**
- * Round 13: a complex pair at an equilibrium. The arrows a = Re v and b = Im v from the point (thin,
- * labelled a and b), and the linearized flow through the tip of a as an arc with an arrow head where
+ * Round 13: a complex pair at an equilibrium. The arrows Re ξ and Im ξ from the point (thin, labelled
+ * so: ξ is the eigenvector of α + iβ, never a letter of the student's), and the linearized flow through the tip of a as an arc with an arrow head where
  * time runs: a closed ellipse only for an exact center of a linear system, otherwise an open arc
  * (lib/eigen rotationArc), never a closed curve that would claim a center.
  */
@@ -245,7 +245,7 @@ function drawRotations(ctx: CanvasRenderingContext2D, v: Viewport, rotations: re
     ctx.setLineDash([]);
     // The two parts of the eigenvector.
     ctx.lineWidth = 1.2;
-    for (const [tip, name] of [[arc.reTip, "a"], [arc.imTip, "b"]] as const) {
+    for (const [tip, name] of [[arc.reTip, "Re ξ"], [arc.imTip, "Im ξ"]] as const) {
       const t = worldToScreen(v, tip);
       if (Math.hypot(t.x - c.x, t.y - c.y) < 4) continue;
       ctx.beginPath();
@@ -266,10 +266,12 @@ function drawRotations(ctx: CanvasRenderingContext2D, v: Viewport, rotations: re
       ctx.textBaseline = "middle";
       const ux = (t.x - c.x) / Math.hypot(t.x - c.x, t.y - c.y);
       const uy = (t.y - c.y) / Math.hypot(t.x - c.x, t.y - c.y);
+      // Beyond the arrow head by half the label's extent along the arrow (the label is centered).
+      const gap = 7 + (Math.abs(ux) * ctx.measureText(name).width) / 2 + Math.abs(uy) * 5;
       ctx.lineWidth = 3;
       ctx.strokeStyle = COLORS.background;
-      ctx.strokeText(name, t.x + 9 * ux, t.y + 9 * uy);
-      ctx.fillText(name, t.x + 9 * ux, t.y + 9 * uy);
+      ctx.strokeText(name, t.x + gap * ux, t.y + gap * uy);
+      ctx.fillText(name, t.x + gap * ux, t.y + gap * uy);
       ctx.strokeStyle = COLORS.aid;
       ctx.lineWidth = 1.2;
     }

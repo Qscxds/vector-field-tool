@@ -119,17 +119,22 @@ const showEigenSchema = z
 /**
  * Round 13: the summary's eigen block. A linear system with constant coefficients always gets its
  * exact analysis; any other one only when `showEigen` asked (the linearization per equilibrium).
- * A budget spent here drops this block only: the analysis above it is complete.
+ * The text has no picture and no pointer (surface "text": no note about drawn lines or snapping),
+ * and its letters avoid the student's parameter names. A budget spent here never touches the
+ * analysis above it: without showEigen the block is simply not added (nothing was asked); with it,
+ * the block says that the exact reading ran out of time and gives the linearization.
  */
 function eigenBlock(source: EigenSource, scene: Scene, locale: Locale, checkpoint: () => void, showEigen: boolean): string[] {
   if (scene.timeDependent) return [];
+  const params = Object.keys(source.params ?? {});
   try {
     const read = linearAnalysisOf(source, checkpoint);
     if (!read.ok && !showEigen) return [];
-    return [eigenText(locale, { picture: source.mode, linear: read, equilibria: scene.equilibria })];
+    return [eigenText(locale, { picture: source.mode, linear: read, equilibria: scene.equilibria, params, surface: "text" })];
   } catch (error) {
-    if (error instanceof BudgetExceeded) return [];
-    throw error;
+    if (!(error instanceof BudgetExceeded)) throw error;
+    if (!showEigen) return [];
+    return [eigenText(locale, { picture: source.mode, linear: { ok: false, failure: { reason: "budget" } }, equilibria: scene.equilibria, params, surface: "text" })];
   }
 }
 

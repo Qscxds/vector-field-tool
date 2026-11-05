@@ -199,6 +199,8 @@ export type InteractiveScene = {
   featuresPending: boolean;
   /** Round 13: where the pointer is snapped right now (an eigen-line, a separatrix, a node's eigen segment), or null. */
   snap: Snap | null;
+  /** Round 13: the snap came from a finger (no Alt key to hold: the sentence says what to do instead). */
+  snapByTouch: boolean;
   handlers: InteractiveHandlers;
 };
 
@@ -214,6 +216,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const [overlay, setOverlay] = useState<TrajectoryView[]>([]);
   const [hint, setHint] = useState<{ at: Vec2; text: string } | null>(null);
   const [snap, setSnap] = useState<Snap | null>(null);
+  const [snapByTouch, setSnapByTouch] = useState(false);
   const trajectories = useMemo(() => (external.length ? [...external, ...trajectoriesOf(store)] : trajectoriesOf(store)), [external, store]);
   const trajectoryStarts = useMemo(() => trajectoryStartsOf(store), [store]);
   const queryShown = useMemo(
@@ -233,6 +236,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     lastHoverScreen.current = null;
     setOverlay([]);
     setHint(null);
+    setSnap(null);
   }, [homeKey, equalScale]);
 
   const viewport = useMemo(
@@ -317,8 +321,10 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
   const eigenLineSet = useMemo(() => (showEigen && linear ? eigenLines(linear) : undefined), [showEigen, linear]);
   const rotationSet = useMemo(() => (showEigen && (linear || features.equilibria) ? rotationAids(linear, features.equilibria) : undefined), [showEigen, linear, features]);
   // The separatrices are traced for the overlay, and (round 13) for snapping at a NONLINEAR saddle
-  // while the eigen-direction switch is on; drawn only with their own switch.
-  const needBranches = showSeparatrices || (showEigen && !linear && Boolean(features.equilibria?.some((e) => e.classification === "saddle")));
+  // while the eigen-direction switch is on; drawn only with their own switch. Not for snapping
+  // during a slider drag (the pointer is on the slider; the second review measured 273 ms per step
+  // on a stiff system): they are traced once the drag ends.
+  const needBranches = showSeparatrices || (showEigen && !dragging && !linear && Boolean(features.equilibria?.some((e) => e.classification === "saddle")));
   const branchSet = useMemo(
     () => (needBranches && featureInputs.sys && features.equilibria && effectiveFeatureBox && homeBox ? separatrices(featureInputs.sys, features.equilibria, effectiveFeatureBox, fixedStopBox(homeBox)) : undefined),
     [needBranches, featureInputs, features, effectiveFeatureBox, homeBox],
@@ -578,7 +584,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       const vp = viewportRef.current;
       if (!h || !s || !vp) return;
       const last = lastHoverScreen.current;
-      // Round 13: pressing or releasing Alt without moving recomputes too (the snap changes).
+      // Round 13: pressing or releasing Alt (the key listener below) recomputes too: the snap changes.
       if (last && Math.hypot(h.screen.x - last.x, h.screen.y - last.y) < HOVER_PIXEL_THRESHOLD && lastNoSnap.current === h.noSnap) return;
       lastHoverScreen.current = h.screen;
       lastNoSnap.current = h.noSnap;
@@ -616,6 +622,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
       // (switch on, Alt not held) the preview starts at the snapped point and the hint says what it is.
       const snapped = snapAt(h.screen, vp, h.noSnap);
       setSnap(snapped);
+      setSnapByTouch(h.touch);
       setHint(snapped ? { at: snapped.point, text: snapHint(labels(localeRef.current), snapped) } : null);
       setOverlay(markNonUnique(tracePreview(s, snapped?.point ?? h.world, vp, snapshotTRef.current), featuresRef.current, vp.box, probeRef.current ?? undefined));
     });
@@ -626,6 +633,32 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     },
     [],
   );
+  // Round 13 (the second review): what the pointer may snap to changed (the switch toggled by the
+  // keyboard, new features, another linear system): the snap, its hint and its preview belong to the
+  // old targets, so the hover is computed again where the pointer rests (or dropped without one).
+  useEffect(() => {
+    lastHoverScreen.current = null;
+    const h = hoverRef.current;
+    if (h) onHoverWorld(h.world, h.screen, h.touch, h.noSnap);
+    else setSnap(null);
+  }, [targets, onHoverWorld]);
+  // Pressing or releasing Alt without moving the pointer: the hover (and so the snap the click will
+  // use, which reads the key at the click) is computed again at once. Not for a finger.
+  useEffect(() => {
+    if (!showEigen) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Alt") return;
+      const h = hoverRef.current;
+      if (!h || h.touch) return;
+      onHoverWorld(h.world, h.screen, false, event.type === "keydown");
+    };
+    window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKey);
+    };
+  }, [showEigen, onHoverWorld]);
 
   const clearTrajectories = useCallback(() => {
     setExternal([]);
@@ -673,6 +706,7 @@ export function useInteractiveScene(input: InteractiveInput): InteractiveScene {
     canUndo: storeCanUndo(store),
     featuresPending,
     snap,
+    snapByTouch,
     handlers: { onClickWorld, onHoverWorld, onWheelZoom, onPan, onPinch, onDoubleClick },
   };
 }

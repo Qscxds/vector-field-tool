@@ -2049,13 +2049,24 @@ describe("round 13: the eigen block of analyze_system / analyze_second_order", (
   });
   const call = (name: string, args: Record<string, unknown>) => callTool(name, args, own);
   it("a linear system gets its exact analysis without asking", async () => {
-    // x' = x + y, y' = 4x + y: λ² − 2λ − 3 = 0, λ = 3, −1, v = (1, 2), (1, −2), a saddle.
+    // x' = x + y, y' = 4x + y: λ² − 2λ − 3 = 0, λ = 3, −1, ξ = (1, 2), (1, −2), a saddle.
     const r = await call("analyze_system", { f: "x + y", g: "4*x + y", locale: "en" });
     expect(r.isError).toBeFalsy();
     expect(r.text).toContain("det(A − λI) = λ² − 2λ − 3 = 0");
-    expect(r.text).toContain("v₁ = (1, 2)");
+    expect(r.text).toContain("ξ₁ = (1, 2)");
     expect(r.text).toContain("(x(t), y(t)) = c₁e³ᵗ (1, 2) + c₂e⁻ᵗ (1, −2)");
     expect(r.scene.showEigen).toBeUndefined();
+    // The text has no picture and no pointer (the widget opens with the switch off): no drawn lines, no snapping.
+    expect(r.text).not.toMatch(/snaps|Hold Alt|thin straight lines/);
+  });
+
+  it("the letters avoid the student's parameters (rule 9)", async () => {
+    // f = a x + b y, g = c x + d y with a = −1, b = 2, c = −2, d = −1: −1 ± 2i, ξ = (1, i), constants C₁, C₂.
+    const r = await call("analyze_system", { f: "a*x + b*y", g: "c*x + d*y", params: { a: -1, b: 2, c: -2, d: -1 }, locale: "en", showEigen: true });
+    expect(r.isError).toBeFalsy();
+    expect(r.text).toContain("Re ξ = (1, 0), imaginary part Im ξ = (0, 1)");
+    expect(r.text).toContain("C₁(Re ξ cos βt − Im ξ sin βt)");
+    expect(r.text).not.toMatch(/\bc₁|\ba = Re|\bb = Im|α, β, a, b/);
   });
 
   it("a nonlinear system gets the linearization only with showEigen, which also marks the scene", async () => {
@@ -2067,7 +2078,7 @@ describe("round 13: the eigen block of analyze_system / analyze_second_order", (
     expect(asked.text).toContain("Eigenvalues and eigenvectors (linearization at each equilibrium, numerical)");
     expect(asked.text).toContain("is not linear in x and y");
     // At the saddle (0, 0) the eigenvectors are the axes: (1, 0) for λ = 1 and (0, 1) for λ = −1.
-    expect(asked.text).toMatch(/v₁ ≈ \(1, 0\) \(λ₁ ≈ 1\)/);
+    expect(asked.text).toMatch(/ξ₁ ≈ \(1, 0\) \(λ₁ ≈ 1\)/);
   });
 
   it("a second-order equation speaks of x(t) and of (x, x')", async () => {

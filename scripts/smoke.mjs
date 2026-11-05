@@ -131,14 +131,14 @@ const calls = [
     (r) => r.structuredContent?.query?.hits?.length === 1 && Math.abs(r.structuredContent.query.hits[0].y - 0.5) < 1e-6 && r.structuredContent.trajectories?.every((t) => t.status === "completed" && t.steps > 0),
   ],
   // Round 13: a linear system gets its exact eigen-analysis in the summary; showEigen opens the widget's switch.
-  // x' = x + y, y' = 4x + y: λ² − 2λ − 3 = 0, λ = 3 and −1, v = (1, 2) and (1, −2), a saddle.
+  // x' = x + y, y' = 4x + y: λ² − 2λ − 3 = 0, λ = 3 and −1, ξ = (1, 2) and (1, −2), a saddle.
   [
     "analyze_system",
     { f: "x + y", g: "4*x + y", showEigen: true },
     (r) =>
       r.structuredContent?.showEigen === true &&
       /λ² − 2λ − 3 = 0/.test(r.content?.[0]?.text ?? "") &&
-      /v₁ = \(1, 2\)/.test(r.content?.[0]?.text ?? "") &&
+      /ξ₁ = \(1, 2\)/.test(r.content?.[0]?.text ?? "") &&
       /a saddle/.test(r.content?.[0]?.text ?? ""),
   ],
   // Airy x'' - t x = 0: a_{n+2} = a_{n-1} / ((n+2)(n+1)), so a3 = a0 / 6; no singular point.

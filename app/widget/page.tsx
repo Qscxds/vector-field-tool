@@ -27,7 +27,8 @@ import { useApp } from "@modelcontextprotocol/ext-apps/react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TimeSeriesDrawing } from "@/components/drawTimeSeries";
 import { EigenPanel } from "@/components/EigenPanel";
-import { linearAnalysisOf, numericLinear, type EigenSource } from "@/lib/eigen/linear-system";
+import { numericLinear, type EigenSource } from "@/lib/eigen/linear-system";
+import { readEigen } from "@/components/eigen-read";
 import { eigenDerivation, snapSentence } from "@/lib/labels-eigen";
 import { FoldedLine, Info } from "@/components/Info";
 import { TimeSeriesCanvas } from "@/components/TimeSeriesCanvas";
@@ -148,15 +149,12 @@ export default function WidgetPage() {
   // Round 13: the eigen features belong to an analysis of a planar system or a second-order equation.
   const eigenAvailable = scene?.kind === "analyze_system" && Boolean(scene.system) && scene.system?.variables !== "ty";
   const eigenOn = eigenAvailable && eigenChoice;
+  // As the web shell (components/eigen-read): never for a field with t, always within a budget.
   const eigenRead = useMemo(() => {
-    if (!eigenOn || !scene?.system) return null;
+    if (!eigenOn || !scene?.system || scene.timeDependent) return null;
     const params = scene.system.params;
     const source: EigenSource = scene.secondOrder ? { mode: "second", equation: scene.secondOrder.equation, params } : { mode: "system", f: scene.system.f, g: scene.system.g, params };
-    try {
-      return linearAnalysisOf(source);
-    } catch {
-      return null;
-    }
+    return readEigen(source, scene.system);
   }, [eigenOn, scene]);
   const linearGeometry = useMemo(() => (eigenRead?.ok ? numericLinear(eigenRead.analysis) : null), [eigenRead]);
   const interactive = useInteractiveScene({
@@ -304,7 +302,7 @@ export default function WidgetPage() {
               {/* Round 13: what the pointer snapped to, in a full sentence. */}
               {live.snap ? (
                 <p role="status" data-snap={live.snap.target.kind} style={{ margin: "4px 0 0", color: "#1f2933", fontSize: 12 }}>
-                  {snapSentence(L, live.snap, second ? "second" : "system")}
+                  {snapSentence(L, live.snap, second ? "second" : "system", live.snapByTouch)}
                 </p>
               ) : null}
               {/* Persistent while the toggle is off (never a timed toast): the picture's angles are not slopes. */}
@@ -384,7 +382,7 @@ export default function WidgetPage() {
           ) : null}
           <SceneSummary scene={live.scene} />
           {/* Round 13: the eigenvalue panel (exact for a linear system, the linearization per equilibrium otherwise). */}
-          {eigenOn ? <EigenPanel compact derivation={eigenDerivation(L, { picture: second ? "second" : "system", linear: eigenRead, equilibria: live.scene.equilibria, timeDependent: Boolean(live.scene.timeDependent) })} /> : null}
+          {eigenOn ? <EigenPanel compact derivation={eigenDerivation(L, { picture: second ? "second" : "system", linear: eigenRead, equilibria: live.scene.equilibria, timeDependent: Boolean(live.scene.timeDependent), params: Object.keys(live.scene.system?.params ?? {}), surface: "widget" })} /> : null}
         </>
       ) : scene?.box ? (
         <>
