@@ -28,6 +28,7 @@
  * initial value at t0 = 0, so the kept curve is the solution the panel expands.
  */
 import type { Locale, Range, Vec2 } from "@/lib/core/types";
+import type { AidFlags } from "@/lib/phase-aids";
 import type { ParamEntry, SliderEntry } from "@/lib/params";
 import { DEFAULT_SERIES_SETTINGS, type SeriesSettings } from "@/lib/series-panel";
 import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState, type ViewChoice } from "@/lib/url-state";
@@ -35,7 +36,7 @@ import { DEFAULT_STATE, encodeState, type AppBox, type AppMode, type AppState, t
 /** The form vocabulary of VectorFieldApp (explicit / differential); presets use the link vocabulary AppMode. */
 export type PresetMode = "system" | "explicit" | "differential" | "second";
 
-export type PresetGroupId = "separable" | "linear" | "exact" | "bernoulli" | "homogeneous" | "noClosedForm" | "uniqueness" | "secondOrder" | "systems" | "nonAutonomous" | "series";
+export type PresetGroupId = "separable" | "linear" | "exact" | "bernoulli" | "homogeneous" | "noClosedForm" | "uniqueness" | "secondOrder" | "systems" | "eigen" | "nonAutonomous" | "series";
 
 export type PresetGroup = { id: PresetGroupId; name: Record<Locale, string> };
 
@@ -69,6 +70,8 @@ export type Preset = {
   view?: ViewChoice;
   /** Round 12: the series panel the preset opens with (the power series or the solution formula); absent = the panel is off. */
   series?: SeriesSettings;
+  /** Round 13: overlays the preset switches on (the eigen chapter opens with eigenvalues & eigen-directions); absent = the page's own choice stays. */
+  aids?: Partial<AidFlags>;
 };
 
 /** Route the preset links point to. */
@@ -86,6 +89,7 @@ export const PRESET_GROUPS: PresetGroup[] = [
   // and the same models as planar systems live in their own group.
   { id: "secondOrder", name: { zh: "二阶方程", en: "Second-order equations" } },
   { id: "systems", name: { zh: "平面系统", en: "Planar systems" } },
+  { id: "eigen", name: { zh: "线性系统与特征值", en: "Linear systems and eigenvalues" } },
   { id: "nonAutonomous", name: { zh: "非自治", en: "Non-autonomous" } },
   // Round 12: the series panel's chapter (power series, the split u = u_h + u_p).
   { id: "series", name: { zh: "幂级数与解的公式", en: "Power series and solution formulas" } },
@@ -295,6 +299,63 @@ export const PRESETS: Preset[] = [
       en: "x' = x, y' = y: the eigenvalue 1 is repeated with two independent eigenvectors: an unstable star node, and every ray from the origin is an orbit.",
     },
   },
+  // ---- Round 13: linear systems and eigenvalues (each opens with the eigen panel and the eigen-directions on). ----
+  // Every note is the exact analysis (lib/eigen) worked by hand: A, tr, det, disc = (a − d)² + 4bc,
+  // λ = tr/2 ± √disc/2, v = (b, λ − a) made primitive. None of them has x' = y (Z1.1 names that case).
+  {
+    id: "eigen-saddle", group: "eigen", mode: "system", name: { zh: "直线解 x' = x + y, y' = 4x + y", en: "Straight-line solutions x' = x + y, y' = 4x + y" },
+    // A = [[1, 1], [4, 1]]: tr 2, det −3, disc 16: λ = 3, −1; v = (1, 2), (1, −2).
+    expressions: { f: "x + y", g: "4*x + y" }, box: sq(3), starts: [{ x: 1, y: -2 }, { x: -1, y: 2 }, { x: 0.3, y: 0 }, { x: -0.3, y: 0 }], aids: { eigenDirections: true },
+    note: {
+      zh: "特征值 3 和 −1，特征向量 (1, 2) 和 (1, −2)：直线 y = 2x 和 y = −2x 本身就是解（直线解）。鼠标移到直线附近会自动贴靠，点一下就得到一条直线解；从 (1, −2) 出发的解沿直线径直进入原点。",
+      en: "Eigenvalues 3 and −1, eigenvectors (1, 2) and (1, −2): the lines y = 2x and y = −2x are themselves solutions (straight-line solutions). Move the pointer near a line and it snaps; click to keep a straight-line solution. The solution from (1, −2) runs straight into the origin.",
+    },
+  },
+  {
+    id: "eigen-irrational", group: "eigen", mode: "system", name: { zh: "无理特征值 x' = x + y, y' = x", en: "Irrational eigenvalues x' = x + y, y' = x" },
+    // A = [[1, 1], [1, 0]]: tr 1, det −1, disc 1 + 4 = 5: λ = 1/2 ± √5/2; v = (2b, (d − a) ± √5) = (2, −1 ± √5).
+    expressions: { f: "x + y", g: "x" }, box: sq(3), aids: { eigenDirections: true },
+    note: {
+      zh: "特征方程 λ² − λ − 1 = 0，特征值 (1 ± √5)/2 是无理数：面板精确地写成 1/2 ± √5/2（≈ 1.618 和 −0.618），特征向量 (2, −1 ± √5)。这是一个鞍点，两条特征直线都是解。",
+      en: "Characteristic equation λ² − λ − 1 = 0; the eigenvalues (1 ± √5)/2 are irrational, and the panel keeps them exact as 1/2 ± √5/2 (≈ 1.618 and −0.618), with eigenvectors (2, −1 ± √5). A saddle: both eigen-lines are solutions.",
+    },
+  },
+  {
+    id: "eigen-affine", group: "eigen", mode: "system", name: { zh: "平衡点不在原点 x' = x + y − 3, y' = x − y − 1", en: "Equilibrium off the origin x' = x + y − 3, y' = x − y − 1" },
+    // A = [[1, 1], [1, −1]], b = (−3, −1): det −2, p* = −A⁻¹ b = (2, 1); disc 4 + 4 = 8: λ = ±√2, v = (1, −1 ± √2).
+    expressions: { f: "x + y - 3", g: "x - y - 1" }, box: { xMin: -1, xMax: 5, yMin: -2, yMax: 4 }, aids: { eigenDirections: true },
+    note: {
+      zh: "先解 A·p = −b 得平衡点 (2, 1)；特征值 ±√2，特征向量 (1, −1 ± √2)。两条直线解穿过 (2, 1)，通解是 (2, 1) 加上两个指数项。",
+      en: "Solving A·p = −b gives the equilibrium (2, 1); the eigenvalues are ±√2 with eigenvectors (1, −1 ± √2). Both straight-line solutions pass through (2, 1), and the general solution is (2, 1) plus two exponential terms.",
+    },
+  },
+  {
+    id: "eigen-degenerate", group: "eigen", mode: "system", name: { zh: "退化结点 x' = −x + y, y' = −y", en: "Degenerate node x' = −x + y, y' = −y" },
+    // A = [[−1, 1], [0, −1]]: disc 0, λ = −1 twice; v = (b, λ − a) = (1, 0); (A + I) w = v: w = (0, 1).
+    expressions: { f: "-x + y", g: "-y" }, box: sq(3), starts: [{ x: 2, y: 0 }, { x: -2, y: 1 }, { x: 1, y: -2 }], aids: { eigenDirections: true },
+    note: {
+      zh: "特征值 −1 是二重根，却只有一个特征方向 (1, 0)：这正是退化结点。广义特征向量 w = (0, 1) 给出通解里的 t·e⁻ᵗ 项；x 轴是唯一的直线解，其他解都沿 x 轴方向进入原点。",
+      en: "The eigenvalue −1 is repeated but has only one eigen-direction, (1, 0): exactly what makes a node degenerate. The generalized eigenvector w = (0, 1) gives the t·e⁻ᵗ term of the general solution; the x-axis is the only straight-line solution, and every other solution enters the origin along it.",
+    },
+  },
+  {
+    id: "eigen-spiral", group: "eigen", mode: "system", name: { zh: "螺旋点 x' = −x + 2y, y' = −2x − y", en: "Spiral x' = −x + 2y, y' = −2x − y" },
+    // A = [[−1, 2], [−2, −1]]: tr −2, det 5, disc −16: λ = −1 ± 2i; v = (4, 0 + 4i) ∝ (1, i): a = (1, 0), b = (0, 1); c = −2 < 0: clockwise.
+    expressions: { f: "-x + 2*y", g: "-2*x - y" }, box: sq(3), starts: [{ x: 2.5, y: 0 }], aids: { eigenDirections: true },
+    note: {
+      zh: "特征值 −1 ± 2i：实部 −1 让解衰减，虚部 2 让它旋转（顺时针）。没有实的特征方向；画面在原点画出特征向量 v = (1, i) 的实部 a = (1, 0)、虚部 b = (0, 1) 和一段向里的螺线。",
+      en: "Eigenvalues −1 ± 2i: the real part −1 makes solutions decay, the imaginary part 2 makes them turn (clockwise). There is no real eigen-direction; the picture shows the real part a = (1, 0) and the imaginary part b = (0, 1) of the eigenvector v = (1, i), and a piece of spiral going in.",
+    },
+  },
+  {
+    id: "eigen-center", group: "eigen", mode: "system", name: { zh: "中心 x' = x + 2y, y' = −x − y", en: "Center x' = x + 2y, y' = −x − y" },
+    // A = [[1, 2], [−1, −1]]: tr 0, det 1, disc 4 − 8 = −4: λ = ±i; v = (4, −2 + 2i) ∝ (2, −1 + i); c = −1: clockwise.
+    expressions: { f: "x + 2*y", g: "-x - y" }, box: sq(3), starts: [{ x: 1, y: 0 }, { x: 2, y: 0 }], aids: { eigenDirections: true },
+    note: {
+      zh: "tr A = 0、det A = 1，特征值 ±i 是纯虚数：这个线性系统精确地是中心，轨线是闭合的斜椭圆（顺时针）。上面的平衡点列表是数值判断，只能说「中心或弱螺旋」；面板解释了为什么这里可以确定是中心。",
+      en: "tr A = 0 and det A = 1, so the eigenvalues ±i are purely imaginary: this linear system is exactly a center, and its orbits are closed tilted ellipses (clockwise). The numerical equilibrium list can only say \"center or weak spiral\"; the panel explains why it is certain here.",
+    },
+  },
   // ---- Non-autonomous ----
   {
     id: "resonance", group: "nonAutonomous", mode: "system", name: { zh: "受迫振子 x'' = −x + sin t（写成系统，y = x'）", en: "Forced oscillator x'' = −x + sin t (as a system, y = x')" },
@@ -434,6 +495,7 @@ export function presetState(p: Preset): AppState {
     ...(p.timeRange ? { timeRange: { ...p.timeRange } } : {}),
     ...(p.view ? { view: p.view } : {}),
     series: p.series ? { ...p.series, initial: [p.series.initial[0], p.series.initial[1]] } : DEFAULT_SERIES_SETTINGS,
+    ...(p.aids ? { aids: { ...DEFAULT_STATE.aids, ...p.aids } } : {}),
   };
 }
 

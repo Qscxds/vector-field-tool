@@ -12,6 +12,8 @@
  * - x'' + 2b x' + w² x = 0 with b = 0.25, w = 1 and y = x': x' = y, y' = -(0.5 y + x), checked numerically at sample points.
  */
 import { describe, expect, it } from "vitest";
+import { linearAnalysisOf } from "@/lib/eigen/linear-system";
+import { eigenText } from "@/lib/labels-eigen";
 import { compileScalar, compileSystem } from "@/lib/core/parse";
 import { reduceSecondOrder } from "@/lib/core/second-order";
 import { integrateAdaptive } from "@/lib/core/integrate";
@@ -585,5 +587,41 @@ describe("[12] the series chapter: presets that open the power series or the sol
       expect(byId("resonance-formula").note[locale], locale).toContain("(cos t − cos(1.5t))/1.25");
       expect(byId("resonance-formula").note[locale], locale).toContain("(t/2)·sin t");
     }
+  });
+});
+
+describe("round 13: the eigen chapter says what the exact analysis gives", () => {
+  // Each expectation is the hand computation written above the preset in presets.ts.
+  const expected: Record<string, { type: string; eigen: string; vectors: string }> = {
+    "eigen-saddle": { type: "saddle", eigen: "λ₁ = 3|λ₂ = −1", vectors: "v₁ = (1, 2)|v₂ = (1, −2)" },
+    "eigen-irrational": { type: "saddle", eigen: "λ₁ = 1/2 + √5/2|λ₂ = 1/2 − √5/2", vectors: "v₁ = (2, −1 + √5)|v₂ = (2, −1 − √5)" },
+    "eigen-affine": { type: "saddle", eigen: "λ₁ = √2|λ₂ = −√2", vectors: "v₁ = (1, −1 + √2)|v₂ = (1, −1 − √2)" },
+    "eigen-degenerate": { type: "stable_degenerate", eigen: "λ₁ = λ₂ = −1", vectors: "v = (1, 0)|w = (0, 1)" },
+    "eigen-spiral": { type: "stable_spiral", eigen: "λ = −1 ± 2i", vectors: "v = (1, i)" },
+    "eigen-center": { type: "center", eigen: "λ = ± i", vectors: "v = (2, −1 + i)" },
+  };
+  const chapter = PRESETS.filter((p) => p.group === "eigen");
+
+  it("has the six presets, each opening with the eigen switch on", () => {
+    expect(chapter.map((p) => p.id).sort()).toEqual(Object.keys(expected).sort());
+    for (const p of chapter) expect(presetState(p).aids.eigenDirections).toBe(true);
+  });
+
+  it("matches the exact analysis in type, eigenvalues and eigenvectors", () => {
+    for (const p of chapter) {
+      const read = linearAnalysisOf({ mode: "system", f: p.expressions.f!, g: p.expressions.g! });
+      expect(read.ok, p.id).toBe(true);
+      if (!read.ok) continue;
+      expect(read.analysis.type, p.id).toBe(expected[p.id].type);
+      const text = eigenText("en", { picture: "system", linear: read });
+      for (const piece of [...expected[p.id].eigen.split("|"), ...expected[p.id].vectors.split("|")]) expect(text, `${p.id}: ${piece}`).toContain(piece);
+    }
+  });
+
+  it("the affine preset's equilibrium is (2, 1), the center of its box", () => {
+    const p = chapter.find((q) => q.id === "eigen-affine")!;
+    const read = linearAnalysisOf({ mode: "system", f: p.expressions.f!, g: p.expressions.g! });
+    expect(read.ok && read.analysis.equilibrium).toEqual({ kind: "point", at: [q(2), q(1)] });
+    expect([(p.box.xMin + p.box.xMax) / 2, (p.box.yMin + p.box.yMax) / 2]).toEqual([2, 1]);
   });
 });
