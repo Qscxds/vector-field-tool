@@ -141,6 +141,13 @@ export type Separatrix = {
   kind: "stable" | "unstable";
   points: Vec2[];
   status: IntegrationStatus;
+  /**
+   * Round 13 (snapping): the integration behind the branch. `points` is the saddle followed by the
+   * integrator's points from `start`; `times[i]` is the clock at points[i + 1] (from 0, decreasing
+   * for a stable branch traced backward), so a point of the branch can be re-integrated exactly.
+   */
+  start: Vec2;
+  times: number[];
 };
 
 /**
@@ -159,19 +166,42 @@ export function separatrices(sys: CompiledSystem, equilibria: readonly Equilibri
         const start = { x: e.at.x + side * offset * d.direction.x, y: e.at.y + side * offset * d.direction.y };
         const tr = integrateAdaptive(sys, start, SEPARATRIX_TSPAN, { direction: d.kind === "unstable" ? 1 : -1, box: stopBox, h: 0.05 });
         // The branch is drawn from the saddle itself: the offset is below a pixel.
-        out.push({ saddle: e.at, kind: d.kind, points: [e.at, ...tr.points], status: tr.status });
+        out.push({ saddle: e.at, kind: d.kind, points: [e.at, ...tr.points], status: tr.status, start, times: tr.times });
       }
     }
   }
   return out;
 }
 
-/** What a Scene carries of the three overlays (each present only when it was asked for). */
+/**
+ * Round 13: a straight line of solutions of a LINEAR system (lib/eigen): the eigen-direction through
+ * the equilibrium, drawn across the whole picture because the whole line is a solution.
+ */
+export type EigenLine = { through: Vec2; direction: Vec2; eigenvalue: number };
+
+/**
+ * Round 13: what a complex pair of eigenvalues α ± iβ lets the picture show at an equilibrium: the
+ * real and imaginary parts of the eigenvector v = re + i·im of α + iβ, and the linearized flow
+ * e^(αt)(re cos βt − im sin βt), whose sense of rotation is the flow's own. `closed`: an exact center
+ * of a linear system (the orbit is the closed ellipse); otherwise an open arc is drawn, never a
+ * closed curve that would claim a center. `exact`: from the exact analysis of a linear system,
+ * not from a numerical linearization.
+ */
+export type RotationAid = { at: Vec2; re: Vec2; im: Vec2; alpha: number; beta: number; closed: boolean; exact: boolean };
+
+/** What a Scene carries of the overlays (each present only when it was asked for). */
 export type PhaseAids = {
   nullclines?: NullclineSet;
   eigenDirections?: EigenDirection[];
   separatrices?: Separatrix[];
+  /** Round 13: the whole straight-line solutions of a linear system (with the eigen-direction switch). */
+  eigenLines?: EigenLine[];
+  /** Round 13: complex eigenvalues (with the eigen-direction switch). */
+  rotations?: RotationAid[];
 };
+
+/** Half-length of a drawn eigen-direction segment, as a fraction of the canvas's shorter side (the same on screen at every zoom). */
+export const EIGEN_HALF_FRACTION = 0.11;
 
 /** Which overlays are shown (the link's `aids`: n, e, s). */
 export type AidFlags = { nullclines: boolean; eigenDirections: boolean; separatrices: boolean };
